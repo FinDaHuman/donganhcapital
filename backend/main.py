@@ -25,6 +25,10 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix="/api")
 
+    @app.get("/")
+    def read_root():
+        return {"message": "Stock Prediction API is running", "docs": "/docs"}
+
     return app
 
 app = create_app()
