@@ -14,7 +14,14 @@ def load_data_cached():
         raise FileNotFoundError(f"Data file not found at {settings.DATA_PATH}")
 
     print(f"Loading data from {settings.DATA_PATH}...")
-    df = pd.read_excel(settings.DATA_PATH)
+    try:
+        # Explicitly specify engine to avoid ambiguity on some platforms
+        df = pd.read_excel(settings.DATA_PATH, engine='openpyxl')
+    except Exception as e:
+        print(f"CRITICAL ERROR LOADING EXCEL: {e}")
+        import traceback
+        traceback.print_exc()
+        raise e
     
     # Standardize columns
     df.rename(columns={

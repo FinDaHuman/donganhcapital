@@ -12,7 +12,9 @@ def get_stock_tickers():
         tickers = get_tickers()
         return {"tickers": tickers}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @router.get("/predict/{ticker}", response_model=PredictionResponse)
 async def predict_stock_price(ticker: str):
