@@ -8,10 +8,12 @@ def create_app() -> FastAPI:
 
     # CORS
     origins = [
+    origins = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "https://donganhcapital-frontend.vercel.app", # Example production URL
-        "*" # Permissive for demo, change to specific list for high security
+        "https://dong-anh-capital.vercel.app", # User's specific production URL
+        "https://donganhcapital.onrender.com", 
+        "*" 
     ]
 
     app.add_middleware(
