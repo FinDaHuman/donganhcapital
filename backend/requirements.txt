@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pandas
+openpyxl
+scikit-learn
+xgboost
+python-dotenv
+pydantic-settings
+python-multipart
