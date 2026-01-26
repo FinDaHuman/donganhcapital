@@ -39,7 +39,7 @@ def load_data_cached():
     
     # Sort by Ticker and Date
     df.sort_values(by=['Ticker', 'Date'], inplace=True)
-    df.fillna(method='ffill', inplace=True) 
+    df.ffill(inplace=True) 
     
     print("Data loaded successfully.")
     return df
