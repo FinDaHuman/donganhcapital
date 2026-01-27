@@ -18,6 +18,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def health_check():
+    return {"status": "ok", "message": "Stock Prediction API is running"}
+
 @app.get("/api/tickers", response_model=TickerList)
 def read_tickers():
     tickers = get_tickers()
