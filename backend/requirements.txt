@@ -4,6 +4,9 @@ pandas
 openpyxl
 scikit-learn
 xgboost
+joblib
 python-dotenv
 pydantic-settings
 python-multipart
+httpx
+numpy

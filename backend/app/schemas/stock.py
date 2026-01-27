@@ -10,6 +10,11 @@ class StockDataPoint(BaseModel):
     Volume: int
     Type: str # 'History' or 'Forecast'
     
+    # Technical Indicators (Optional)
+    SMA_5: Optional[float] = None
+    SMA_20: Optional[float] = None
+    RSI: Optional[float] = None
+    
 class PredictionResponse(BaseModel):
     ticker: str
     history: List[StockDataPoint]
