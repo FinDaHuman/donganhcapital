@@ -3,7 +3,7 @@ uvicorn
 pandas
 openpyxl
 scikit-learn
-xgboost
+xgboost>=2.0.0
 joblib
 python-dotenv
 pydantic-settings
