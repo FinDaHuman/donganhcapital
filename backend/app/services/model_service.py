@@ -77,8 +77,9 @@ def predict_with_global_model(ticker: str, last_date_str: str):
                  pred_close = temp_history.iloc[-1]['Close']
             else:
                  X = feat_row[features_list]
-                 # Use DMatrix for Booster inference
-                 dtest = xgb.DMatrix(X)
+                 # Use DMatrix for Booster inference with EXPLICIT feature names
+                 # Passing X.values ensures we don't rely on pandas->DMatrix magic, which can be flaky
+                 dtest = xgb.DMatrix(X.values, feature_names=features_list)
                  pred_close = float(model.predict(dtest)[0])
             
             # Create next row for recursion
