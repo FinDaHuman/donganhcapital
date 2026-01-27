@@ -15,6 +15,7 @@ def load_global_model():
         if os.path.exists(MODEL_PATH):
             print(f"Loading Global Model from {MODEL_PATH}...")
             # Use xgb.Booster directly for inference to avoid SKLearn wrapper version mismatches
+            print("INFO: USING BOOSTER API FOR INFERENCE (Fix Applied)")
             global_model = xgb.Booster()
             global_model.load_model(MODEL_PATH)
         else:
