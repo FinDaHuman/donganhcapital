@@ -2,8 +2,18 @@ import React, { useMemo } from 'react';
 import Plot from 'react-plotly.js';
 
 const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBound }) => {
-    // Combine data for plotting
-    // Separate History vs Forecast for visual distinction
+
+    // Theme Colors
+    const COLORS = {
+        bg: '#151924',
+        grid: '#2a2e39',
+        text: '#8791a8',
+        up: '#26a69a',
+        down: '#ef5350',
+        forecast: '#ff9800',
+        sma5: '#9c27b0',
+        sma20: '#2962ff'
+    };
 
     const traceHistory = useMemo(() => ({
         x: history.map(d => d.Date),
@@ -11,8 +21,8 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         high: history.map(d => d.High),
         low: history.map(d => d.Low),
         open: history.map(d => d.Open),
-        decreasing: { line: { color: '#ef5350' } },
-        increasing: { line: { color: '#26a69a' } },
+        decreasing: { line: { color: COLORS.down } },
+        increasing: { line: { color: COLORS.up } },
         line: { color: 'rgba(31,119,180,1)' },
         type: 'candlestick',
         xaxis: 'x',
@@ -26,16 +36,15 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         high: forecast.map(d => d.High),
         low: forecast.map(d => d.Low),
         open: forecast.map(d => d.Open),
-        decreasing: { line: { color: '#ff9800' } }, // Orange for forecast
-        increasing: { line: { color: '#ff9800' } },
-        line: { color: '#ff9800' },
+        decreasing: { line: { color: COLORS.forecast } },
+        increasing: { line: { color: COLORS.forecast } },
+        line: { color: COLORS.forecast },
         type: 'candlestick',
         xaxis: 'x',
         yaxis: 'y',
-        name: 'Forecast (14 Days)'
+        name: 'Forecast (10 Days)'
     }), [forecast]);
 
-    // Technical Indicators
     const traceSMA5 = useMemo(() => {
         if (!showSMA) return null;
         return {
@@ -43,7 +52,7 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
             y: history.map(d => d.SMA_5),
             type: 'scatter',
             mode: 'lines',
-            line: { color: '#9c27b0', width: 1 },
+            line: { color: COLORS.sma5, width: 1.5 },
             name: 'SMA 5'
         };
     }, [history, showSMA]);
@@ -55,12 +64,11 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
             y: history.map(d => d.SMA_20),
             type: 'scatter',
             mode: 'lines',
-            line: { color: '#2196f3', width: 1 },
+            line: { color: COLORS.sma20, width: 1.5 },
             name: 'SMA 20'
         };
     }, [history, showSMA]);
 
-    // RSI Subplot
     const traceRSI = useMemo(() => {
         if (!showRSI) return null;
         return {
@@ -75,7 +83,6 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         };
     }, [history, showRSI]);
 
-    // Confidence Bounds
     const traceLower = useMemo(() => {
         if (!lowerBound || lowerBound.length === 0) return null;
         return {
@@ -100,7 +107,7 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
             line: { width: 0 },
             marker: { color: "444" },
             fill: 'tonexty',
-            fillcolor: 'rgba(255, 152, 0, 0.2)',
+            fillcolor: 'rgba(255, 152, 0, 0.1)',
             name: 'Confidence Range',
             showlegend: true
         };
@@ -117,47 +124,55 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
     ].filter(Boolean);
 
     const layout = {
-        dragmode: 'zoom',
-        title: 'Stock Price Prediction & Technical Analysis',
+        dragmode: 'pan',
+        autosize: true,
+        height: 650,
+        margin: { l: 50, r: 50, b: 40, t: 40, pad: 4 },
+        paper_bgcolor: COLORS.bg,
+        plot_bgcolor: COLORS.bg,
+        font: { color: COLORS.text, family: 'sans-serif' },
+
         xaxis: {
             rangeslider: { visible: false },
             type: 'date',
-            title: 'Date'
+            gridcolor: COLORS.grid,
+            zerolinecolor: COLORS.grid,
         },
         yaxis: {
             autorange: true,
             domain: showRSI ? [0.3, 1] : [0, 1],
-            title: 'Price (VND)',
-            type: 'linear'
+            gridcolor: COLORS.grid,
+            zerolinecolor: COLORS.grid,
         },
         yaxis2: {
             domain: [0, 0.2],
             autorange: true,
-            title: 'RSI (14)',
+            title: 'RSI',
             showgrid: true,
+            gridcolor: COLORS.grid,
             zeroline: false,
-            showline: false,
             visible: showRSI
         },
         showlegend: true,
-        height: 600,
-        margin: {
-            l: 50,
-            r: 50,
-            b: 50,
-            t: 80,
-            pad: 4
-        }
+        legend: { orientation: 'h', x: 0, y: 1.05 }
+    };
+
+    // Config to hide annoying Plotly buttons
+    const config = {
+        responsive: true,
+        displayModeBar: true,
+        displaylogo: false,
+        modeBarButtonsToRemove: ['lasso2d', 'select2d', 'toggleSpikelines', 'hoverCompareCartesian']
     };
 
     return (
-        <div className="w-full bg-white shadow-lg rounded-lg p-4">
+        <div className="w-full bg-[#151924] shadow-xl rounded-xl border border-[#2a2e39] overflow-hidden p-1">
             <Plot
                 data={data}
                 layout={layout}
+                config={config}
                 style={{ width: '100%', height: '100%' }}
                 useResizeHandler={true}
-                config={{ responsive: true }}
             />
         </div>
     );

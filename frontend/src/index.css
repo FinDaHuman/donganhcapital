@@ -1,53 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-dark: #0b0e11;
+  --card-dark: #151924; 
+  --text-primary: #e0e3eb;
+  --text-secondary: #8791a8;
+  --accent-green: #26a69a;
+  --accent-red: #ef5350;
+  --accent-blue: #2962ff;
+  --border-color: #2a2e39;
+}
+
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: #f4f4f9;
-    color: #333;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
 }
 
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 20px;
-    text-align: center;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
-
-h1 {
-    color: #2c3e50;
+::-webkit-scrollbar-track {
+  background: var(--bg-dark); 
 }
-
-.controls {
-    margin: 20px 0;
+::-webkit-scrollbar-thumb {
+  background: #363a45; 
+  border-radius: 4px;
 }
-
-select {
-    padding: 10px;
-    font-size: 16px;
-    border-radius: 5px;
-    border: 1px solid #ccc;
-    min-width: 200px;
-}
-
-.chart-container {
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    min-height: 600px;
-}
-
-.loading {
-    padding: 50px;
-    font-size: 18px;
-    color: #666;
-    font-style: italic;
-}
-
-.error {
-    color: red;
-    margin: 10px;
-    padding: 10px;
-    background: #ffebee;
-    border-radius: 4px;
+::-webkit-scrollbar-thumb:hover {
+  background: #4a4e5c; 
 }
