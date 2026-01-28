@@ -44,8 +44,10 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
 
     const data = [traceHistory, traceForecast];
 
+    const [timeframe, setTimeframe] = React.useState('1D');
+
     const layout = {
-        dragmode: 'pan',
+        dragmode: 'pan', // Allow panning
         autosize: true,
         height: undefined,
         margin: { l: 50, r: 50, b: 30, t: 10, pad: 0 },
@@ -55,6 +57,13 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         xaxis: { rangeslider: { visible: false }, type: 'date', gridcolor: COLORS.grid },
         yaxis: { autorange: true, gridcolor: COLORS.grid, showgrid: true, side: 'right' },
         showlegend: false,
+    };
+
+    // Enable Scroll Zoom
+    const config = {
+        responsive: true,
+        displayModeBar: false,
+        scrollZoom: true,
     };
 
     return (
@@ -79,9 +88,15 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
                     <span className="text-gray-200 font-bold text-sm">VNINDEX</span>
                     <div className="w-px h-4 bg-gray-700"></div>
                     <div className="flex gap-2">
-                        <button className="text-xs text-blue-500 font-medium hover:bg-[#1a1c1e] px-2 py-1 rounded">1D</button>
-                        <button className="text-xs text-gray-400 hover:bg-[#1a1c1e] px-2 py-1 rounded">1W</button>
-                        <button className="text-xs text-gray-400 hover:bg-[#1a1c1e] px-2 py-1 rounded">1M</button>
+                        {['1D', '1W', '1M', '3M', '1Y'].map(tf => (
+                            <button
+                                key={tf}
+                                onClick={() => setTimeframe(tf)}
+                                className={`text-xs font-medium px-2 py-1 rounded transition-colors ${timeframe === tf ? 'text-blue-500 bg-[#1a1c1e]' : 'text-gray-400 hover:bg-[#1a1c1e] hover:text-white'}`}
+                            >
+                                {tf}
+                            </button>
+                        ))}
                     </div>
                     <div className="w-px h-4 bg-gray-700"></div>
                     <button className="flex items-center gap-1 text-xs text-gray-300 hover:bg-[#1a1c1e] px-2 py-1 rounded">
@@ -94,7 +109,7 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
                     <Plot
                         data={data}
                         layout={layout}
-                        config={{ responsive: true, displayModeBar: false }}
+                        config={config}
                         style={{ width: '100%', height: '100%' }}
                         useResizeHandler={true}
                     />

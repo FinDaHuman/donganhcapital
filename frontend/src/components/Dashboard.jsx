@@ -99,7 +99,7 @@ const Dashboard = ({ onSelectStock }) => {
             </div>
 
             {/* Center: Heatmap */}
-            <div className="flex-1 flex flex-col p-4">
+            <div className="flex-1 flex flex-col p-4 w-full">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-lg font-bold text-gray-200 flex items-center gap-2">
                         <span className="w-1.5 h-5 bg-blue-600 rounded-sm"></span>
@@ -112,7 +112,7 @@ const Dashboard = ({ onSelectStock }) => {
                     </div>
                 </div>
 
-                <div className="flex-1 bg-[#1a1c1e] rounded-xl border border-[#2a2e39] overflow-hidden relative shadow-lg">
+                <div className="flex-1 bg-[#1a1c1e] rounded-xl border border-[#2a2e39] overflow-hidden relative shadow-lg h-full">
                     {!loading && marketStocks.length > 0 ? (
                         <Plot
                             data={treemapData()}
@@ -131,29 +131,9 @@ const Dashboard = ({ onSelectStock }) => {
                         />
                     ) : (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-                            Loading Heatmap...
+                            {loading ? "Loading Market Data..." : "No Data Available"}
                         </div>
                     )}
-                </div>
-            </div>
-
-            {/* Right Col: Intelligence */}
-            <div className="w-[20%] min-w-[250px] bg-[#1a1c1e] border-l border-[#2a2e39] flex flex-col display-none md:flex">
-                <div className="p-3 border-b border-[#2a2e39] font-bold text-gray-300 text-sm flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                    Intelligence
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-3">
-                    {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} className="bg-[#111213] p-3 rounded border border-[#2a2e39] hover:border-gray-600 cursor-pointer group">
-                            <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                <Clock size={12} /> 2 mins ago
-                            </div>
-                            <h4 className="text-sm font-medium text-gray-300 group-hover:text-blue-400 leading-snug">
-                                Market touches 1250 points as banking sector leads the rally.
-                            </h4>
-                        </div>
-                    ))}
                 </div>
             </div>
 

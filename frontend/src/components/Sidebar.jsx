@@ -1,11 +1,10 @@
 import React from 'react';
-import { LayoutDashboard, LineChart, Newspaper, Settings, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, LineChart, ChevronRight } from 'lucide-react';
 
 const Sidebar = ({ activeTab, onTabChange }) => {
     const navItems = [
         { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Market Overview' },
         { id: 'chart', icon: <LineChart size={20} />, label: 'Technical Chart' },
-        { id: 'news', icon: <Newspaper size={20} />, label: 'News Feed' },
     ];
 
     return (
@@ -36,14 +35,6 @@ const Sidebar = ({ activeTab, onTabChange }) => {
                         {activeTab === item.id && <ChevronRight size={16} />}
                     </button>
                 ))}
-            </div>
-
-            {/* Bottom Settings */}
-            <div className="mt-auto p-4 border-t border-[#2a2e39]">
-                <button className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white w-full hover:bg-[#1a1c1e] rounded-lg transition-colors">
-                    <Settings size={20} />
-                    <span className="font-medium text-sm">Settings</span>
-                </button>
             </div>
         </div>
     );

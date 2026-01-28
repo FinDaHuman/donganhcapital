@@ -48,17 +48,13 @@ const MarketBar = () => {
 
             {/* Right Tools */}
             <div className="flex items-center gap-4">
-                <div className="bg-[#121212] flex items-center px-3 py-1.5 rounded border border-gray-700">
+                <div className="bg-[#1a1c1e] flex items-center px-3 py-1.5 rounded border border-[#2a2e39]">
                     <Search size={16} className="text-gray-500 mr-2" />
                     <input
                         type="text"
                         placeholder="Search"
                         className="bg-transparent border-none focus:outline-none text-gray-300 text-sm w-32"
                     />
-                </div>
-                <Bell size={20} className="text-gray-400 cursor-pointer hover:text-white" />
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white">
-                    KV
                 </div>
             </div>
         </div>
