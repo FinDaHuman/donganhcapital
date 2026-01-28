@@ -1,17 +1,18 @@
 import React, { useMemo } from 'react';
 import Plot from 'react-plotly.js';
+import { MousePointer2, Minus, TrendingUp, Square, Type, Ruler, Settings } from 'lucide-react';
 
 const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBound }) => {
 
-    // Theme Colors
+    // Deep Black Theme
     const COLORS = {
-        bg: '#151924',
-        grid: '#2a2e39',
-        text: '#8791a8',
-        up: '#26a69a',
-        down: '#ef5350',
+        bg: '#111213',
+        grid: '#1f1f1f',
+        text: '#757575',
+        up: '#00c853',
+        down: '#d50000',
         forecast: '#ff9800',
-        sma5: '#9c27b0',
+        sma5: '#aa00ff',
         sma20: '#2962ff'
     };
 
@@ -23,10 +24,8 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         open: history.map(d => d.Open),
         decreasing: { line: { color: COLORS.down } },
         increasing: { line: { color: COLORS.up } },
-        line: { color: 'rgba(31,119,180,1)' },
+        line: { color: '#000000' },
         type: 'candlestick',
-        xaxis: 'x',
-        yaxis: 'y',
         name: 'History'
     }), [history]);
 
@@ -40,140 +39,67 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         increasing: { line: { color: COLORS.forecast } },
         line: { color: COLORS.forecast },
         type: 'candlestick',
-        xaxis: 'x',
-        yaxis: 'y',
-        name: 'Forecast (10 Days)'
+        name: 'Forecast'
     }), [forecast]);
 
-    const traceSMA5 = useMemo(() => {
-        if (!showSMA) return null;
-        return {
-            x: history.map(d => d.Date),
-            y: history.map(d => d.SMA_5),
-            type: 'scatter',
-            mode: 'lines',
-            line: { color: COLORS.sma5, width: 1.5 },
-            name: 'SMA 5'
-        };
-    }, [history, showSMA]);
-
-    const traceSMA20 = useMemo(() => {
-        if (!showSMA) return null;
-        return {
-            x: history.map(d => d.Date),
-            y: history.map(d => d.SMA_20),
-            type: 'scatter',
-            mode: 'lines',
-            line: { color: COLORS.sma20, width: 1.5 },
-            name: 'SMA 20'
-        };
-    }, [history, showSMA]);
-
-    const traceRSI = useMemo(() => {
-        if (!showRSI) return null;
-        return {
-            x: history.map(d => d.Date),
-            y: history.map(d => d.RSI),
-            type: 'scatter',
-            mode: 'lines',
-            line: { color: '#e91e63' },
-            name: 'RSI',
-            xaxis: 'x',
-            yaxis: 'y2'
-        };
-    }, [history, showRSI]);
-
-    const traceLower = useMemo(() => {
-        if (!lowerBound || lowerBound.length === 0) return null;
-        return {
-            x: forecast.map(d => d.Date),
-            y: lowerBound,
-            type: 'scatter',
-            mode: 'lines',
-            line: { width: 0 },
-            marker: { color: "444" },
-            name: 'Lower Bound',
-            showlegend: false
-        };
-    }, [forecast, lowerBound]);
-
-    const traceUpper = useMemo(() => {
-        if (!upperBound || upperBound.length === 0) return null;
-        return {
-            x: forecast.map(d => d.Date),
-            y: upperBound,
-            type: 'scatter',
-            mode: 'lines',
-            line: { width: 0 },
-            marker: { color: "444" },
-            fill: 'tonexty',
-            fillcolor: 'rgba(255, 152, 0, 0.1)',
-            name: 'Confidence Range',
-            showlegend: true
-        };
-    }, [forecast, upperBound]);
-
-    const data = [
-        traceHistory,
-        traceForecast,
-        traceSMA5,
-        traceSMA20,
-        traceRSI,
-        traceLower,
-        traceUpper
-    ].filter(Boolean);
+    const data = [traceHistory, traceForecast];
 
     const layout = {
         dragmode: 'pan',
         autosize: true,
-        height: 650,
-        margin: { l: 50, r: 50, b: 40, t: 40, pad: 4 },
+        height: undefined,
+        margin: { l: 50, r: 50, b: 30, t: 10, pad: 0 },
         paper_bgcolor: COLORS.bg,
         plot_bgcolor: COLORS.bg,
-        font: { color: COLORS.text, family: 'sans-serif' },
-
-        xaxis: {
-            rangeslider: { visible: false },
-            type: 'date',
-            gridcolor: COLORS.grid,
-            zerolinecolor: COLORS.grid,
-        },
-        yaxis: {
-            autorange: true,
-            domain: showRSI ? [0.3, 1] : [0, 1],
-            gridcolor: COLORS.grid,
-            zerolinecolor: COLORS.grid,
-        },
-        yaxis2: {
-            domain: [0, 0.2],
-            autorange: true,
-            title: 'RSI',
-            showgrid: true,
-            gridcolor: COLORS.grid,
-            zeroline: false,
-            visible: showRSI
-        },
-        showlegend: true,
-        legend: { orientation: 'h', x: 0, y: 1.05 }
-    };
-
-    // Config to hide annoying Plotly buttons
-    const config = {
-        responsive: true,
-        displayModeBar: true,
-        displaylogo: false,
-        modeBarButtonsToRemove: ['lasso2d', 'select2d', 'toggleSpikelines', 'hoverCompareCartesian']
+        font: { color: COLORS.text, family: 'Inter, sans-serif', size: 11 },
+        xaxis: { rangeslider: { visible: false }, type: 'date', gridcolor: COLORS.grid },
+        yaxis: { autorange: true, gridcolor: COLORS.grid, showgrid: true, side: 'right' },
+        showlegend: false,
     };
 
     return (
-        <div className="w-full bg-[#151924] shadow-xl rounded-xl border border-[#2a2e39] overflow-hidden p-1">
-            <Plot
-                data={data}
-                layout={layout}
-                config={config}
-                style={{ width: '100%', height: '100%' }}
-                useResizeHandler={true}
-            />
+        <div className="flex h-full w-full bg-[#111213]">
+            {/* Left Drawing Toolbar */}
+            <div className="w-12 border-r border-[#2a2e39] flex flex-col items-center py-4 gap-4 bg-[#111213]">
+                <button className="p-2 text-blue-500 hover:bg-[#1a1c1e] rounded"><MousePointer2 size={18} /></button>
+                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Minus size={18} /></button>
+                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><TrendingUp size={18} /></button>
+                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Square size={18} /></button>
+                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Type size={18} /></button>
+                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Ruler size={18} /></button>
+                <div className="mt-auto">
+                    <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Settings size={18} /></button>
+                </div>
+            </div>
+
+            {/* Main Chart Area */}
+            <div className="flex-1 flex flex-col relative">
+                {/* Top Control Bar */}
+                <div className="h-10 border-b border-[#2a2e39] flex items-center px-4 gap-4 bg-[#111213]">
+                    <span className="text-gray-200 font-bold text-sm">VNINDEX</span>
+                    <div className="w-px h-4 bg-gray-700"></div>
+                    <div className="flex gap-2">
+                        <button className="text-xs text-blue-500 font-medium hover:bg-[#1a1c1e] px-2 py-1 rounded">1D</button>
+                        <button className="text-xs text-gray-400 hover:bg-[#1a1c1e] px-2 py-1 rounded">1W</button>
+                        <button className="text-xs text-gray-400 hover:bg-[#1a1c1e] px-2 py-1 rounded">1M</button>
+                    </div>
+                    <div className="w-px h-4 bg-gray-700"></div>
+                    <button className="flex items-center gap-1 text-xs text-gray-300 hover:bg-[#1a1c1e] px-2 py-1 rounded">
+                        <span>Indicators</span>
+                    </button>
+                </div>
+
+                {/* Plot */}
+                <div className="flex-1 relative">
+                    <Plot
+                        data={data}
+                        layout={layout}
+                        config={{ responsive: true, displayModeBar: false }}
+                        style={{ width: '100%', height: '100%' }}
+                        useResizeHandler={true}
+                    />
+                </div>
+            </div>
         </div>
     );
 };
