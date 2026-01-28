@@ -45,6 +45,7 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
     const data = [traceHistory, traceForecast];
 
     const [timeframe, setTimeframe] = React.useState('1D');
+    const [activeTool, setActiveTool] = React.useState('cursor');
 
     const layout = {
         dragmode: 'pan', // Allow panning
@@ -70,15 +71,12 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         <div className="flex h-full w-full bg-[#111213]">
             {/* Left Drawing Toolbar */}
             <div className="w-12 border-r border-[#2a2e39] flex flex-col items-center py-4 gap-4 bg-[#111213]">
-                <button className="p-2 text-blue-500 hover:bg-[#1a1c1e] rounded"><MousePointer2 size={18} /></button>
-                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Minus size={18} /></button>
-                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><TrendingUp size={18} /></button>
-                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Square size={18} /></button>
-                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Type size={18} /></button>
-                <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Ruler size={18} /></button>
-                <div className="mt-auto">
-                    <button className="p-2 text-gray-400 hover:bg-[#1a1c1e] rounded"><Settings size={18} /></button>
-                </div>
+                <button onClick={() => setActiveTool('cursor')} className={`p-2 rounded ${activeTool === 'cursor' ? 'text-blue-500 bg-[#1a1c1e]' : 'text-gray-400 hover:bg-[#1a1c1e]'}`}><MousePointer2 size={18} /></button>
+                <button onClick={() => setActiveTool('line')} className={`p-2 rounded ${activeTool === 'line' ? 'text-blue-500 bg-[#1a1c1e]' : 'text-gray-400 hover:bg-[#1a1c1e]'}`}><Minus size={18} /></button>
+                <button onClick={() => setActiveTool('trend')} className={`p-2 rounded ${activeTool === 'trend' ? 'text-blue-500 bg-[#1a1c1e]' : 'text-gray-400 hover:bg-[#1a1c1e]'}`}><TrendingUp size={18} /></button>
+                <button onClick={() => setActiveTool('shape')} className={`p-2 rounded ${activeTool === 'shape' ? 'text-blue-500 bg-[#1a1c1e]' : 'text-gray-400 hover:bg-[#1a1c1e]'}`}><Square size={18} /></button>
+                <button onClick={() => setActiveTool('text')} className={`p-2 rounded ${activeTool === 'text' ? 'text-blue-500 bg-[#1a1c1e]' : 'text-gray-400 hover:bg-[#1a1c1e]'}`}><Type size={18} /></button>
+                <button onClick={() => setActiveTool('ruler')} className={`p-2 rounded ${activeTool === 'ruler' ? 'text-blue-500 bg-[#1a1c1e]' : 'text-gray-400 hover:bg-[#1a1c1e]'}`}><Ruler size={18} /></button>
             </div>
 
             {/* Main Chart Area */}

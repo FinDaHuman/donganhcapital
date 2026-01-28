@@ -47,10 +47,7 @@ function App() {
                                         <h2 className="font-bold text-white text-lg tracking-wide">{selectedTicker || 'Select a Stock'}</h2>
                                         {loading && <span className="text-xs text-blue-500 animate-pulse">Loading Prediction...</span>}
                                     </div>
-                                    <div className="flex gap-2">
-                                        <button className="text-xs bg-[#121212] border border-gray-700 px-2 py-1 rounded hover:bg-gray-800 text-gray-300">D</button>
-                                        <button className="text-xs bg-[#121212] border border-gray-700 px-2 py-1 rounded hover:bg-gray-800 text-gray-300">W</button>
-                                    </div>
+                                    {/* Buttons removed */}
                                 </div>
 
                                 {/* Chart Container */}

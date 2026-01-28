@@ -46,16 +46,9 @@ const MarketBar = () => {
                 })}
             </div>
 
-            {/* Right Tools */}
+            {/* Right Tools - Cleared */}
             <div className="flex items-center gap-4">
-                <div className="bg-[#1a1c1e] flex items-center px-3 py-1.5 rounded border border-[#2a2e39]">
-                    <Search size={16} className="text-gray-500 mr-2" />
-                    <input
-                        type="text"
-                        placeholder="Search"
-                        className="bg-transparent border-none focus:outline-none text-gray-300 text-sm w-32"
-                    />
-                </div>
+                {/* Search removed per user request */}
             </div>
         </div>
     );
