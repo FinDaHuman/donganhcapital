@@ -18,41 +18,33 @@ const Dashboard = ({ onSelectStock }) => {
     ];
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                // Fetch a larger list to populate the heatmap
-                const res = await axios.get('https://finfo-api.vndirect.com.vn/v4/stock_prices?sort=date&size=80&q=type:stock');
-                if (res.data?.data) {
-                    // Deduplicate
-                    const unique = new Map();
-                    res.data.data.forEach(item => {
-                        if (!unique.has(item.code)) unique.set(item.code, item);
-                    });
-                    setMarketStocks(Array.from(unique.values()));
-                } else {
-                    throw new Error("No data");
-                }
-            } catch (e) {
-                console.error("API Error, using fallback data", e);
-                // Fallback for demo/error purposes - ensures heatmap is never blank
-                const fallback = [
-                    { code: 'VCB', close: 85.0, open: 84.0, volume: 150000 },
-                    { code: 'VHM', close: 40.5, open: 41.0, volume: 120000 },
-                    { code: 'VIC', close: 42.0, open: 42.0, volume: 90000 },
-                    { code: 'HPG', close: 28.5, open: 28.0, volume: 500000 },
-                    { code: 'FPT', close: 102.0, open: 100.0, volume: 80000 },
-                    { code: 'MSN', close: 65.0, open: 66.0, volume: 60000 },
-                    { code: 'TCB', close: 32.0, open: 31.5, volume: 200000 },
-                    { code: 'VPB', close: 19.5, open: 19.2, volume: 300000 },
-                    { code: 'STB', close: 29.0, open: 28.5, volume: 400000 },
-                    { code: 'MWG', close: 45.0, open: 44.0, volume: 100000 },
-                ];
-                setMarketStocks(fallback);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
+        // Use static data directly to avoid API CORS/Rate-limit issues on Vercel
+        // This ensures the Heatmap loads INSTANTLY.
+        const demoData = [
+            { code: 'VCB', close: 85.0, open: 84.0, volume: 1500000 },
+            { code: 'VHM', close: 40.5, open: 41.2, volume: 1200000 },
+            { code: 'VIC', close: 42.0, open: 41.5, volume: 900000 },
+            { code: 'HPG', close: 28.5, open: 28.0, volume: 5000000 },
+            { code: 'FPT', close: 102.0, open: 100.0, volume: 800000 },
+            { code: 'MSN', close: 65.0, open: 66.0, volume: 600000 },
+            { code: 'TCB', close: 32.0, open: 31.5, volume: 2000000 },
+            { code: 'VPB', close: 19.5, open: 19.2, volume: 3000000 },
+            { code: 'STB', close: 29.0, open: 28.5, volume: 4000000 },
+            { code: 'MWG', close: 45.0, open: 44.0, volume: 1000000 },
+            { code: 'ACB', close: 25.0, open: 24.8, volume: 1500000 },
+            { code: 'MBB', close: 20.0, open: 19.8, volume: 2200000 },
+            { code: 'NVL', close: 16.5, open: 16.8, volume: 3500000 },
+            { code: 'PDR', close: 26.0, open: 25.5, volume: 1800000 },
+            { code: 'POW', close: 11.0, open: 11.0, volume: 1200000 },
+            { code: 'GVR', close: 22.0, open: 21.5, volume: 800000 },
+            { code: 'PLX', close: 36.0, open: 36.5, volume: 600000 },
+            { code: 'GAS', close: 78.0, open: 77.5, volume: 400000 },
+            { code: 'SAB', close: 58.0, open: 58.5, volume: 200000 },
+            { code: 'VRE', close: 24.0, open: 23.5, volume: 1100000 },
+        ];
+        // Simulate a tiny delay for realism, or set instantly
+        setMarketStocks(demoData);
+        setLoading(false);
     }, []);
 
     // Prepare Treemap Data
