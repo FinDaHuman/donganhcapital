@@ -29,6 +29,17 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         name: 'History'
     }), [history]);
 
+    const traceConfidence = useMemo(() => ({
+        x: [...forecast.map(d => d.Date), ...forecast.map(d => d.Date).reverse()],
+        y: [...forecast.map(d => d.upper_bound), ...forecast.map(d => d.lower_bound).reverse()],
+        fill: 'toself',
+        fillcolor: 'rgba(255, 152, 0, 0.2)',
+        line: { color: 'transparent' },
+        name: 'Confidence (90%)',
+        showlegend: false,
+        hoverinfo: 'skip'
+    }), [forecast]);
+
     const traceForecast = useMemo(() => ({
         x: forecast.map(d => d.Date),
         close: forecast.map(d => d.Close),
@@ -42,7 +53,7 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         name: 'Forecast'
     }), [forecast]);
 
-    const data = [traceHistory, traceForecast];
+    const data = [traceHistory, traceConfidence, traceForecast];
 
     const [timeframe, setTimeframe] = React.useState('1D');
     const [activeTool, setActiveTool] = React.useState('cursor');

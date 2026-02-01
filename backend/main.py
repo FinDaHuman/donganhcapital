@@ -52,6 +52,7 @@ def load_all_data():
         grouped = combined.groupby('Ticker')
         stock_data_store = {k: v for k, v in grouped}
         print(f"✅ Loaded data for {len(stock_data_store)} stocks.")
+        print(f"Sample Tickers: {list(stock_data_store.keys())[:20]}")
     else:
         print("⚠️ No stock data loaded!")
 
@@ -88,7 +89,7 @@ app.add_middleware(
 )
 
 # --- Endpoints ---
-@app.get("/")
+@app.get("/api")
 def home():
     return {
         "status": "active", 
@@ -96,7 +97,7 @@ def home():
         "stocks_available": len(stock_data_store)
     }
 
-@app.get("/predict/{stock_id}")
+@app.get("/api/predict/{stock_id}")
 async def predict_stock(stock_id: str):
     global predictor, stock_data_store
     
