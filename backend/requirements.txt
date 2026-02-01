@@ -1,12 +1,15 @@
-fastapi
-uvicorn
-pandas
-openpyxl
-scikit-learn
-xgboost>=2.0.0
-joblib
-python-dotenv
-pydantic-settings
+fastapi==0.109.0
+uvicorn==0.27.0
 python-multipart
-httpx
+tensorflow==2.15.0
+pandas
 numpy
+joblib
+scikit-learn
+openpyxl
+pydantic
+python-dotenv
+# Fix dependency conflict with TF 2.15
+protobuf==4.25.3
+grpcio==1.62.1
+grpcio-status==1.62.1
