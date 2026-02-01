@@ -121,8 +121,8 @@ def get_market_status():
         
         results.append({
             "ticker": ticker,
-            "value": change, # For color (green/red)
-            "size": last_row.get('Volume', 1000) # For size
+            "value": float(change), # explicit float conversion
+            "size": int(last_row.get('Volume', 1000)) # explicit int conversion
         })
     return results
 
