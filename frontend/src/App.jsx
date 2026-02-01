@@ -3,13 +3,32 @@ import Sidebar from './components/Sidebar';
 import MarketBar from './components/MarketBar';
 import Dashboard from './components/Dashboard';
 import StockChart from './components/StockChart';
-import { getPrediction } from './services/stock_api';
+import { getPrediction, getTickers } from './services/stock_api';
 
 function App() {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [selectedTicker, setSelectedTicker] = useState(null);
     const [predictionData, setPredictionData] = useState(null);
     const [loading, setLoading] = useState(false);
+
+    // Stock List State
+    const [stockList, setStockList] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    useEffect(() => {
+        const fetchStocks = async () => {
+            try {
+                const res = await getTickers();
+                // res is { count: N, stocks: [...] }
+                if (res && res.stocks) {
+                    setStockList(res.stocks.sort());
+                }
+            } catch (e) {
+                console.error("Failed to load stocks");
+            }
+        };
+        fetchStocks();
+    }, []);
 
     const handleSelectStock = async (ticker) => {
         setSelectedTicker(ticker);
@@ -24,6 +43,9 @@ function App() {
             setLoading(false);
         }
     };
+
+    // Filter stocks
+    const filteredStocks = stockList.filter(s => s.includes(searchTerm.toUpperCase()));
 
     return (
         <div className="flex min-h-screen bg-black text-gray-200 font-sans selection:bg-blue-900">
@@ -47,7 +69,6 @@ function App() {
                                         <h2 className="font-bold text-white text-lg tracking-wide">{selectedTicker || 'Select a Stock'}</h2>
                                         {loading && <span className="text-xs text-blue-500 animate-pulse">Loading Prediction...</span>}
                                     </div>
-                                    {/* Buttons removed */}
                                 </div>
 
                                 {/* Chart Container */}
@@ -63,20 +84,25 @@ function App() {
                                         />
                                     ) : (
                                         <div className="h-full flex items-center justify-center text-gray-500 flex-col gap-2">
-                                            <span>Select a stock from the Watchlist or Dashboard</span>
+                                            <span>Select a stock from the Stock List</span>
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            {/* Right Watchlist Sidebar */}
+                            {/* Right Stock List Sidebar */}
                             <div className="w-72 bg-[#050505] flex flex-col border-l border-gray-800">
-                                <div className="h-10 border-b border-gray-800 flex items-center px-4 font-bold text-sm text-gray-400">
-                                    WATCHLIST
+                                <div className="h-12 border-b border-gray-800 flex items-center px-3 sticky top-0 bg-[#050505]">
+                                    <input
+                                        type="text"
+                                        placeholder="Search Stock..."
+                                        className="w-full bg-[#121212] border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
                                 </div>
                                 <div className="flex-1 overflow-y-auto">
-                                    {/* Short hardcoded list for demo, or could use marketData if lifted */}
-                                    {['FPT', 'VCB', 'VHM', 'HPG', 'MSN', 'MWG', 'TCB', 'VPB', 'STB', 'VIC'].map(ticker => (
+                                    {filteredStocks.map(ticker => (
                                         <div
                                             key={ticker}
                                             onClick={() => handleSelectStock(ticker)}
@@ -86,6 +112,9 @@ function App() {
                                             <span className="text-xs text-blue-400">View</span>
                                         </div>
                                     ))}
+                                    {filteredStocks.length === 0 && (
+                                        <div className="p-4 text-center text-gray-500 text-xs">No stocks found</div>
+                                    )}
                                 </div>
                             </div>
                         </div>

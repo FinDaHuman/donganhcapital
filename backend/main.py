@@ -97,6 +97,31 @@ def home():
         "stocks_available": len(stock_data_store)
     }
 
+@app.get("/api/stocks")
+def get_stocks():
+    """Return list of all available stock IDs"""
+    return {"count": len(stock_data_store), "stocks": list(stock_data_store.keys())}
+
+@app.get("/api/market-status")
+def get_market_status():
+    """Return latest snapshot for heatmap"""
+    results = []
+    for ticker, df in stock_data_store.items():
+        if len(df) < 2: continue
+        last_row = df.iloc[-1]
+        prev_row = df.iloc[-2]
+        
+        # Calculate % change
+        # If 'Close' exists
+        change = (last_row['Close'] - prev_row['Close']) / prev_row['Close'] * 100
+        
+        results.append({
+            "ticker": ticker,
+            "value": change, # For color (green/red)
+            "size": last_row.get('Volume', 1000) # For size
+        })
+    return results
+
 @app.get("/api/predict/{stock_id}")
 async def predict_stock(stock_id: str):
     global predictor, stock_data_store
@@ -112,57 +137,118 @@ async def predict_stock(stock_id: str):
     try:
         # 2. Get History
         df = stock_data_store[stock_id]
-        if len(df) < predictor.sequence_length:
+        if len(df) < predictor.sequence_length + 1:
              raise HTTPException(status_code=400, detail="Not enough history for this stock.")
              
-        # Take last N entries for context
-        # We also want to return this "history" to the frontend for charting
-        # typically return last 100 or so for context
+        # Take last N entries for context visualization
         history_window = 100
-        history_df = df.tail(max(predictor.sequence_length, history_window)).copy()
+        history_df = df.tail(history_window).copy()
         
-        # 3. Preprocess for Prediction (Last 60 only)
-        input_window = history_df.tail(predictor.sequence_length)
-        required_cols = predictor.feature_columns
+        # 3. Preprocess for Prediction (Compute Log Returns)
+        # We need the last SEQUENCE_LENGTH returns. 
+        # Note: Return[t] needs Price[t] and Price[t-1].
+        # So we need SEQUENCE_LENGTH + 1 prices to get SEQUENCE_LENGTH returns.
         
-        # Ensure cols exist
-        missing = [c for c in required_cols if c not in input_window.columns]
-        if missing:
-             raise HTTPException(status_code=500, detail=f"Data missing columns: {missing}")
+        input_prices = df.iloc[-(predictor.sequence_length + 1):].copy()
+        input_prices['log_ret'] = np.log(input_prices['Close'] / input_prices['Close'].shift(1))
+        # Drop the first NaN created by shift
+        input_ret = input_prices.dropna().tail(predictor.sequence_length)
+        
+        if len(input_ret) < predictor.sequence_length:
+             raise HTTPException(status_code=400, detail="Not enough data for returns calculation.")
 
-        X_scaled = predictor.scaler.transform(input_window[required_cols])
-        X_input = np.expand_dims(X_scaled, axis=0)
+        # Clip (same as training)
+        input_ret['log_ret'] = input_ret['log_ret'].clip(-0.15, 0.15)
         
-        # 4. Predict
+        # Scale
+        # Reshape to (seq_len, 1)
+        raw_vals = input_ret['log_ret'].values.reshape(-1, 1)
+        X_scaled = predictor.scaler.transform(raw_vals)
+        X_input = np.expand_dims(X_scaled, axis=0) # (1, seq_len, 1)
+        
+        # 4. Predict (Output is Scaled Log Returns)
         # Shape: (1, n_steps, 3) -> [lower, median, upper]
         preds = predictor.predict(X_input)[0] 
         
-        # 5. Inverse Transform
-        target_idx = required_cols.index('Close')
+        # 5. Inverse Transform & Reconstruct Price
+        # We need to unscale the returns, then apply them to the last known price.
         
-        def inverse(val):
-            return (val - predictor.scaler.min_[target_idx]) / predictor.scaler.scale_[target_idx]
-
+        last_price = input_prices['Close'].iloc[-1]
         forecast_results = []
         last_date = history_df['Date'].iloc[-1]
         
+        # Scaler is inverse for the RETURNS
+        unscaled_preds = predictor.scaler.inverse_transform(preds.reshape(-1, 1)).reshape(preds.shape) # Wait, shape mismatch logic
+        # inverse_transform expects 2D (samples, features). 
+        # preds is (10, 3). We have 1 feature basically. 
+        # Hack: flatten, inverse, reshape.
+        
+        # Manually inverse for clarity
+        min_val = predictor.scaler.data_min_[0]
+        max_val = predictor.scaler.data_max_[0]
+        scale_ = predictor.scaler.scale_[0]
+        
+        def inverse(val):
+            return (val - predictor.scaler.min_[0]) / predictor.scaler.scale_[0]
+
+        # Simulation:
+        # We predict path of Median.
+        # Can we predict path of Lower/Upper? 
+        # Yes, standard approach: Lower Path = LastPrice * exp(cum_sum(lower_returns))?
+        # That assumes worst case every day.
+        # Probabilistic cone approach: P(Price_t) = P(Price_t-1) * exp(Ret_t)
+        
+        current_med_price = last_price
+        # For simplicity and robust display:
+        # We accumulate the log returns
+        
+        # Actually, LSTM quantile predicts the quantile of the return distribution at that step.
+        # So Median Price[t] = Median Price[t-1] * exp(Median Ret[t])
+        
         for i in range(len(preds)):
-            pred_med = inverse(preds[i, 1])
-            pred_low = inverse(preds[i, 0])
-            pred_high = inverse(preds[i, 2])
+            ret_low = inverse(preds[i, 0])
+            ret_med = inverse(preds[i, 1])
+            ret_high = inverse(preds[i, 2])
             
-            # Future Date logic (skipping weekends roughly or just add days)
-            # Simple day add for now
+            # Update Prices
+            # Simple geometric brownian motion-ish update
+            # Ideally we should simulate, but iterative update is fine for forecast
+            
+            next_price = current_med_price * np.exp(ret_med)
+            
+            # Bounds: we can apply the predicted return bounds to the *median* price path
+            # Or should we maintain separate low/high paths?
+            # Separate paths is safer for visual "cone".
+            if i == 0:
+                price_path_low = last_price * np.exp(ret_low)
+                price_path_high = last_price * np.exp(ret_high)
+            else:
+                 # This expands the cone correctly
+                 # Actually, usually we anchor to the median path for the bounds 
+                 # to avoid "worst case compounding" which looks unrealistic?
+                 # Let's try separate paths for now.
+                 price_path_low = prices_low[-1] * np.exp(ret_low)
+                 price_path_high = prices_high[-1] * np.exp(ret_high)
+
+            # Store for next iteration
+            current_med_price = next_price
+            if i == 0:
+                 prices_low = [price_path_low]
+                 prices_high = [price_path_high]
+            else:
+                 prices_low.append(price_path_low)
+                 prices_high.append(price_path_high)
+
             next_date = last_date + pd.Timedelta(days=i+1)
             
             forecast_results.append({
                 "Date": next_date.isoformat(),
-                "Close": round(pred_med, 2),
-                "Open": round(pred_med, 2), # Placeholder
-                "High": round(pred_high, 2), # Use bounds as proxy
-                "Low": round(pred_low, 2),
-                "lower_bound": round(pred_low, 2),
-                "upper_bound": round(pred_high, 2)
+                "Close": round(next_price, 2),
+                "Open": round(next_price, 2), # Simplified candle
+                "High": round(next_price, 2), # Simplified candle
+                "Low": round(next_price, 2),  # Simplified candle
+                "lower_bound": round(prices_low[-1], 2),
+                "upper_bound": round(prices_high[-1], 2)
             })
             
         # Format History for Frontend
@@ -182,6 +268,6 @@ async def predict_stock(stock_id: str):
         }
             
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        # import traceback
+        # traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
