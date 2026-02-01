@@ -83,7 +83,7 @@ app = FastAPI(title="DongAnh Capital AI API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False, # Must be False for wildcard *
     allow_methods=["*"],
     allow_headers=["*"],
 )

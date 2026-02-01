@@ -116,7 +116,8 @@ def main():
     model.scaler = scaler
     model.feature_columns = ['log_ret'] 
     
-    model.train(X, y, epochs=5, batch_size=128) # 5 epochs enough for log ret usually
+    print("Starting deep training (10 epochs) to improve confidence intervals...")
+    model.train(X, y, epochs=10, batch_size=128) 
     
     save_path = os.path.join(MODEL_DIR, MODEL_NAME)
     model.save(save_path)
