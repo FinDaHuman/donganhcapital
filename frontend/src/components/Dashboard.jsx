@@ -1,3 +1,5 @@
+import React, { useEffect, useState } from 'react';
+import Plot from 'react-plotly.js';
 import { getMarketStatus } from '../services/stock_api';
 
 const Dashboard = ({ onSelectStock }) => {
