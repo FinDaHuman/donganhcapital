@@ -234,8 +234,23 @@ async def predict_stock(stock_id: str):
                  price_path_low = prices_low[-1] * np.exp(ret_low)
                  price_path_high = prices_high[-1] * np.exp(ret_high)
 
+            # Pseudo-OHLC for Visualization
+            # Open = Previous Close
+            # Close = Predicted Median
+            # High = Predicted Upper (Risk High)
+            # Low = Predicted Lower (Risk Low)
+            
+            # Ensure High/Low encapsulate the body
+            candle_open = current_med_price
+            candle_close = next_price
+            candle_high = max(price_path_high, candle_open, candle_close)
+            candle_low = min(price_path_low, candle_open, candle_close)
+            
             # Store for next iteration
             current_med_price = next_price
+            
+            # Update bounds lists properly for the NEXT step using the CURRENT volatility
+            # Note: We calculated ret_low/high for THIS step
             if i == 0:
                  prices_low = [price_path_low]
                  prices_high = [price_path_high]
@@ -247,12 +262,12 @@ async def predict_stock(stock_id: str):
             
             forecast_results.append({
                 "Date": next_date.isoformat(),
-                "Close": round(next_price, 2),
-                "Open": round(next_price, 2), # Simplified candle
-                "High": round(next_price, 2), # Simplified candle
-                "Low": round(next_price, 2),  # Simplified candle
-                "lower_bound": round(prices_low[-1], 2),
-                "upper_bound": round(prices_high[-1], 2)
+                "Close": round(candle_close, 2),
+                "Open": round(candle_open, 2),
+                "High": round(candle_high, 2),
+                "Low": round(candle_low, 2),
+                "lower_bound": round(price_path_low, 2),
+                "upper_bound": round(price_path_high, 2)
             })
             
         # Format History for Frontend
