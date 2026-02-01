@@ -89,6 +89,10 @@ app.add_middleware(
 )
 
 # --- Endpoints ---
+@app.get("/")
+def root():
+    return {"message": "DongAnh Capital API is running", "docs": "/docs"}
+
 @app.get("/api")
 def home():
     return {

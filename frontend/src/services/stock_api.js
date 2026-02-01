@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_Base_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// Hardcode production URL to ensure Vercel works without Env Var setup
+const API_Base_URL = 'https://donganhcapital.onrender.com/api';
 
 export const getTickers = async () => {
     try {
