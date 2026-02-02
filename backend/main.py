@@ -145,7 +145,7 @@ async def predict_stock(stock_id: str):
              raise HTTPException(status_code=400, detail="Not enough history for this stock.")
              
         # Take last N entries for context visualization
-        history_window = 100
+        history_window = 1250 # Approx 5 years of trading days
         history_df = df.tail(history_window).copy()
         
         # 3. Preprocess for Prediction (Compute Log Returns)

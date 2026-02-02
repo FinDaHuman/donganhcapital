@@ -66,7 +66,12 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         paper_bgcolor: COLORS.bg,
         plot_bgcolor: COLORS.bg,
         font: { color: COLORS.text, family: 'Inter, sans-serif', size: 11 },
-        xaxis: { rangeslider: { visible: false }, type: 'date', gridcolor: COLORS.grid },
+        xaxis: {
+            rangeslider: { visible: false },
+            type: 'category', // Removes gaps for weekends/holidays
+            gridcolor: COLORS.grid,
+            nticks: 10 // Prevent overcrowding of labels
+        },
         yaxis: { autorange: true, gridcolor: COLORS.grid, showgrid: true, side: 'right' },
         showlegend: false,
     };
