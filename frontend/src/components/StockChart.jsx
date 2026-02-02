@@ -8,22 +8,31 @@ const StockChart = ({ history, forecast, ticker }) => {
     const fullData = useMemo(() => {
         // history: {Date, Open, High, Low, Close, Volume}
         // forecast: {Date, Open, High, Low, Close, lower_bound, upper_bound...}
-        // distinct by Date to avoid overlap if any
-        const combined = [...history];
-        if (forecast && forecast.length > 0) {
-            forecast.forEach(f => {
+
+        const histData = history.map(d => ({ ...d, type: 'history' }));
+        const foreData = (forecast || []).map(d => ({ ...d, type: 'forecast' }));
+
+        // Merge: Use History, append unique Forecast
+        const combined = [...histData];
+        if (foreData.length > 0) {
+            foreData.forEach(f => {
+                // If date not in history, add it
                 if (!combined.find(h => h.Date === f.Date)) {
                     combined.push(f);
                 }
             });
         }
+
         return combined.map(d => ({
             time: d.Date,
             open: d.Open,
             high: d.High,
             low: d.Low,
             close: d.Close,
-            volume: d.Volume || 0
+            volume: d.Volume || 0,
+            isForecast: d.type === 'forecast',
+            upper: d.upper_bound,
+            lower: d.lower_bound
         }));
     }, [history, forecast]);
 
@@ -191,6 +200,79 @@ const StockChart = ({ history, forecast, ticker }) => {
             ctx.moveTo(x + candleWidth / 2, 0);
             ctx.lineTo(x + candleWidth / 2, height);
             ctx.stroke();
+        }
+
+        // ===== 8. DRAW CONFIDENCE RANGE (BAND) =====
+        // Draw as a single polygon for smooth rendering
+        const forecastPoints = visibleData.map((p, i) => ({ ...p, i })).filter(p => p.isForecast);
+
+        if (forecastPoints.length > 0) {
+            ctx.fillStyle = "rgba(255, 152, 0, 0.2)";
+            ctx.beginPath();
+
+            // Upper Line
+            let first = true;
+            forecastPoints.forEach(p => {
+                const x = mapX(p.i) + candleWidth / 2;
+                const y = mapY(p.upper);
+                if (first) { ctx.moveTo(x, y); first = false; }
+                else ctx.lineTo(x, y);
+            });
+
+            // Lower Line (Reverse)
+            for (let j = forecastPoints.length - 1; j >= 0; j--) {
+                const p = forecastPoints[j];
+                const x = mapX(p.i) + candleWidth / 2;
+                const y = mapY(p.lower);
+                ctx.lineTo(x, y);
+            }
+
+            ctx.closePath();
+            ctx.fill();
+        }
+
+
+        // ===== 7. DRAW FORECAST LINE =====
+        if (forecastPoints.length > 0) {
+            ctx.strokeStyle = "#ff9800"; // Forecast Orange
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            // Connect from the last history point if possible?
+            // User pseudocode iterates only visibleForecast.
+            // But visually better to connect to previous candle Close.
+            // Let's find the point BEFORE the first forecast point if it exists in visibleData.
+            const firstF = forecastPoints[0];
+            if (firstF.i > 0) {
+                const prev = visibleData[firstF.i - 1];
+                const xPrev = mapX(firstF.i - 1) + candleWidth / 2;
+                const yPrev = mapY(prev.close);
+                ctx.moveTo(xPrev, yPrev);
+                ctx.lineTo(mapX(firstF.i) + candleWidth / 2, mapY(firstF.close));
+            } else {
+                const x = mapX(firstF.i) + candleWidth / 2;
+                const y = mapY(firstF.close);
+                ctx.moveTo(x, y);
+            }
+
+            // Continue path
+            for (let k = 1; k < forecastPoints.length; k++) {
+                const p = forecastPoints[k];
+                const x = mapX(p.i) + candleWidth / 2;
+                const y = mapY(p.close);
+                ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Draw Points (Dots)
+            ctx.fillStyle = "#ff9800";
+            forecastPoints.forEach(p => {
+                const x = mapX(p.i) + candleWidth / 2;
+                const y = mapY(p.close);
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
         }
 
         // ===== 6. DRAW CANDLES =====
