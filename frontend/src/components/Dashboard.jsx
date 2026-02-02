@@ -6,38 +6,44 @@ const Dashboard = ({ onSelectStock }) => {
     const [marketStocks, setMarketStocks] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    const indices = [
-        { name: 'VNINDEX', val: '1,245.50', chg: '+12.4' },
-        { name: 'VN30', val: '1,260.10', chg: '+15.2' },
-        { name: 'HNX', val: '235.40', chg: '-1.2' },
-        { name: 'UPCOM', val: '92.10', chg: '+0.5' },
-        { name: 'DOW JONES', val: '33,200', chg: '+150' },
-        { name: 'GOLD', val: '2,045', chg: '+12' },
-    ];
+    const [indices, setIndices] = useState([]);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
                 const data = await getMarketStatus();
                 // Map API data to component format
-                // API returns: [{ticker, value (%), size (volume)}, ...]
-                // Component needs: {code, close, open, volume} or at least code/value/volume for treemap logic
-                // Treemap Logic in 'treemapData' uses: code, volume, close, open to calc change.
-                // Our API returns 'value' which IS change %.
-                // So we need to adapt 'treemapData' function OR adapt data here.
-
-                // Let's adapt data to match expected structure loosely, or modify treemapData.
-                // Easier to modify treemapData to use 'change_pct' directly if available.
-                // But let's just shape it here:
                 const formatted = data.map(item => ({
                     code: item.ticker,
                     volume: item.size,
-                    change_pct: item.value, // We'll use this directly
-                    close: 0, // Placeholder
-                    open: 0   // Placeholder
+                    change_pct: item.value,
+                    close: 0,
+                    open: 0
                 }));
 
                 setMarketStocks(formatted);
+
+                // Calculate Indices from "Data We Have"
+                if (formatted.length > 0) {
+                    // 1. Market Average
+                    const avgChange = formatted.reduce((sum, s) => sum + s.change_pct, 0) / formatted.length;
+
+                    // 2. Top 30 by Volume (Proxy for VN30)
+                    const top30 = [...formatted].sort((a, b) => b.volume - a.volume).slice(0, 30);
+                    const avg30 = top30.reduce((sum, s) => sum + s.change_pct, 0) / top30.length;
+
+                    // 3. Gainers vs Losers
+                    const gainers = formatted.filter(s => s.change_pct > 0).length;
+                    const losers = formatted.filter(s => s.change_pct < 0).length;
+
+                    setIndices([
+                        { name: 'AVG MARKET', val: `${formatted.length} Stocks`, chg: `${avgChange > 0 ? '+' : ''}${avgChange.toFixed(2)}%` },
+                        { name: 'TOP 30 VOL', val: 'Proxy VN30', chg: `${avg30 > 0 ? '+' : ''}${avg30.toFixed(2)}%` },
+                        { name: 'GAINERS', val: gainers.toString(), chg: 'Stocks' },
+                        { name: 'LOSERS', val: losers.toString(), chg: 'Stocks' },
+                    ]);
+                }
+
             } catch (err) {
                 console.error("Failed to load heatmap:", err);
             } finally {
@@ -45,7 +51,6 @@ const Dashboard = ({ onSelectStock }) => {
             }
         };
         fetchData();
-        // Refresh every minute?
         const interval = setInterval(fetchData, 60000);
         return () => clearInterval(interval);
     }, []);

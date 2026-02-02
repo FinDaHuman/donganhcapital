@@ -25,11 +25,10 @@ const MarketBar = () => {
     }, []);
 
     return (
-        <div className="h-[60px] bg-[#111213] border-b border-[#2a2e39] flex items-center justify-between px-6 fixed top-0 left-[300px] right-0 z-40">
+        <div className="h-[60px] bg-[#111213] border-b border-[#2a2e39] flex items-center justify-between px-6 fixed top-0 md:left-[300px] left-0 right-0 z-40 transition-all">
             {/* Ticker Tape */}
             <div className="flex items-center gap-6 overflow-hidden">
-                <span className="font-bold text-lg text-white tracking-tight">DongAnh Capital</span>
-                <div className="w-px h-6 bg-gray-700 mx-2"></div>
+                {/* Title Removed - Duplicate */}
                 {indices.map(idx => {
                     const change = (idx.close - idx.open);
                     const percent = (change / idx.open) * 100;

@@ -51,7 +51,7 @@ function App() {
         <div className="flex min-h-screen bg-black text-gray-200 font-sans selection:bg-blue-900">
             <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-            <div className="flex-1 flex flex-col ml-[300px]">
+            <div className="flex-1 flex flex-col md:ml-[300px] ml-0 transition-all w-full">
                 <MarketBar />
 
                 <main className="flex-1 mt-14 overflow-y-auto bg-black scrollbar-thin scrollbar-thumb-gray-800">

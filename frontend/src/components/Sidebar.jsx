@@ -8,7 +8,7 @@ const Sidebar = ({ activeTab, onTabChange }) => {
     ];
 
     return (
-        <div className="w-[300px] h-screen bg-[#111213] border-r border-[#2a2e39] flex flex-col z-50 fixed left-0 top-0">
+        <div className="w-[300px] h-screen bg-[#111213] border-r border-[#2a2e39] hidden md:flex flex-col z-50 fixed left-0 top-0">
             {/* Brand Header */}
             <div className="h-[60px] flex items-center px-6 border-b border-[#2a2e39]">
                 <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-white mr-3">
@@ -24,8 +24,8 @@ const Sidebar = ({ activeTab, onTabChange }) => {
                         key={item.id}
                         onClick={() => onTabChange(item.id)}
                         className={`flex items-center justify-between px-4 py-3 rounded-lg transition-all group ${activeTab === item.id
-                                ? 'bg-[#2962ff] text-white shadow-lg shadow-blue-900/20'
-                                : 'text-gray-400 hover:text-white hover:bg-[#1a1c1e]'
+                            ? 'bg-[#2962ff] text-white shadow-lg shadow-blue-900/20'
+                            : 'text-gray-400 hover:text-white hover:bg-[#1a1c1e]'
                             }`}
                     >
                         <div className="flex items-center gap-3">
