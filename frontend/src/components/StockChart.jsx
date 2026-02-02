@@ -1,228 +1,367 @@
-import React, { useMemo } from 'react';
-import Plot from 'react-plotly.js';
-import { MousePointer2, Minus, TrendingUp, Square, Type, Ruler, Settings } from 'lucide-react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 
-const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBound, ticker }) => {
+const StockChart = ({ history, forecast, ticker }) => {
+    const canvasRef = useRef(null);
+    const containerRef = useRef(null);
 
-    // Deep Black Theme
-    const COLORS = {
-        bg: '#111213',
-        grid: '#1f1f1f',
-        text: '#757575',
-        up: '#00c853',
-        down: '#d50000',
-        forecast: '#ff9800',
-        sma5: '#aa00ff',
-        sma20: '#2962ff'
-    };
-
-    const traceHistory = useMemo(() => ({
-        x: history.map(d => d.Date),
-        close: history.map(d => d.Close),
-        high: history.map(d => d.High),
-        low: history.map(d => d.Low),
-        open: history.map(d => d.Open),
-        decreasing: { line: { color: COLORS.down } },
-        increasing: { line: { color: COLORS.up } },
-        line: { color: '#000000' },
-        type: 'candlestick',
-        name: 'History'
-    }), [history]);
-
-    const traceConfidence = useMemo(() => ({
-        x: [...forecast.map(d => d.Date), ...forecast.map(d => d.Date).reverse()],
-        y: [...forecast.map(d => d.upper_bound), ...forecast.map(d => d.lower_bound).reverse()],
-        fill: 'toself',
-        fillcolor: 'rgba(255, 152, 0, 0.2)',
-        line: { color: 'transparent' },
-        name: 'Confidence (90%)',
-        showlegend: false,
-        hoverinfo: 'skip'
-    }), [forecast]);
-
-    const traceForecast = useMemo(() => ({
-        x: forecast.map(d => d.Date),
-        close: forecast.map(d => d.Close),
-        high: forecast.map(d => d.High),
-        low: forecast.map(d => d.Low),
-        open: forecast.map(d => d.Open),
-        decreasing: { line: { color: COLORS.forecast } },
-        increasing: { line: { color: COLORS.forecast } },
-        line: { color: COLORS.forecast },
-        type: 'candlestick',
-        name: 'Forecast'
-    }), [forecast]);
-
-    const data = [traceHistory, traceConfidence, traceForecast];
-
-    const [timeframe, setTimeframe] = React.useState('1D');
-    const [activeTool, setActiveTool] = React.useState('cursor');
-
-    // Combine dates for axis calculations
-    const allDates = useMemo(() => {
-        const histDates = history.map(d => d.Date);
-        const foreDates = forecast.map(d => d.Date);
-        return [...histDates, ...foreDates];
+    // Merge Data
+    const fullData = useMemo(() => {
+        // history: {Date, Open, High, Low, Close, Volume}
+        // forecast: {Date, Open, High, Low, Close, lower_bound, upper_bound...}
+        // distinct by Date to avoid overlap if any
+        const combined = [...history];
+        if (forecast && forecast.length > 0) {
+            forecast.forEach(f => {
+                if (!combined.find(h => h.Date === f.Date)) {
+                    combined.push(f);
+                }
+            });
+        }
+        return combined.map(d => ({
+            time: d.Date,
+            open: d.Open,
+            high: d.High,
+            low: d.Low,
+            close: d.Close,
+            volume: d.Volume || 0
+        }));
     }, [history, forecast]);
 
-    // State to hold current tick logic based on zoom
-    // We initialize with the default "Medium Zoom" logic (roughly what 190 days falls into)
-    const [tickConfig, setTickConfig] = React.useState({ vals: [], text: [] });
+    // Viewport State (Indices)
+    // Default: Show last 100 candles or full if less
+    const [viewport, setViewport] = useState({ start: 0, end: 0 });
+    const [isDragging, setIsDragging] = useState(false);
+    const [lastMouseX, setLastMouseX] = useState(0);
 
-    // Function to generate ticks based on range size
-    const generateTicks = (startIndex, endIndex) => {
-        if (startIndex < 0) startIndex = 0;
-        if (endIndex >= allDates.length) endIndex = allDates.length - 1;
-
-        const count = endIndex - startIndex;
-        const vals = [];
-        const text = [];
-
-        let lastTracker = "";
-
-        // MODE 1: High Zoom (< 4 Months / Approx 85 Days) -> DD/MM
-        if (count <= 85) {
-            allDates.forEach((dateStr, i) => {
-                if (i < startIndex || i > endIndex) return;
-
-                // Show every 5th day? Or just every specific gap?
-                // Request says "Display Day".
-                // Let's tick every 5 candles to avoid clutter, or check overlap.
-                // Simple version: Every 5th candle.
-                if (i % 5 === 0) {
-                    vals.push(dateStr);
-                    const date = new Date(dateStr);
-                    const d = date.getDate().toString().padStart(2, '0');
-                    const m = (date.getMonth() + 1).toString().padStart(2, '0');
-                    text.push(`${d}/${m}`);
-                }
+    // Initialize Viewport once data loads
+    useEffect(() => {
+        if (fullData.length > 0) {
+            const count = fullData.length;
+            // Default show last 60 candles roughly
+            const initialView = 60;
+            setViewport({
+                start: Math.max(0, count - initialView),
+                end: count
             });
         }
-        // MODE 2: Medium Zoom (> 4 Months && <= 20 Months / Approx 420 Days) -> MM/YYYY
-        else if (count <= 420) {
-            let lastMonth = -1;
-            allDates.forEach((dateStr, i) => {
-                if (i < startIndex || i > endIndex) return;
+    }, [fullData]);
 
-                const date = new Date(dateStr);
-                const month = date.getMonth() + 1;
-                const year = date.getFullYear();
 
-                if (month !== lastMonth) {
-                    vals.push(dateStr);
-                    text.push(`${month.toString().padStart(2, '0')}/${year}`);
-                    lastMonth = month;
-                }
-            });
-        }
-        // MODE 3: Low Zoom (> 20 Months) -> YYYY
-        else {
-            let lastYear = -1;
-            allDates.forEach((dateStr, i) => {
-                if (i < startIndex || i > endIndex) return;
+    // ==================== CORE LOGIC ====================
+    // 3. NICE SCALE ALGORITHM
+    const niceNumber = (value) => {
+        const exponent = Math.floor(Math.log10(value));
+        const fraction = value / Math.pow(10, exponent);
+        let nice = 1;
 
-                const date = new Date(dateStr);
-                const year = date.getFullYear();
+        if (fraction < 1.5) nice = 1;
+        else if (fraction < 3) nice = 2;
+        else if (fraction < 7) nice = 5;
+        else nice = 10;
 
-                if (year !== lastYear) {
-                    vals.push(dateStr);
-                    text.push(`${year}`);
-                    lastYear = year;
-                }
-            });
-        }
-        return { vals, text };
+        return nice * Math.pow(10, exponent);
     };
 
-    // Calculate Default Zoom Range (Last 190 Candles)
-    // And set initial Ticks
-    const defaultRange = useMemo(() => {
-        if (allDates.length === 0) return [0, 1];
-        const end = allDates.length - 1;
-        const start = Math.max(0, end - 190);
-        return [start, end];
-    }, [allDates]);
+    const drawChart = () => {
+        const canvas = canvasRef.current;
+        const container = containerRef.current;
+        if (!canvas || !container || fullData.length === 0) return;
 
-    // Initialize Ticks on Load
-    React.useEffect(() => {
-        if (allDates.length > 0) {
-            const initialTicks = generateTicks(defaultRange[0], defaultRange[1]);
-            setTickConfig(initialTicks);
+        const ctx = canvas.getContext('2d');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        // Handle High DPI
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.scale(dpr, dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+
+        // Clear
+        ctx.fillStyle = "#111213";
+        ctx.fillRect(0, 0, width, height);
+
+        // ===== 1. VIEWPORT =====
+        // Clamp viewport
+        let start = Math.max(0, Math.min(viewport.start, fullData.length - 2));
+        let end = Math.min(fullData.length, Math.max(viewport.end, start + 2));
+
+        // Slice Data
+        // We use Math.floor/ceil to handle fractional indices during smooth zoom/pan? 
+        // Pseudocode implies indices. Let's stick to integer slicing for data access, 
+        // but math can use floats for smooth scroll if needed.
+        const iStart = Math.floor(start);
+        const iEnd = Math.ceil(end);
+        const visibleData = fullData.slice(iStart, iEnd);
+        const count = visibleData.length;
+
+        if (count === 0) return;
+
+        const candleWidth = width / count;
+
+        const mapX = (i) => {
+            return i * candleWidth;
+        };
+
+        // ===== 2. CALCULATE Y RANGE =====
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        visibleData.forEach(p => {
+            if (p.low < minY) minY = p.low;
+            if (p.high > maxY) maxY = p.high;
+        });
+
+        // Add padding
+        const range = maxY - minY;
+        const padding = range * 0.05 || 1; // Fallback if flat
+        const rawMin = minY - padding;
+        const rawMax = maxY + padding;
+
+        // ===== 3. NICE SCALE =====
+        const tickCount = 6; // User said 5, let's try 6 for better grid
+        const tickStep = niceNumber((rawMax - rawMin) / tickCount);
+
+        const yMin = Math.floor(rawMin / tickStep) * tickStep;
+        const yMax = Math.ceil(rawMax / tickStep) * tickStep;
+
+        // ===== 4. MAP Y =====
+        const mapY = (value) => {
+            // Inverted for Canvas (0 is top)
+            // canvasHeight * (1 - (value - yMin) / (yMax - yMin))
+            const ratio = (value - yMin) / (yMax - yMin);
+            return height * (1 - ratio);
+        };
+
+        // ===== 5. DRAW AXES =====
+        ctx.lineWidth = 1;
+        ctx.font = "11px Inter, sans-serif";
+        const gridColor = "#1f1f1f";
+        const textColor = "#757575";
+
+        // Y Ticks & Grid
+        for (let y = yMin; y <= yMax; y += tickStep) {
+            const py = mapY(y);
+
+            // Grid
+            ctx.strokeStyle = gridColor;
+            ctx.beginPath();
+            ctx.moveTo(0, py);
+            ctx.lineTo(width, py);
+            ctx.stroke();
+
+            // Text
+            ctx.fillStyle = textColor;
+            ctx.textAlign = "right";
+            ctx.fillText(y.toFixed(2), width - 10, py - 4);
         }
-    }, [allDates, defaultRange]);
 
+        // X Ticks
+        const xStep = Math.max(1, Math.floor(count / 5));
+        for (let i = 0; i < count; i += xStep) {
+            const x = mapX(i);
+            const dateStr = visibleData[i].time;
 
-    const handleRelayout = (event) => {
-        // Plotly emits specific keys for range changes
-        // 'xaxis.range[0]' and 'xaxis.range[1]' are indices for Category axis
-        if (event['xaxis.range[0]'] !== undefined && event['xaxis.range[1]'] !== undefined) {
-            const startIdx = Math.floor(event['xaxis.range[0]']);
-            const endIdx = Math.ceil(event['xaxis.range[1]']);
-            const newTicks = generateTicks(startIdx, endIdx);
+            // Format Date based on Zoom (Simple logic from previous step, or standard)
+            // User script: `drawXTick(x, visibleData[i].time)`
+            // We'll parse it for better looking label
+            const dateObj = new Date(dateStr);
+            let label = "";
 
-            // Only update if changed (Deep check optional, but array ref mismatch is fine)
-            setTickConfig(newTicks);
+            if (count < 60) {
+                // DD/MM
+                label = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`;
+            } else if (count < 300) {
+                // MM/YYYY
+                label = `${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
+            } else {
+                // YYYY
+                label = dateObj.getFullYear().toString();
+            }
+
+            ctx.fillStyle = textColor;
+            ctx.textAlign = "center";
+            ctx.fillText(label, x + candleWidth / 2, height - 10);
+
+            // Grid line for X
+            ctx.strokeStyle = gridColor;
+            ctx.beginPath();
+            ctx.moveTo(x + candleWidth / 2, 0);
+            ctx.lineTo(x + candleWidth / 2, height);
+            ctx.stroke();
         }
-        // Handle "Autoscale" or double click reset
-        else if (event['xaxis.autorange'] === true) {
-            const newTicks = generateTicks(0, allDates.length - 1);
-            setTickConfig(newTicks);
-        }
+
+        // ===== 6. DRAW CANDLES =====
+        visibleData.forEach((p, i) => {
+            const xCenter = mapX(i) + candleWidth / 2;
+            const xLeft = mapX(i) + (candleWidth * 0.1); // Gap
+            const bodyWidth = Math.max(1, candleWidth * 0.8);
+
+            const yOpen = mapY(p.open);
+            const yClose = mapY(p.close);
+            const yHigh = mapY(p.high);
+            const yLow = mapY(p.low);
+
+            ctx.lineWidth = 1;
+
+            // Color
+            const isGreen = p.close >= p.open;
+            ctx.strokeStyle = isGreen ? "#00c853" : "#d50000";
+            ctx.fillStyle = isGreen ? "#00c853" : "#d50000";
+
+            // Wick
+            ctx.beginPath();
+            ctx.moveTo(xCenter, yHigh);
+            ctx.lineTo(xCenter, yLow);
+            ctx.stroke();
+
+            // Body
+            // Rect(x, y, w, h)
+            // Note: Canvas rect height must be positive, so we calculate carefully
+            const bodyTop = Math.min(yOpen, yClose);
+            const bodyHeight = Math.abs(yClose - yOpen);
+            // Ensure at least 1px height
+            const finalHeight = Math.max(1, bodyHeight);
+
+            ctx.fillRect(xCenter - bodyWidth / 2, bodyTop, bodyWidth, finalHeight);
+        });
     };
 
-    const layout = {
-        dragmode: 'pan',
-        autosize: true,
-        height: undefined,
-        margin: { l: 50, r: 50, b: 30, t: 10, pad: 0 },
-        paper_bgcolor: COLORS.bg,
-        plot_bgcolor: COLORS.bg,
-        font: { color: COLORS.text, family: 'Inter, sans-serif', size: 11 },
-        xaxis: {
-            rangeslider: { visible: false },
-            type: 'category',
-            gridcolor: COLORS.grid,
-            tickmode: 'array',
-            tickvals: tickConfig.vals,
-            ticktext: tickConfig.text,
-            range: defaultRange // Sets the default zoom
-        },
-        yaxis: { autorange: true, gridcolor: COLORS.grid, showgrid: true, side: 'right' },
-        showlegend: false,
+    // Re-draw on resizing/viewport change
+    useEffect(() => {
+        window.requestAnimationFrame(drawChart);
+    }, [fullData, viewport]);
+
+    // Handle Resize
+    useEffect(() => {
+        const handleResize = () => requestAnimationFrame(drawChart);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+
+    // ==================== EVENT HANDLERS ====================
+
+    // Zoom (Wheel)
+    const handleWheel = (e) => {
+        e.preventDefault();
+        const factor = 1.1; // Zoom Speed
+
+        const width = viewport.end - viewport.start;
+        // Determine Zoom In or Out
+        const isZoomIn = e.deltaY < 0;
+        const newWidth = isZoomIn ? width / factor : width * factor;
+
+        // Apply
+        // Needs centerIndex?
+        // User Logic: viewportStart = centerIndex - newWidth / 2
+        // We calculate center based on mouseX if possible, or just center of screen.
+        // For simplicity: Center of current viewport.
+        const center = (viewport.start + viewport.end) / 2;
+
+        let newStart = center - newWidth / 2;
+        let newEnd = center + newWidth / 2;
+
+        setViewport({ start: newStart, end: newEnd });
     };
 
-    // Enable Scroll Zoom
-    const config = {
-        responsive: true,
-        displayModeBar: false,
-        scrollZoom: true,
+    // Pan (Drag)
+    const handleMouseDown = (e) => {
+        setIsDragging(true);
+        setLastMouseX(e.clientX);
     };
+
+    const handleMouseMove = (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - lastMouseX;
+        setLastMouseX(e.clientX);
+
+        // Convert px to candles
+        // We need 'pixels per candle' to know how many candles we shifted
+        const container = containerRef.current;
+        if (!container) return;
+
+        const chartWidth = container.clientWidth;
+        const candlesVisible = viewport.end - viewport.start;
+        const pixelsPerCandle = chartWidth / candlesVisible;
+
+        const deltaCandles = -dx / pixelsPerCandle; // Invert (drag left -> moves view right -> start increases?)
+        // If I drag mouse LEFT (negative dx), I want to see future (move right).
+        // visible range shifts RIGHT. So start increases.
+        // -(-10) = +10. Correct.
+
+        setViewport(prev => ({
+            start: prev.start + deltaCandles,
+            end: prev.end + deltaCandles
+        }));
+    };
+
+    const handleMouseUp = () => {
+        setIsDragging(false);
+    };
+
+    // Prevent scrolling page when zooming chart
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const onWheel = (e) => handleWheel(e);
+        canvas.addEventListener('wheel', onWheel, { passive: false });
+
+        return () => canvas.removeEventListener('wheel', onWheel);
+    }, [viewport]); // Re-bind with latest viewport state? Or use ref for viewport.
+    // Actually, to avoid stale layout in event listener:
+    // Better to use a ref for viewport if we attach listener manually.
+    // But since we setState, we can use the React Synthetic event if simpler, 
+    // but React wheel event is passive by default in some versions? 
+    // Let's stick to ref for viewport to be safe or reliance on React re-render.
+    // For specific "non-passive" event, manual attach is required.
+
+    // Ref for Viewport access in listener
+    const viewportRef = useRef(viewport);
+    useEffect(() => { viewportRef.current = viewport; }, [viewport]);
+
+    // Ref-based implementation for Event Listener to avoid re-attaching
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        const onWheel = (e) => {
+            e.preventDefault();
+            const vp = viewportRef.current;
+            const factor = 1.1;
+            const width = vp.end - vp.start;
+            const isZoomIn = e.deltaY < 0;
+            const newWidth = isZoomIn ? width / factor : width * factor;
+
+            // Mouse focus zoom could be better, but centering is safer for now.
+            const center = (vp.start + vp.end) / 2;
+            let newStart = center - newWidth / 2;
+            let newEnd = center + newWidth / 2;
+
+            setViewport({ start: newStart, end: newEnd });
+        };
+        canvas.addEventListener('wheel', onWheel, { passive: false });
+        return () => canvas.removeEventListener('wheel', onWheel);
+    }, []);
+
 
     return (
-        <div className="flex h-full w-full bg-[#111213]">
-            {/* Left Drawing Toolbar - Removed per user request */}
+        <div className="flex h-full w-full bg-[#111213] flex-col relative">
+            {/* Ticker Overlay */}
+            <div className="absolute top-4 left-4 z-10 pointer-events-none select-none">
+                <h1 className="text-2xl font-bold text-white tracking-wider opacity-80">{ticker}</h1>
+            </div>
 
-            {/* Main Chart Area */}
-            <div className="flex-1 flex flex-col relative">
-                {/* Top Control Bar - Removed per user request */}
-                {/* Plot */}
-
-                {/* Ticker Overlay */}
-                <div className="absolute top-4 left-4 z-10 pointer-events-none">
-                    <h1 className="text-2xl font-bold text-white tracking-wider">{ticker}</h1>
-                </div>
-
-                {/* Plot */}
-                <div className="flex-1 relative">
-                    <Plot
-                        data={data}
-                        layout={layout}
-                        config={config}
-                        style={{ width: '100%', height: '100%' }}
-                        useResizeHandler={true}
-                        onRelayout={handleRelayout}
-                    />
-                </div>
+            <div
+                ref={containerRef}
+                className="flex-1 w-full h-full relative cursor-crosshair active:cursor-grabbing"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+            >
+                <canvas ref={canvasRef} className="w-full h-full block" />
             </div>
         </div>
     );
