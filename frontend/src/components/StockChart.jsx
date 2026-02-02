@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import Plot from 'react-plotly.js';
 import { MousePointer2, Minus, TrendingUp, Square, Type, Ruler, Settings } from 'lucide-react';
 
-const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBound }) => {
+const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBound, ticker }) => {
 
     // Deep Black Theme
     const COLORS = {
@@ -206,6 +206,11 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
             <div className="flex-1 flex flex-col relative">
                 {/* Top Control Bar - Removed per user request */}
                 {/* Plot */}
+
+                {/* Ticker Overlay */}
+                <div className="absolute top-4 left-4 z-10 pointer-events-none">
+                    <h1 className="text-2xl font-bold text-white tracking-wider">{ticker}</h1>
+                </div>
 
                 {/* Plot */}
                 <div className="flex-1 relative">

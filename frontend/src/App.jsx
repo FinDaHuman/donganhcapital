@@ -54,7 +54,7 @@ function App() {
             <div className="flex-1 flex flex-col md:ml-[300px] ml-0 transition-all w-full h-full">
                 {/* MarketBar Removed per user request */}
 
-                <main className="flex-1 mt-14 overflow-hidden bg-black relative flex flex-col">
+                <main className="flex-1 overflow-hidden bg-black relative flex flex-col">
                     {activeTab === 'dashboard' && (
                         <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800">
                             <Dashboard onSelectStock={handleSelectStock} />
@@ -77,6 +77,7 @@ function App() {
                                             showRSI={true}
                                             lowerBound={predictionData.lower_bound}
                                             upperBound={predictionData.upper_bound}
+                                            ticker={selectedTicker}
                                         />
                                     ) : (
                                         <div className="h-full flex items-center justify-center text-gray-500 flex-col gap-2">
