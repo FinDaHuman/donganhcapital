@@ -118,11 +118,7 @@ const Dashboard = ({ onSelectStock }) => {
                         <span className="w-1.5 h-5 bg-blue-600 rounded-sm"></span>
                         Market Heatmap
                     </h2>
-                    <div className="flex gap-2">
-                        <button className="text-xs bg-[#2a2e39] px-2 py-1 rounded text-white">All</button>
-                        <button className="text-xs text-gray-400 hover:text-white px-2 py-1">VN30</button>
-                        <button className="text-xs text-gray-400 hover:text-white px-2 py-1">HOSE</button>
-                    </div>
+                    {/* Buttons removed per user request */}
                 </div>
 
                 <div className="flex-1 bg-[#1a1c1e] rounded-xl border border-[#2a2e39] overflow-hidden relative shadow-lg h-full">

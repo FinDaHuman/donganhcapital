@@ -52,7 +52,7 @@ function App() {
             <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
             <div className="flex-1 flex flex-col md:ml-[300px] ml-0 transition-all w-full h-full">
-                <MarketBar />
+                {/* MarketBar Removed per user request */}
 
                 <main className="flex-1 mt-14 overflow-hidden bg-black relative flex flex-col">
                     {activeTab === 'dashboard' && (
@@ -65,13 +65,7 @@ function App() {
                         <div className="h-full flex flex-row">
                             {/* Main Chart Area */}
                             <div className="flex-1 flex flex-col border-r border-gray-800">
-                                {/* Sub-header for Chart */}
-                                <div className="h-12 border-b border-gray-800 flex items-center px-4 justify-between bg-[#050505]">
-                                    <div className="flex items-center gap-4">
-                                        <h2 className="font-bold text-white text-lg tracking-wide">{selectedTicker || 'Select a Stock'}</h2>
-                                        {loading && <span className="text-xs text-blue-500 animate-pulse">Loading Prediction...</span>}
-                                    </div>
-                                </div>
+                                {/* Sub-header for Chart - Removed per user request */}
 
                                 {/* Chart Container */}
                                 <div className="flex-1 relative bg-black">

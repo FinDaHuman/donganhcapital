@@ -58,8 +58,120 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
     const [timeframe, setTimeframe] = React.useState('1D');
     const [activeTool, setActiveTool] = React.useState('cursor');
 
+    // Combine dates for axis calculations
+    const allDates = useMemo(() => {
+        const histDates = history.map(d => d.Date);
+        const foreDates = forecast.map(d => d.Date);
+        return [...histDates, ...foreDates];
+    }, [history, forecast]);
+
+    // State to hold current tick logic based on zoom
+    // We initialize with the default "Medium Zoom" logic (roughly what 190 days falls into)
+    const [tickConfig, setTickConfig] = React.useState({ vals: [], text: [] });
+
+    // Function to generate ticks based on range size
+    const generateTicks = (startIndex, endIndex) => {
+        if (startIndex < 0) startIndex = 0;
+        if (endIndex >= allDates.length) endIndex = allDates.length - 1;
+
+        const count = endIndex - startIndex;
+        const vals = [];
+        const text = [];
+
+        let lastTracker = "";
+
+        // MODE 1: High Zoom (< 4 Months / Approx 85 Days) -> DD/MM
+        if (count <= 85) {
+            allDates.forEach((dateStr, i) => {
+                if (i < startIndex || i > endIndex) return;
+
+                // Show every 5th day? Or just every specific gap?
+                // Request says "Display Day".
+                // Let's tick every 5 candles to avoid clutter, or check overlap.
+                // Simple version: Every 5th candle.
+                if (i % 5 === 0) {
+                    vals.push(dateStr);
+                    const date = new Date(dateStr);
+                    const d = date.getDate().toString().padStart(2, '0');
+                    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+                    text.push(`${d}/${m}`);
+                }
+            });
+        }
+        // MODE 2: Medium Zoom (> 4 Months && <= 20 Months / Approx 420 Days) -> MM/YYYY
+        else if (count <= 420) {
+            let lastMonth = -1;
+            allDates.forEach((dateStr, i) => {
+                if (i < startIndex || i > endIndex) return;
+
+                const date = new Date(dateStr);
+                const month = date.getMonth() + 1;
+                const year = date.getFullYear();
+
+                if (month !== lastMonth) {
+                    vals.push(dateStr);
+                    text.push(`${month.toString().padStart(2, '0')}/${year}`);
+                    lastMonth = month;
+                }
+            });
+        }
+        // MODE 3: Low Zoom (> 20 Months) -> YYYY
+        else {
+            let lastYear = -1;
+            allDates.forEach((dateStr, i) => {
+                if (i < startIndex || i > endIndex) return;
+
+                const date = new Date(dateStr);
+                const year = date.getFullYear();
+
+                if (year !== lastYear) {
+                    vals.push(dateStr);
+                    text.push(`${year}`);
+                    lastYear = year;
+                }
+            });
+        }
+        return { vals, text };
+    };
+
+    // Calculate Default Zoom Range (Last 190 Candles)
+    // And set initial Ticks
+    const defaultRange = useMemo(() => {
+        if (allDates.length === 0) return [0, 1];
+        const end = allDates.length - 1;
+        const start = Math.max(0, end - 190);
+        return [start, end];
+    }, [allDates]);
+
+    // Initialize Ticks on Load
+    React.useEffect(() => {
+        if (allDates.length > 0) {
+            const initialTicks = generateTicks(defaultRange[0], defaultRange[1]);
+            setTickConfig(initialTicks);
+        }
+    }, [allDates, defaultRange]);
+
+
+    const handleRelayout = (event) => {
+        // Plotly emits specific keys for range changes
+        // 'xaxis.range[0]' and 'xaxis.range[1]' are indices for Category axis
+        if (event['xaxis.range[0]'] !== undefined && event['xaxis.range[1]'] !== undefined) {
+            const startIdx = Math.floor(event['xaxis.range[0]']);
+            const endIdx = Math.ceil(event['xaxis.range[1]']);
+            const newTicks = generateTicks(startIdx, endIdx);
+
+            // Only update if changed (Deep check optional, but array ref mismatch is fine)
+            setTickConfig(newTicks);
+        }
+        // Handle "Autoscale" or double click reset
+        else if (event['xaxis.autorange'] === true) {
+            const newTicks = generateTicks(0, allDates.length - 1);
+            setTickConfig(newTicks);
+        }
+    };
+
     const layout = {
-        dragmode: 'pan', // Allow panning
+        dragmode: 'pan',
         autosize: true,
         height: undefined,
         margin: { l: 50, r: 50, b: 30, t: 10, pad: 0 },
@@ -68,9 +180,12 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
         font: { color: COLORS.text, family: 'Inter, sans-serif', size: 11 },
         xaxis: {
             rangeslider: { visible: false },
-            type: 'category', // Removes gaps for weekends/holidays
+            type: 'category',
             gridcolor: COLORS.grid,
-            nticks: 10 // Prevent overcrowding of labels
+            tickmode: 'array',
+            tickvals: tickConfig.vals,
+            ticktext: tickConfig.text,
+            range: defaultRange // Sets the default zoom
         },
         yaxis: { autorange: true, gridcolor: COLORS.grid, showgrid: true, side: 'right' },
         showlegend: false,
@@ -89,10 +204,8 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
 
             {/* Main Chart Area */}
             <div className="flex-1 flex flex-col relative">
-                {/* Top Control Bar */}
-                <div className="h-10 border-b border-[#2a2e39] flex items-center px-4 gap-4 bg-[#111213]">
-                    <span className="text-gray-200 font-bold text-sm">VNINDEX</span>
-                </div>
+                {/* Top Control Bar - Removed per user request */}
+                {/* Plot */}
 
                 {/* Plot */}
                 <div className="flex-1 relative">
@@ -102,6 +215,7 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
                         config={config}
                         style={{ width: '100%', height: '100%' }}
                         useResizeHandler={true}
+                        onRelayout={handleRelayout}
                     />
                 </div>
             </div>
