@@ -48,15 +48,17 @@ function App() {
     const filteredStocks = stockList.filter(s => s.includes(searchTerm.toUpperCase()));
 
     return (
-        <div className="flex min-h-screen bg-black text-gray-200 font-sans selection:bg-blue-900">
+        <div className="flex h-screen overflow-hidden bg-black text-gray-200 font-sans selection:bg-blue-900">
             <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-            <div className="flex-1 flex flex-col md:ml-[300px] ml-0 transition-all w-full">
+            <div className="flex-1 flex flex-col md:ml-[300px] ml-0 transition-all w-full h-full">
                 <MarketBar />
 
-                <main className="flex-1 mt-14 overflow-y-auto bg-black scrollbar-thin scrollbar-thumb-gray-800">
+                <main className="flex-1 mt-14 overflow-hidden bg-black relative flex flex-col">
                     {activeTab === 'dashboard' && (
-                        <Dashboard onSelectStock={handleSelectStock} />
+                        <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800">
+                            <Dashboard onSelectStock={handleSelectStock} />
+                        </div>
                     )}
 
                     {activeTab === 'chart' && (

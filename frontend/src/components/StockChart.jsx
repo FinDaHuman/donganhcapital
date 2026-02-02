@@ -87,22 +87,6 @@ const StockChart = ({ history, forecast, showSMA, showRSI, lowerBound, upperBoun
                 {/* Top Control Bar */}
                 <div className="h-10 border-b border-[#2a2e39] flex items-center px-4 gap-4 bg-[#111213]">
                     <span className="text-gray-200 font-bold text-sm">VNINDEX</span>
-                    <div className="w-px h-4 bg-gray-700"></div>
-                    <div className="flex gap-2">
-                        {['1D', '1W', '1M', '3M', '1Y'].map(tf => (
-                            <button
-                                key={tf}
-                                onClick={() => setTimeframe(tf)}
-                                className={`text-xs font-medium px-2 py-1 rounded transition-colors ${timeframe === tf ? 'text-blue-500 bg-[#1a1c1e]' : 'text-gray-400 hover:bg-[#1a1c1e] hover:text-white'}`}
-                            >
-                                {tf}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="w-px h-4 bg-gray-700"></div>
-                    <button className="flex items-center gap-1 text-xs text-gray-300 hover:bg-[#1a1c1e] px-2 py-1 rounded">
-                        <span>Indicators</span>
-                    </button>
                 </div>
 
                 {/* Plot */}
