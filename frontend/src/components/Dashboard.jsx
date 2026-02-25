@@ -55,17 +55,57 @@ const Dashboard = ({ onSelectStock }) => {
         return () => clearInterval(interval);
     }, []);
 
+    // Sector Mapping
+    const SECTORS = {
+        "Ngân hàng": ["ABB", "ACB", "BID", "BVB", "CTG", "EIB", "HDB", "LPB", "MBB", "MSB", "OCB", "SHB", "SSB", "STB", "TCB", "TPB", "VCB", "VIB", "VPB"],
+        "Bất động sản": ["CEO", "CII", "DIG", "DPG", "DXG", "GEX", "HAG", "HDC", "HDG", "KBC", "KDH", "NVL", "NWT", "PDR", "TCH", "VCG", "VHM", "VIC", "VRE"],
+        "Chứng khoán": ["CTS", "FTS", "HCM", "MBS", "ORS", "SHS", "SSI", "VCI", "VIX", "VND"],
+        "Dầu khí – Năng lượng": ["BSR", "GAS", "NT2", "OIL", "PLX", "POW", "PVD", "PVS", "PVT"],
+        "Tiêu dùng": ["ANV", "DGW", "FRT", "MSN", "PAN", "PNJ", "VHC"],
+        "Vật liệu": ["CTD", "HPG", "HSG", "NKG", "REE"],
+        "Logistics": ["GMD", "HAH", "HVN", "VJC", "VTP"],
+        "Công nghệ": ["CTR", "FPT", "VGI"]
+    };
+
+    // Helper to get sector for a stock
+    const getSector = (code) => {
+        for (const [sector, stocks] of Object.entries(SECTORS)) {
+            if (stocks.includes(code)) return sector;
+        }
+        return "Khác"; // Others
+    };
+
     // Prepare Treemap Data
     const treemapData = () => {
         if (!marketStocks.length) return null;
 
-        const labels = marketStocks.map(s => s.code);
-        const parents = marketStocks.map(() => 'VN Market');
-        const values = marketStocks.map(s => s.volume); // Size by Volume
-        const changes = marketStocks.map(s => s.change_pct || 0);
+        const labels = ["VN Market"];
+        const parents = [""];
+        const values = [0]; // Plotly derives root value
+        const changes = [0]; // Avg change for root can be 0 or calculated later
+        const text = ["VN Market"];
 
-        const text = marketStocks.map((s, i) => {
-            return `${s.code}<br>${changes[i].toFixed(2)}%`;
+        // 1. Add Sector Nodes
+        const presentSectors = new Set(marketStocks.map(s => getSector(s.code)));
+        presentSectors.forEach(sector => {
+            labels.push(sector);
+            parents.push("VN Market");
+            values.push(0); // Plotly derives sector value from leaves
+
+            // Calculate average change for the sector to color it loosely or leave transparent
+            const sectorStocks = marketStocks.filter(s => getSector(s.code) === sector);
+            const avgReturn = sectorStocks.reduce((sum, s) => sum + s.change_pct, 0) / (sectorStocks.length || 1);
+            changes.push(avgReturn);
+            text.push(sector); // Just the name for intermediate nodes
+        });
+
+        // 2. Add Stock Nodes (Leaves)
+        marketStocks.forEach(s => {
+            labels.push(s.code);
+            parents.push(getSector(s.code));
+            values.push(s.volume || 1);
+            changes.push(s.change_pct || 0);
+            text.push(`${s.code}<br>${(s.change_pct || 0).toFixed(2)}%`);
         });
 
         return [{
@@ -76,6 +116,7 @@ const Dashboard = ({ onSelectStock }) => {
             text: text,
             textinfo: "label+text",
             hoverinfo: "text",
+            pathbar: { visible: false }, // Hide the top breadcrumb bar for a cleaner look
             marker: {
                 colors: changes,
                 colorscale: [
@@ -91,6 +132,7 @@ const Dashboard = ({ onSelectStock }) => {
             },
         }];
     };
+
 
     return (
         <div className="h-full w-full flex bg-[#111213] overflow-hidden">

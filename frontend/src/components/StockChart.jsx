@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
+import { Search, X } from 'lucide-react';
 
-const StockChart = ({ history, forecast, ticker }) => {
+const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
 
@@ -41,6 +42,14 @@ const StockChart = ({ history, forecast, ticker }) => {
     const [viewport, setViewport] = useState({ start: 0, end: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const [lastMouseX, setLastMouseX] = useState(0);
+
+    // Search State
+    const [showSearch, setShowSearch] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredStocks = useMemo(() => {
+        return stockList.filter(s => s.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [stockList, searchTerm]);
 
     // Initialize Viewport once data loads
     useEffect(() => {
@@ -429,11 +438,55 @@ const StockChart = ({ history, forecast, ticker }) => {
 
 
     return (
-        <div className="flex h-full w-full bg-[#111213] flex-col relative">
-            {/* Ticker Overlay */}
-            <div className="absolute top-4 left-4 z-10 pointer-events-none select-none">
-                <h1 className="text-2xl font-bold text-white tracking-wider opacity-80">{ticker}</h1>
+        <div className="flex h-full w-full bg-[#111213] flex-col relative overflow-hidden">
+            {/* Ticker & Search Overlay */}
+            <div className="absolute top-4 left-4 z-20 flex items-center gap-3 bg-[#111213]/80 p-2 rounded backdrop-blur-sm border border-[#2a2e39]/50">
+                <h1 className="text-2xl font-bold text-white tracking-wider max-w-[150px] truncate">{ticker}</h1>
+                <button
+                    onClick={() => setShowSearch(true)}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-[#25282c] rounded transition-colors"
+                >
+                    <Search size={20} />
+                </button>
             </div>
+
+            {/* Search Dropdown Modal */}
+            {showSearch && (
+                <div className="absolute top-16 left-4 z-30 w-72 bg-[#1a1c1e] border border-[#2a2e39] rounded-lg shadow-2xl flex flex-col max-h-[400px]">
+                    <div className="p-3 border-b border-[#2a2e39] flex items-center gap-2">
+                        <Search size={16} className="text-gray-500" />
+                        <input
+                            autoFocus
+                            type="text"
+                            placeholder="Search stock ticker..."
+                            className="flex-1 bg-transparent border-none text-white text-sm focus:outline-none"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                        <button onClick={() => setShowSearch(false)} className="text-gray-500 hover:text-white p-1">
+                            <X size={16} />
+                        </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 p-2">
+                        {filteredStocks.map(s => (
+                            <div
+                                key={s}
+                                onClick={() => {
+                                    onSelectStock(s);
+                                    setShowSearch(false);
+                                    setSearchTerm('');
+                                }}
+                                className={`px-4 py-2 text-sm cursor-pointer rounded hover:bg-[#25282c] ${s === ticker ? 'text-blue-500 font-bold bg-[#1e2228]' : 'text-gray-300'}`}
+                            >
+                                {s}
+                            </div>
+                        ))}
+                        {filteredStocks.length === 0 && (
+                            <div className="p-4 text-center text-gray-500 text-xs text-center">No stocks found</div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <div
                 ref={containerRef}
