@@ -3,6 +3,7 @@ import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import StockChart from './components/StockChart';
 import { getPrediction, getTickers } from './services/stock_api';
+import { Search } from 'lucide-react';
 
 function App() {
     const [activeTab, setActiveTab] = useState('dashboard');
@@ -30,8 +31,10 @@ function App() {
     }, []);
 
     const handleSelectStock = async (ticker) => {
+        setSearchTerm(''); // Clear search term when selected
         setSelectedTicker(ticker);
         setActiveTab('chart');
+        setPredictionData(null); // Clear previous data to show loading screen
         setLoading(true);
         try {
             const data = await getPrediction(ticker);
@@ -61,14 +64,17 @@ function App() {
                     )}
 
                     {activeTab === 'chart' && (
-                        <div className="h-full flex flex-row">
+                        <div className="h-full w-full flex flex-row min-h-0 overflow-hidden">
                             {/* Main Chart Area */}
-                            <div className="flex-1 flex flex-col border-r border-gray-800">
-                                {/* Sub-header for Chart - Removed per user request */}
-
+                            <div className="flex-1 flex flex-col border-r border-gray-800 min-w-0 min-h-0 overflow-hidden">
                                 {/* Chart Container */}
-                                <div className="flex-1 relative bg-black">
-                                    {predictionData ? (
+                                <div className="flex-1 relative bg-black min-h-0 overflow-hidden">
+                                    {loading ? (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-[#111213] flex-col gap-4 z-10">
+                                            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                            <span className="text-gray-400 font-medium tracking-wide animate-pulse">Loading {selectedTicker} Data...</span>
+                                        </div>
+                                    ) : predictionData ? (
                                         <StockChart
                                             history={predictionData.history}
                                             forecast={predictionData.forecast}
@@ -81,8 +87,43 @@ function App() {
                                             onSelectStock={handleSelectStock}
                                         />
                                     ) : (
-                                        <div className="h-full flex items-center justify-center text-gray-500 flex-col gap-2">
-                                            <span>Select a stock from the Dashboard to view Chart</span>
+                                        <div className="absolute inset-0 flex items-center justify-center bg-[#111213]/80 backdrop-blur-sm z-20">
+                                            <div className="w-[450px] bg-[#1a1c1e] border border-[#2a2e39] rounded-2xl shadow-2xl flex flex-col max-h-[60vh] overflow-hidden">
+                                                <div className="p-5 border-b border-[#2a2e39] flex items-center gap-3 bg-[#151719]">
+                                                    <Search size={20} className="text-gray-500" />
+                                                    <input
+                                                        autoFocus
+                                                        type="text"
+                                                        placeholder="Search stock ticker to view chart..."
+                                                        className="flex-1 bg-transparent border-none text-white focus:outline-none text-lg placeholder-gray-600"
+                                                        value={searchTerm}
+                                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-800 bg-[#1a1c1e]">
+                                                    {filteredStocks.map(s => (
+                                                        <div
+                                                            key={s}
+                                                            onClick={() => handleSelectStock(s)}
+                                                            className="px-4 py-3 mb-1 cursor-pointer rounded-xl hover:bg-[#25282c] text-gray-200 flex justify-between items-center transition-all bg-[#1e2024]/50 border border-transparent hover:border-[#3a3e49]"
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 rounded-lg bg-[#25282c] flex items-center justify-center font-bold text-gray-400">
+                                                                    {s.charAt(0)}
+                                                                </div>
+                                                                <span className="font-bold text-lg text-white tracking-wide">{s}</span>
+                                                            </div>
+                                                            <span className="text-xs font-bold text-blue-400 bg-blue-500/10 px-3 py-1.5 rounded-md uppercase tracking-wider">Select</span>
+                                                        </div>
+                                                    ))}
+                                                    {filteredStocks.length === 0 && (
+                                                        <div className="p-10 text-center text-gray-500 flex flex-col items-center gap-3">
+                                                            <Search size={32} className="text-gray-600 opacity-50" />
+                                                            <span>No stocks found matching "{searchTerm}"</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>

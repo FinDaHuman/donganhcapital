@@ -25,7 +25,7 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         }
 
         return combined.map(d => ({
-            time: d.Date,
+            time: d.Date || d.date || d.time,
             open: d.Open,
             high: d.High,
             low: d.Low,
@@ -34,7 +34,7 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
             isForecast: d.type === 'forecast',
             upper: d.upper_bound,
             lower: d.lower_bound
-        }));
+        })).filter(d => d.close > 0 && d.open > 0);
     }, [history, forecast]);
 
     // Viewport State (Indices)
@@ -107,13 +107,10 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         let end = Math.min(fullData.length, Math.max(viewport.end, start + 2));
 
         // Slice Data
-        // We use Math.floor/ceil to handle fractional indices during smooth zoom/pan? 
-        // Pseudocode implies indices. Let's stick to integer slicing for data access, 
-        // but math can use floats for smooth scroll if needed.
-        const iStart = Math.floor(start);
-        const iEnd = Math.ceil(end);
-        const visibleData = fullData.slice(iStart, iEnd);
+        const visibleData = fullData.slice(Math.floor(start), Math.ceil(end));
         const count = visibleData.length;
+
+        window.debugVisibleData = visibleData;
 
         if (count === 0) return;
 
@@ -128,8 +125,10 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         let maxY = -Infinity;
 
         visibleData.forEach(p => {
-            if (p.low < minY) minY = p.low;
-            if (p.high > maxY) maxY = p.high;
+            const validLow = !isNaN(p.low) && p.low !== null ? p.low : Math.min(p.open, p.close);
+            const validHigh = !isNaN(p.high) && p.high !== null ? p.high : Math.max(p.open, p.close);
+            if (validLow < minY) minY = validLow;
+            if (validHigh > maxY) maxY = validHigh;
         });
 
         // Add padding
@@ -146,11 +145,11 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         const yMax = Math.ceil(rawMax / tickStep) * tickStep;
 
         // ===== 4. MAP Y =====
+        const bottomPadding = 20; // Reserve space for X-axis labels
         const mapY = (value) => {
             // Inverted for Canvas (0 is top)
-            // canvasHeight * (1 - (value - yMin) / (yMax - yMin))
             const ratio = (value - yMin) / (yMax - yMin);
-            return height * (1 - ratio);
+            return (height - bottomPadding) * (1 - ratio);
         };
 
         // ===== 5. DRAW AXES =====
@@ -186,7 +185,7 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
             // User script: `drawXTick(x, visibleData[i].time)`
             // We'll parse it for better looking label
             const dateObj = new Date(dateStr);
-            let label = "";
+            let label = "TEST LBL";
 
             if (count < 60) {
                 // DD/MM
@@ -199,15 +198,21 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
                 label = dateObj.getFullYear().toString();
             }
 
-            ctx.fillStyle = textColor;
+            // Fallback if invalid date
+            if (isNaN(dateObj.getTime())) {
+                label = dateStr ? String(dateStr).split('T')[0] : `Idx ${i}`;
+            }
+
+            ctx.fillStyle = "white";
             ctx.textAlign = "center";
-            ctx.fillText(label, x + candleWidth / 2, height - 10);
+            ctx.textBaseline = "middle";
+            ctx.fillText(label || "DATE", x + candleWidth / 2, height - 10);
 
             // Grid line for X
             ctx.strokeStyle = gridColor;
             ctx.beginPath();
             ctx.moveTo(x + candleWidth / 2, 0);
-            ctx.lineTo(x + candleWidth / 2, height);
+            ctx.lineTo(x + candleWidth / 2, height - 20);
             ctx.stroke();
         }
 
@@ -441,7 +446,12 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         <div className="flex h-full w-full bg-[#111213] flex-col relative overflow-hidden">
             {/* Ticker & Search Overlay */}
             <div className="absolute top-4 left-4 z-20 flex items-center gap-3 bg-[#111213]/80 p-2 rounded backdrop-blur-sm border border-[#2a2e39]/50">
-                <h1 className="text-2xl font-bold text-white tracking-wider max-w-[150px] truncate">{ticker}</h1>
+                <h1
+                    className="text-2xl font-black text-white tracking-wider max-w-[150px] truncate drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]"
+                    style={{ WebkitTextStroke: '1px rgba(0,0,0,0.8)' }}
+                >
+                    {ticker}
+                </h1>
                 <button
                     onClick={() => setShowSearch(true)}
                     className="p-1.5 text-gray-400 hover:text-white hover:bg-[#25282c] rounded transition-colors"
