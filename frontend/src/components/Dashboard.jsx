@@ -129,7 +129,7 @@ const Dashboard = ({ onSelectStock }) => {
             tiling: { pad: 3 }, // Show 3px of the parent's black background as a border
             marker: {
                 colors: exactColors,
-                line: { width: 1.5, color: '#111213' } // Dark border between individual boxes
+                line: { width: 1.5, color: '#1a1c1e' } // Dark border between individual boxes
             },
         }];
     };
