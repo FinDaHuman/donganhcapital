@@ -92,7 +92,7 @@ const Dashboard = ({ onSelectStock }) => {
             parents.push(""); // No root node, sectors are top-level
             values.push(0); // Plotly derives sector value from leaves
 
-            exactColors.push('#111213'); // Pitch black header & border background for Sectors
+            exactColors.push('#1a1c1e'); // Pitch black header & border background for Sectors
             text.push(`<b>${sector}</b>`);
         });
 
@@ -159,7 +159,7 @@ const Dashboard = ({ onSelectStock }) => {
                         layout={{
                             autosize: true,
                             margin: { l: 0, r: 0, b: 0, t: 0 },
-                            paper_bgcolor: '#111213',
+                            paper_bgcolor: '#1a1c1e',
                             font: { color: '#ffffff', family: 'sans-serif', size: 13 }
                         }}
                         style={{ width: '100%', height: '100%' }}
