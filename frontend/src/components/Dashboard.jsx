@@ -136,10 +136,10 @@ const Dashboard = ({ onSelectStock }) => {
 
 
     return (
-        <div className="h-full w-full flex flex-col bg-[#111213] overflow-hidden p-2 gap-2">
+        <div className="h-full w-full flex flex-col bg-[#111213] overflow-hidden">
 
             {/* Top Row: Indices */}
-            <div className="flex w-full gap-2 shrink-0">
+            <div className="flex w-full shrink-0">
                 {indices.map(idx => (
                     <div key={idx.name} className="flex-1 bg-[#1a1c1e] border border-[#2a2e39] rounded-lg p-3 hover:bg-[#25282c] transition-colors cursor-pointer flex flex-col justify-center">
                         <div className="flex justify-between items-center mb-1">
@@ -152,16 +152,17 @@ const Dashboard = ({ onSelectStock }) => {
             </div>
 
             {/* Bottom Row: Heatmap */}
-            <div className="flex-1 bg-[#1a1c1e] rounded-lg border border-[#2a2e39] overflow-hidden relative shadow-lg">
+            <div className="flex-1 bg-[#1a1c1e] overflow-hidden relative">
                 {!loading && marketStocks.length > 0 ? (
                     <Plot
                         data={treemapData()}
                         layout={{
                             autosize: true,
-                            margin: { l: 0, r: 0, b: 0, t: 0 },
+                            margin: { l: 0, r: 0, b: 0, t: 0, pad: 0 },
                             paper_bgcolor: '#1a1c1e',
                             font: { color: '#ffffff', family: 'sans-serif', size: 13 }
                         }}
+                        config={{ displayModeBar: false, responsive: true }}
                         style={{ width: '100%', height: '100%' }}
                         useResizeHandler={true}
                         onClick={(data) => {
