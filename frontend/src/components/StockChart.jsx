@@ -500,13 +500,13 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
 
             <div
                 ref={containerRef}
-                className="flex-1 w-full h-full relative cursor-crosshair active:cursor-grabbing"
+                className="flex-1 w-full min-h-0 relative cursor-crosshair active:cursor-grabbing overflow-hidden"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
             >
-                <canvas ref={canvasRef} className="w-full h-full block" />
+                <canvas ref={canvasRef} className="absolute inset-0 block" />
             </div>
         </div>
     );

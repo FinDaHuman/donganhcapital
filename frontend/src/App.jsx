@@ -50,13 +50,13 @@ function App() {
     const filteredStocks = stockList.filter(s => s.includes(searchTerm.toUpperCase()));
 
     return (
-        <div className="flex flex-col h-screen overflow-hidden bg-black text-gray-200 font-sans selection:bg-blue-900">
+        <div className="absolute inset-0 flex flex-col overflow-hidden bg-black text-gray-200 font-sans selection:bg-blue-900">
             <Header activeTab={activeTab} onTabChange={setActiveTab} />
 
-            <div className="flex-1 flex flex-col w-full h-full relative">
+            <div className="flex-1 flex flex-col w-full min-h-0 relative">
                 {/* MarketBar Removed per user request */}
 
-                <main className="flex-1 overflow-hidden bg-black relative flex flex-col">
+                <main className="flex-1 overflow-hidden bg-black relative flex flex-col min-h-0">
                     {activeTab === 'dashboard' && (
                         <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800">
                             <Dashboard onSelectStock={handleSelectStock} />
