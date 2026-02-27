@@ -92,7 +92,7 @@ const Dashboard = ({ onSelectStock }) => {
             parents.push(""); // No root node, sectors are top-level
             values.push(0); // Plotly derives sector value from leaves
 
-            exactColors.push('#1a1c1e'); // Pitch black header & border background for Sectors
+            exactColors.push('#1a1c1e'); // Sector header & background
             text.push(`<b>${sector}</b>`);
         });
 
@@ -126,20 +126,20 @@ const Dashboard = ({ onSelectStock }) => {
             textinfo: "label+text",
             hoverinfo: "text",
             pathbar: { visible: false }, // Hide the top breadcrumb bar
-            tiling: { pad: 3 }, // Show 3px of the parent's black background as a border
+            tiling: { pad: 3 }, // Show 3px of the parent's background
             marker: {
                 colors: exactColors,
-                line: { width: 1.5, color: '#1a1c1e' } // Dark border between individual boxes
+                line: { width: 2, color: '#111213' } // Darker border dividing all individual boxes and main sectors
             },
         }];
     };
 
 
     return (
-        <div className="h-full w-full flex flex-col bg-[#111213] overflow-hidden">
+        <div className="h-full w-full flex flex-col bg-[#111213] overflow-hidden p-2 gap-2">
 
             {/* Top Row: Indices */}
-            <div className="flex w-full shrink-0">
+            <div className="flex w-full shrink-0 gap-2">
                 {indices.map(idx => (
                     <div key={idx.name} className="flex-1 bg-[#1a1c1e] border border-[#2a2e39] rounded-lg p-3 hover:bg-[#25282c] transition-colors cursor-pointer flex flex-col justify-center">
                         <div className="flex justify-between items-center mb-1">
@@ -152,14 +152,14 @@ const Dashboard = ({ onSelectStock }) => {
             </div>
 
             {/* Bottom Row: Heatmap */}
-            <div className="flex-1 bg-[#1a1c1e] overflow-hidden relative">
+            <div className="flex-1 bg-[#111213] border border-[#1a1c1e] rounded-sm overflow-hidden relative shadow-lg">
                 {!loading && marketStocks.length > 0 ? (
                     <Plot
                         data={treemapData()}
                         layout={{
                             autosize: true,
                             margin: { l: 0, r: 0, b: 0, t: 0, pad: 0 },
-                            paper_bgcolor: '#1a1c1e',
+                            paper_bgcolor: '#111213',
                             font: { color: '#ffffff', family: 'sans-serif', size: 13 }
                         }}
                         config={{ displayModeBar: false, responsive: true }}
