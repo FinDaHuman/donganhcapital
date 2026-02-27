@@ -152,14 +152,14 @@ const Dashboard = ({ onSelectStock }) => {
             </div>
 
             {/* Bottom Row: Heatmap */}
-            <div className="flex-1 bg-[#111213] border border-[#1a1c1e] rounded-sm overflow-hidden relative shadow-lg">
+            <div className="flex-1 bg-[#1a1c1e] rounded-sm overflow-hidden relative shadow-lg">
                 {!loading && marketStocks.length > 0 ? (
                     <Plot
                         data={treemapData()}
                         layout={{
                             autosize: true,
                             margin: { l: 0, r: 0, b: 0, t: 0, pad: 0 },
-                            paper_bgcolor: '#111213',
+                            paper_bgcolor: '#1a1c1e',
                             font: { color: '#ffffff', family: 'sans-serif', size: 13 }
                         }}
                         config={{ displayModeBar: false, responsive: true }}
