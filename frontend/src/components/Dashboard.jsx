@@ -159,7 +159,7 @@ const Dashboard = ({ onSelectStock }) => {
                         layout={{
                             autosize: true,
                             margin: { l: 0, r: 0, b: 0, t: 0 },
-                            paper_bgcolor: '#1a1c1e',
+                            paper_bgcolor: '#111213',
                             font: { color: '#ffffff', family: 'sans-serif', size: 13 }
                         }}
                         style={{ width: '100%', height: '100%' }}
