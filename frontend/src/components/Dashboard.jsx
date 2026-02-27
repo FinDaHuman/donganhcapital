@@ -79,24 +79,24 @@ const Dashboard = ({ onSelectStock }) => {
     const treemapData = () => {
         if (!marketStocks.length) return null;
 
-        const labels = ["VN Market"];
-        const parents = [""];
-        const values = [0]; // Plotly derives root value
-        const changes = [0]; // Avg change for root can be 0 or calculated later
-        const text = ["VN Market"];
+        const labels = [];
+        const parents = [];
+        const values = [];
+        const changes = [];
+        const text = [];
 
         // 1. Add Sector Nodes
         const presentSectors = new Set(marketStocks.map(s => getSector(s.code)));
         presentSectors.forEach(sector => {
             labels.push(sector);
-            parents.push("VN Market");
+            parents.push(""); // No root node, sectors are top-level
             values.push(0); // Plotly derives sector value from leaves
 
-            // Calculate average change for the sector to color it loosely or leave transparent
+            // Calculate average change for the sector
             const sectorStocks = marketStocks.filter(s => getSector(s.code) === sector);
             const avgReturn = sectorStocks.reduce((sum, s) => sum + s.change_pct, 0) / (sectorStocks.length || 1);
             changes.push(avgReturn);
-            text.push(sector); // Just the name for intermediate nodes
+            text.push(`<b>${sector}</b>`);
         });
 
         // 2. Add Stock Nodes (Leaves)
@@ -105,7 +105,9 @@ const Dashboard = ({ onSelectStock }) => {
             parents.push(getSector(s.code));
             values.push(s.volume || 1);
             changes.push(s.change_pct || 0);
-            text.push(`${s.code}<br>${(s.change_pct || 0).toFixed(2)}%`);
+
+            const sign = (s.change_pct || 0) > 0 ? '+' : '';
+            text.push(`<b>${s.code}</b><br>${sign}${(s.change_pct || 0).toFixed(2)}%`);
         });
 
         return [{
@@ -116,76 +118,70 @@ const Dashboard = ({ onSelectStock }) => {
             text: text,
             textinfo: "label+text",
             hoverinfo: "text",
-            pathbar: { visible: false }, // Hide the top breadcrumb bar for a cleaner look
+            pathbar: { visible: false }, // Hide the top breadcrumb bar
             marker: {
                 colors: changes,
                 colorscale: [
-                    [0, '#d50000'],
-                    [0.49, '#ef5350'],
-                    [0.5, '#424242'],
-                    [0.51, '#26a69a'],
-                    [1, '#00c853']
+                    [0.0, '#00e5ff'],       // Floor (-7% and below)
+                    [0.01, '#ef5350'],      // Down (-6.9%)
+                    [0.495, '#ef5350'],     // Down (-0.01%)
+                    [0.4951, '#ffb300'],    // Reference (0%)
+                    [0.5049, '#ffb300'],    // Reference (0%)
+                    [0.505, '#00c853'],     // Up (+0.01%)
+                    [0.99, '#00c853'],      // Up (+6.9%)
+                    [1.0, '#d500f9']        // Ceiling (+7% and above)
                 ],
-                cmin: -5,
-                cmax: 5,
-                line: { width: 1, color: '#1a1c1e' }
+                cmin: -7,
+                cmax: 7,
+                line: { width: 1, color: '#111213' }
             },
         }];
     };
 
 
     return (
-        <div className="h-full w-full flex bg-[#111213] overflow-hidden">
+        <div className="h-full w-full flex flex-col bg-[#111213] overflow-hidden p-2 gap-2">
 
-            {/* Left Col: Indices */}
-            <div className="w-[20%] min-w-[220px] bg-[#1a1c1e] border-r border-[#2a2e39] flex flex-col">
-                <div className="p-3 border-b border-[#2a2e39] font-bold text-gray-300 text-sm">Key Indices</div>
-                <div className="overflow-y-auto flex-1">
-                    {indices.map(idx => (
-                        <div key={idx.name} className="p-3 border-b border-[#2a2e39] hover:bg-[#25282c] cursor-pointer">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="font-bold text-sm text-gray-300">{idx.name}</span>
-                                <span className={`text-xs ${idx.chg.includes('+') ? 'text-green-500' : 'text-red-500'}`}>{idx.chg}</span>
-                            </div>
-                            <div className="text-lg font-mono text-gray-200">{idx.val}</div>
+            {/* Top Row: Indices */}
+            <div className="flex w-full gap-2 shrink-0">
+                {indices.map(idx => (
+                    <div key={idx.name} className="flex-1 bg-[#1a1c1e] border border-[#2a2e39] rounded-lg p-3 hover:bg-[#25282c] transition-colors cursor-pointer flex flex-col justify-center">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="font-bold text-sm text-gray-300">{idx.name}</span>
+                            <span className={`text-xs font-bold ${idx.chg.includes('+') ? 'text-green-500' : idx.chg.includes('-') ? 'text-red-500' : 'text-yellow-500'}`}>{idx.chg}</span>
                         </div>
-                    ))}
-                </div>
+                        <div className="text-xl font-mono text-gray-200">{idx.val}</div>
+                    </div>
+                ))}
             </div>
 
-            {/* Center: Heatmap */}
-            <div className="flex-1 flex flex-col p-4 w-full">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-bold text-gray-200 flex items-center gap-2">
-                        <span className="w-1.5 h-5 bg-blue-600 rounded-sm"></span>
-                        Market Heatmap
-                    </h2>
-                    {/* Buttons removed per user request */}
-                </div>
-
-                <div className="flex-1 bg-[#1a1c1e] rounded-xl border border-[#2a2e39] overflow-hidden relative shadow-lg h-full">
-                    {!loading && marketStocks.length > 0 ? (
-                        <Plot
-                            data={treemapData()}
-                            layout={{
-                                autosize: true,
-                                margin: { l: 0, r: 0, b: 0, t: 0 },
-                                paper_bgcolor: '#1a1c1e',
-                                font: { color: '#e5e7eb', family: 'sans-serif' }
-                            }}
-                            style={{ width: '100%', height: '100%' }}
-                            useResizeHandler={true}
-                            onClick={(data) => {
-                                const code = data.points[0].label;
-                                if (code && code !== 'VN Market') onSelectStock(code);
-                            }}
-                        />
-                    ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-                            {loading ? "Loading Market Data..." : "No Data Available"}
-                        </div>
-                    )}
-                </div>
+            {/* Bottom Row: Heatmap */}
+            <div className="flex-1 bg-[#1a1c1e] rounded-lg border border-[#2a2e39] overflow-hidden relative shadow-lg">
+                {!loading && marketStocks.length > 0 ? (
+                    <Plot
+                        data={treemapData()}
+                        layout={{
+                            autosize: true,
+                            margin: { l: 0, r: 0, b: 0, t: 0 },
+                            paper_bgcolor: '#1a1c1e',
+                            font: { color: '#ffffff', family: 'sans-serif', size: 13 }
+                        }}
+                        style={{ width: '100%', height: '100%' }}
+                        useResizeHandler={true}
+                        onClick={(data) => {
+                            if (!data.points || data.points.length === 0) return;
+                            const code = data.points[0].label;
+                            // Only trigger selection if the clicked item is a stock (not a sector)
+                            if (code && !SECTORS[code]) {
+                                onSelectStock(code);
+                            }
+                        }}
+                    />
+                ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-gray-500">
+                        {loading ? "Loading Market Data..." : "No Data Available"}
+                    </div>
+                )}
             </div>
 
         </div>
