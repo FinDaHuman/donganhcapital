@@ -82,7 +82,7 @@ const Dashboard = ({ onSelectStock }) => {
         const labels = [];
         const parents = [];
         const values = [];
-        const changes = [];
+        const exactColors = [];
         const text = [];
 
         // 1. Add Sector Nodes
@@ -92,10 +92,7 @@ const Dashboard = ({ onSelectStock }) => {
             parents.push(""); // No root node, sectors are top-level
             values.push(0); // Plotly derives sector value from leaves
 
-            // Calculate average change for the sector
-            const sectorStocks = marketStocks.filter(s => getSector(s.code) === sector);
-            const avgReturn = sectorStocks.reduce((sum, s) => sum + s.change_pct, 0) / (sectorStocks.length || 1);
-            changes.push(avgReturn);
+            exactColors.push('#111213'); // Pitch black header & border background for Sectors
             text.push(`<b>${sector}</b>`);
         });
 
@@ -104,10 +101,20 @@ const Dashboard = ({ onSelectStock }) => {
             labels.push(s.code);
             parents.push(getSector(s.code));
             values.push(s.volume || 1);
-            changes.push(s.change_pct || 0);
 
-            const sign = (s.change_pct || 0) > 0 ? '+' : '';
-            text.push(`<b>${s.code}</b><br>${sign}${(s.change_pct || 0).toFixed(2)}%`);
+            const pct = s.change_pct || 0;
+            let color = '';
+            // Discrete colors based on HoSE standard thresholds (+/- 7%)
+            if (pct <= -6.8) color = '#00e5ff';
+            else if (pct < -0.05) color = '#ef5350';
+            else if (pct <= 0.05) color = '#ffb300';
+            else if (pct < 6.8) color = '#00c853';
+            else color = '#d500f9';
+
+            exactColors.push(color);
+
+            const sign = pct > 0 ? '+' : '';
+            text.push(`<b>${s.code}</b><br>${sign}${pct.toFixed(2)}%`);
         });
 
         return [{
@@ -119,21 +126,10 @@ const Dashboard = ({ onSelectStock }) => {
             textinfo: "label+text",
             hoverinfo: "text",
             pathbar: { visible: false }, // Hide the top breadcrumb bar
+            tiling: { pad: 3 }, // Show 3px of the parent's black background as a border
             marker: {
-                colors: changes,
-                colorscale: [
-                    [0.0, '#00e5ff'],       // Floor (-7% and below)
-                    [0.01, '#ef5350'],      // Down (-6.9%)
-                    [0.495, '#ef5350'],     // Down (-0.01%)
-                    [0.4951, '#ffb300'],    // Reference (0%)
-                    [0.5049, '#ffb300'],    // Reference (0%)
-                    [0.505, '#00c853'],     // Up (+0.01%)
-                    [0.99, '#00c853'],      // Up (+6.9%)
-                    [1.0, '#d500f9']        // Ceiling (+7% and above)
-                ],
-                cmin: -7,
-                cmax: 7,
-                line: { width: 1, color: '#111213' }
+                colors: exactColors,
+                line: { width: 1.5, color: '#111213' } // Dark border between individual boxes
             },
         }];
     };
