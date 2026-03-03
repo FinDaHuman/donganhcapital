@@ -3,12 +3,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+import asyncio
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import joblib
 import os
+import json
 import tensorflow as tf
 from models.quantile_lstm import QuantileLSTM
+from vnstock import Vnstock
 
 # Disable GPU for lighter inference if needed
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -19,50 +23,137 @@ stock_data_store = {} # {stock_id: DataFrame}
 MODEL_PATH = "models/vn_stock_predictor"
 DATA_DIR = "data"
 
-# --- Helper: Load Data ---
-def load_all_data():
+# --- Helper: Initialize Trackers ---
+def initialize_trackers():
     global stock_data_store
-    import glob
-    print("Loading Stock Data from Excel...")
-    all_files = glob.glob(os.path.join(DATA_DIR, "*.xlsx"))
-    rename_map = {
-        '<Ticker>': 'Ticker', '<DTYYYYMMDD>': 'Date', '<Open>': 'Open', '<High>': 'High', '<Low>': 'Low', '<Close>': 'Close', '<Volume>': 'Volume',
-        'Mã CP': 'Ticker', 'Ngày': 'Date', 'Đóng cửa': 'Close', 'Mở cửa': 'Open', 'Cao nhất': 'High', 'Thấp nhất': 'Low', 'KL': 'Volume',
-        'stock_id': 'Ticker', 'Ngay': 'Date', 'adj_close': 'Close', 'adj_open': 'Open', 'adj_high': 'High', 'adj_low': 'Low', 'volume': 'Volume'
-    }
+    print("Loading Tickers from tickers.json...")
+    try:
+        with open("tickers.json", "r") as f:
+            tickers = json.load(f)
+        for t in tickers:
+            stock_data_store[t] = pd.DataFrame()
+        
+        # Ensure VN30F1M is also initialized
+        stock_data_store["VN30F1M"] = pd.DataFrame()
+        
+        print(f"✅ Initialized storage for {len(tickers)} stocks + VN30F1M.")
+    except Exception as e:
+        print(f"⚠️ Error loading tickers.json: {e}")
+
+# --- Background Tasks ---
+async def poll_hourly_stocks():
+    global stock_data_store
+    print("background task: poll_hourly_stocks started")
+    # Wait a bit on startup before hitting APIs
+    await asyncio.sleep(10)
     
-    combined = pd.DataFrame()
-    for f in all_files:
+    while True:
         try:
-            df = pd.read_excel(f)
-            df = df.rename(columns=rename_map)
-            # Ensure required columns
-            if 'Ticker' in df.columns and 'Date' in df.columns:
-                # Convert Date
-                df['Date'] = pd.to_datetime(df['Date'])
-                combined = pd.concat([combined, df], ignore_index=True)
-        except Exception as e:
-            print(f"Error loading {f}: {e}")
+            print(f"[{datetime.now().isoformat()}] Polling hourly stock data...")
+            tickers = list(stock_data_store.keys())
+            # Don't poll VN30F1M here if it gets added to store
+            tickers = [t for t in tickers if t != "VN30F1M"]
             
-    # Index by Ticker for fast retrieval
-    if not combined.empty:
-        # Sort
-        combined = combined.sort_values(['Ticker', 'Date'])
-        # Group
-        grouped = combined.groupby('Ticker')
-        stock_data_store = {k: v for k, v in grouped}
-        print(f"✅ Loaded data for {len(stock_data_store)} stocks.")
-        print(f"Sample Tickers: {list(stock_data_store.keys())[:20]}")
-    else:
-        print("⚠️ No stock data loaded!")
+            for index, ticker in enumerate(tickers):
+                try:
+                    # Fetch data: 5 years for cold start, 30 days for updates
+                    df_existing = stock_data_store.get(ticker, pd.DataFrame())
+                    if len(df_existing) < 100:
+                        start_date = '2019-01-01'
+                    else:
+                        start_date = (datetime.now() - pd.Timedelta(days=30)).strftime('%Y-%m-%d')
+                    
+                    end_date = datetime.now().strftime('%Y-%m-%d')
+                    df_new = Vnstock().stock(symbol=ticker, source='VCI').quote.history(start=start_date, end=end_date)
+                    
+                    if df_new is not None and not df_new.empty:
+                        # Convert Date column to datetime
+                        # Data returned might have different col names
+                        if 'time' in df_new.columns:
+                            df_new = df_new.rename(columns={'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume', 'ticker': 'Ticker'})
+                        
+                        df_new['Date'] = pd.to_datetime(df_new['Date'])
+                        df_new['Ticker'] = ticker
+                        
+                        # Merge with existing
+                        df_existing = stock_data_store[ticker]
+                        
+                        # Combine and drop duplicates based on Date
+                        df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+                        df_combined = df_combined.drop_duplicates(subset=['Date'], keep='last')
+                        df_combined = df_combined.sort_values('Date')
+                        
+                        stock_data_store[ticker] = df_combined
+                        print(f"Updated {ticker} hourly. Total rows: {len(df_combined)}")
+                except Exception as e:
+                    print(f"Error polling {ticker}: {e}")
+                
+                # Rate limiting: wait 2 seconds between tickers
+                await asyncio.sleep(2)
+            
+            print(f"[{datetime.now().isoformat()}] Completed hourly poll cycle.")
+            # Sleep for 1 hour (minus the time taken)
+            await asyncio.sleep(3600)
+            
+        except Exception as e:
+            print(f"Error in poll_hourly_stocks loop: {e}")
+            await asyncio.sleep(60)
+
+async def poll_vn30f1m():
+    global stock_data_store
+    print("background task: poll_vn30f1m started")
+    # Wait a bit on startup
+    await asyncio.sleep(5)
+    
+    ticker = "VN30F1M"
+    while True:
+        try:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = (datetime.now() - pd.Timedelta(days=5)).strftime('%Y-%m-%d')
+            
+            # Note: For VCI, maybe interval='15s' is supported. Let's try it.
+            # If not, vnstock might fallback to something else.
+            # actually vnstock v3 derivative might not work for 15s. We'll use quote.history and hope for the best...
+            df_new = Vnstock().stock(symbol=ticker, source='VCI').quote.history(start=start_date, end=end_date)
+            
+            if df_new is not None and not df_new.empty:
+                if 'time' in df_new.columns:
+                    df_new = df_new.rename(columns={'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
+                
+                df_new['Date'] = pd.to_datetime(df_new['Date'])
+                df_new['Ticker'] = ticker
+                
+                if ticker in stock_data_store and not stock_data_store[ticker].empty:
+                    df_existing = stock_data_store[ticker]
+                    df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+                    df_combined = df_combined.drop_duplicates(subset=['Date'], keep='last')
+                    df_combined = df_combined.sort_values('Date')
+                    stock_data_store[ticker] = df_combined
+                else:
+                    stock_data_store[ticker] = df_new
+                    print(f"Initialized VN30F1M in stock_data_store.")
+                
+        except Exception as e:
+            # print(f"Error polling VN30F1M: {e}") # keep quiet for 15s polling to not flood logs
+            pass
+            
+        await asyncio.sleep(15)
 
 # --- Lifespan for Model Loading ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global predictor
+    
+    # Store background tasks so they don't get garbage collected
+    app.state.bg_tasks = []
+    
     try:
-        # Load Data
-        load_all_data()
+        # Initialize trackers from configuration
+        initialize_trackers()
+        
+        # Start background tasks
+        app.state.bg_tasks.append(asyncio.create_task(poll_hourly_stocks()))
+        app.state.bg_tasks.append(asyncio.create_task(poll_vn30f1m()))
         
         print("Loading Quantile LSTM Model...")
         # Check if model exists
@@ -286,6 +377,9 @@ async def predict_stock(stock_id: str):
             "forecast": forecast_results
         }
             
+    except HTTPException:
+        # Re-raise HTTP exceptions to preserve their status code
+        raise
     except Exception as e:
         # import traceback
         # traceback.print_exc()

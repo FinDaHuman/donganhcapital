@@ -13,3 +13,4 @@ python-dotenv
 protobuf==4.25.3
 grpcio==1.62.1
 grpcio-status==1.62.1
+vnstock==3.2.5
