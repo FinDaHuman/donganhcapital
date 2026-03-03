@@ -12,7 +12,7 @@ import json
 import tensorflow as tf
 from models.quantile_lstm import QuantileLSTM
 from vnstock import Vnstock
-from .rate_limiter import RateLimiter, retry_async
+from rate_limiter import RateLimiter, retry_async
 
 # Disable GPU for lighter inference if needed
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
