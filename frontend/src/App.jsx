@@ -27,7 +27,11 @@ function App() {
                 console.error("Failed to load stocks");
             }
         };
+        // Initial load
         fetchStocks();
+        // Refresh every 30 seconds
+        const interval = setInterval(fetchStocks, 30000);
+        return () => clearInterval(interval);
     }, []);
 
     const handleSelectStock = async (ticker) => {

@@ -116,14 +116,14 @@ async def poll_hourly_stocks():
 async def poll_vn30f1m():
     global stock_data_store
     print("background task: poll_vn30f1m started")
-    # Wait a bit on startup
-    await asyncio.sleep(5)
+    # Start immediately without artificial delay
+    # await asyncio.sleep(5)
     
     ticker = "VN30F1M"
     while True:
         try:
             end_date = datetime.now().strftime('%Y-%m-%d')
-            start_date = (datetime.now() - pd.Timedelta(days=5)).strftime('%Y-%m-%d')
+            start_date = (datetime.now() - pd.Timedelta(days=5*365)).strftime('%Y-%m-%d')
             
             # Note: For VCI, maybe interval='15s' is supported. Let's try it.
             # If not, vnstock might fallback to something else.
@@ -208,6 +208,11 @@ def home():
         "model_loaded": predictor is not None,
         "stocks_available": len(stock_data_store)
     }
+
+@app.get("/api/health")
+def health():
+    """Simple health check endpoint"""
+    return {"status": "ok", "model_loaded": predictor is not None}
 
 @app.get("/api/stocks")
 def get_stocks():
