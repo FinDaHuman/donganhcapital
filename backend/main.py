@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -13,6 +12,7 @@ import json
 import tensorflow as tf
 from models.quantile_lstm import QuantileLSTM
 from vnstock import Vnstock
+from .rate_limiter import RateLimiter, retry_async
 
 # Disable GPU for lighter inference if needed
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -22,6 +22,16 @@ predictor = None
 stock_data_store = {} # {stock_id: DataFrame}
 MODEL_PATH = "models/vn_stock_predictor"
 DATA_DIR = "data"
+
+# Global rate limiter: max 20 calls per minute
+rate_limiter = RateLimiter(max_calls=20, period_seconds=60)
+
+async def call_sync_with_retry(sync_func, *args, **kwargs):
+    """Execute a synchronous function in a thread with retry and rate limiting."""
+    async def wrapper():
+        return await asyncio.to_thread(sync_func, *args, **kwargs)
+    await rate_limiter.acquire()
+    return await retry_async(wrapper)
 
 # --- Helper: Initialize Trackers ---
 def initialize_trackers():
@@ -64,7 +74,11 @@ async def poll_hourly_stocks():
                         start_date = (datetime.now() - pd.Timedelta(days=30)).strftime('%Y-%m-%d')
                     
                     end_date = datetime.now().strftime('%Y-%m-%d')
-                    df_new = Vnstock().stock(symbol=ticker, source='VCI').quote.history(start=start_date, end=end_date)
+                    
+                    def fetch_hourly_data():
+                        return Vnstock().stock(symbol=ticker, source='VCI').quote.history(start=start_date, end=end_date)
+
+                    df_new = await call_sync_with_retry(fetch_hourly_data)
                     
                     if df_new is not None and not df_new.empty:
                         # Convert Date column to datetime
@@ -114,7 +128,10 @@ async def poll_vn30f1m():
             # Note: For VCI, maybe interval='15s' is supported. Let's try it.
             # If not, vnstock might fallback to something else.
             # actually vnstock v3 derivative might not work for 15s. We'll use quote.history and hope for the best...
-            df_new = Vnstock().stock(symbol=ticker, source='VCI').quote.history(start=start_date, end=end_date)
+            def fetch_f1m_data():
+                return Vnstock().stock(symbol=ticker, source='VCI').quote.history(start=start_date, end=end_date)
+
+            df_new = await call_sync_with_retry(fetch_f1m_data)
             
             if df_new is not None and not df_new.empty:
                 if 'time' in df_new.columns:
