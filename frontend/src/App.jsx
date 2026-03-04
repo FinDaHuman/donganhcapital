@@ -29,8 +29,8 @@ function App() {
         };
         // Initial load
         fetchStocks();
-        // Refresh every 30 seconds
-        const interval = setInterval(fetchStocks, 30000);
+        // Refresh every 120 seconds (reduced for free-tier backend)
+        const interval = setInterval(fetchStocks, 120000);
         return () => clearInterval(interval);
     }, []);
 
