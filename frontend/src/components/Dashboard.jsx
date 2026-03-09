@@ -34,7 +34,7 @@ const Dashboard = ({ onSelectStock }) => {
                     // Gate opens — fetch real data
                     clearInterval(gateCheckRef.current);
                     const data = await getMarketStatus();
-                    if (data && data.length > 0) {
+                    if (data && Array.isArray(data) && data.length > 0) {
                         processMarketData(data);
                     }
                     setGateOpen(true);
@@ -59,7 +59,7 @@ const Dashboard = ({ onSelectStock }) => {
         const fetchData = async () => {
             try {
                 const data = await getMarketStatus();
-                if (data && data.length > 0) {
+                if (data && Array.isArray(data) && data.length > 0) {
                     processMarketData(data);
                 }
             } catch (err) {
@@ -231,11 +231,13 @@ const Dashboard = ({ onSelectStock }) => {
                             font: { color: '#ffffff', family: 'sans-serif', size: 13 }
                         }}
                         config={{ displayModeBar: false, responsive: true }}
-                        style={{ width: '100%', height: '100%' }}
+                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                         useResizeHandler={true}
                         onClick={(data) => {
-                            if (!data.points || data.points.length === 0) return;
-                            const code = data.points[0].label;
+                            if (!data || !data.points || data.points.length === 0) return;
+                            const point = data.points[0];
+                            if (!point || !point.label) return;
+                            const code = point.label;
                             if (code && !SECTORS[code]) {
                                 onSelectStock(code);
                             }
@@ -248,7 +250,7 @@ const Dashboard = ({ onSelectStock }) => {
                 )}
             </div>
 
-        </div>
+        </div >
     );
 };
 

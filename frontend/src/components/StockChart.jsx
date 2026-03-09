@@ -10,8 +10,11 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         // history: {Date, Open, High, Low, Close, Volume}
         // forecast: {Date, Open, High, Low, Close, lower_bound, upper_bound...}
 
-        const histData = history.map(d => ({ ...d, type: 'history' }));
-        const foreData = (forecast || []).map(d => ({ ...d, type: 'forecast' }));
+        const safeHistory = Array.isArray(history) ? history : [];
+        const safeForecast = Array.isArray(forecast) ? forecast : [];
+
+        const histData = safeHistory.map(d => ({ ...d, type: 'history' }));
+        const foreData = safeForecast.map(d => ({ ...d, type: 'forecast' }));
 
         // Merge: Use History, append unique Forecast
         const combined = [...histData];

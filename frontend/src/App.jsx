@@ -68,7 +68,7 @@ function App() {
                     )}
 
                     {activeTab === 'dashboard' && (
-                        <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800">
+                        <div className="h-full w-full relative">
                             <Dashboard onSelectStock={handleSelectStock} />
                         </div>
                     )}

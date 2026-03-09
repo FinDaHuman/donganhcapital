@@ -3,7 +3,12 @@ import axios from 'axios';
 // Use environment variable if available, otherwise fallback to production URL
 const baseUrl = import.meta.env.VITE_API_URL || 'https://donganhcapital.onrender.com/api';
 // Remove trailing slash if present to avoid // in requests
-const API_Base_URL = baseUrl.replace(/\/$/, '');
+let API_Base_URL = baseUrl.replace(/\/$/, '');
+
+// Auto-append /api if the environment variable missed it (prevents 404 errors)
+if (!API_Base_URL.endsWith('/api')) {
+    API_Base_URL += '/api';
+}
 
 // --- localStorage Cache Helpers ---
 const CACHE_PREFIX = 'dac_cache_';
@@ -45,7 +50,9 @@ export const getTickers = async () => {
     try {
         const response = await axios.get(`${API_Base_URL}/stocks`);
         const data = response.data;
-        setCache('tickers', data);
+        if (data && Array.isArray(data.stocks)) {
+            setCache('tickers', data);
+        }
         return data;
     } catch (error) {
         console.error("Error fetching tickers:", error);
@@ -61,7 +68,7 @@ export const getMarketStatus = async () => {
     try {
         const response = await axios.get(`${API_Base_URL}/market-status`);
         const data = response.data;
-        if (data && data.length > 0) {
+        if (data && Array.isArray(data) && data.length > 0) {
             setCache('market_status', data);
         }
         return data;
