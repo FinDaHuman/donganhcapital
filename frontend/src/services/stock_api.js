@@ -5,12 +5,54 @@ const baseUrl = import.meta.env.VITE_API_URL || 'https://donganhcapital.onrender
 // Remove trailing slash if present to avoid // in requests
 const API_Base_URL = baseUrl.replace(/\/$/, '');
 
+// --- localStorage Cache Helpers ---
+const CACHE_PREFIX = 'dac_cache_';
+
+function getCached(key, maxAgeMs) {
+    try {
+        const raw = localStorage.getItem(CACHE_PREFIX + key);
+        if (!raw) return null;
+        const { data, ts } = JSON.parse(raw);
+        if (Date.now() - ts < maxAgeMs) return data;
+        // Stale but return it anyway for instant display while fetching fresh
+        return { data, stale: true };
+    } catch {
+        return null;
+    }
+}
+
+function setCache(key, data) {
+    try {
+        localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ data, ts: Date.now() }));
+    } catch {
+        // localStorage full or unavailable, silently ignore
+    }
+}
+
+// --- API Functions ---
+
+export const getLoadingProgress = async () => {
+    try {
+        const response = await axios.get(`${API_Base_URL}/loading-progress`);
+        return response.data; // { loaded: N, total: M }
+    } catch (error) {
+        console.error("Error fetching loading progress:", error);
+        return { loaded: 0, total: 0 };
+    }
+};
+
 export const getTickers = async () => {
     try {
         const response = await axios.get(`${API_Base_URL}/stocks`);
-        return response.data; // Expected { count: N, stocks: [...] }
+        const data = response.data;
+        setCache('tickers', data);
+        return data;
     } catch (error) {
         console.error("Error fetching tickers:", error);
+        // Return cached data if server fails
+        const cached = getCached('tickers', 24 * 60 * 60 * 1000); // 24h fallback
+        if (cached && !cached.stale) return cached;
+        if (cached?.data) return cached.data;
         throw error;
     }
 };
@@ -18,12 +60,26 @@ export const getTickers = async () => {
 export const getMarketStatus = async () => {
     try {
         const response = await axios.get(`${API_Base_URL}/market-status`);
-        return response.data;
+        const data = response.data;
+        if (data && data.length > 0) {
+            setCache('market_status', data);
+        }
+        return data;
     } catch (error) {
         console.error("Error fetching market status:", error);
-        // Fallback or empty to avoid crash
+        // Return cached data if server fails
+        const cached = getCached('market_status', 24 * 60 * 60 * 1000); // 24h fallback
+        if (cached && !cached.stale) return cached;
+        if (cached?.data) return cached.data;
         return [];
     }
+};
+
+export const getCachedMarketStatus = () => {
+    const cached = getCached('market_status', 10 * 60 * 1000); // 10 min fresh
+    if (cached && !cached.stale) return cached;
+    if (cached?.data) return cached.data;
+    return null;
 };
 
 export const getPrediction = async (ticker) => {
