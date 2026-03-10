@@ -68,13 +68,13 @@ function App() {
                     )}
 
                     {activeTab === 'dashboard' && (
-                        <div className="h-full w-full relative">
+                        <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <Dashboard onSelectStock={handleSelectStock} />
                         </div>
                     )}
 
                     {activeTab === 'chart' && (
-                        <div className="h-full w-full flex flex-row min-h-0 overflow-hidden">
+                        <div className="flex-1 w-full flex flex-row min-h-0 overflow-hidden" style={{ minHeight: '600px' }}>
                             {/* Main Chart Area */}
                             <div className="flex-1 flex flex-col border-r border-gray-800 min-w-0 min-h-0 overflow-hidden">
                                 {/* Chart Container */}

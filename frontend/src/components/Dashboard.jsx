@@ -71,7 +71,14 @@ const Dashboard = ({ onSelectStock }) => {
     }, [gateOpen]);
 
     const processMarketData = (data) => {
-        const formatted = data.map(item => ({
+        // Deduplicate data by ticker
+        const uniqueDataMap = new Map();
+        data.forEach(item => {
+            uniqueDataMap.set(item.ticker, item);
+        });
+        const uniqueData = Array.from(uniqueDataMap.values());
+
+        const formatted = uniqueData.map(item => ({
             code: item.ticker,
             volume: item.size,
             change_pct: item.value,
@@ -119,6 +126,7 @@ const Dashboard = ({ onSelectStock }) => {
     const treemapData = () => {
         if (!marketStocks.length) return null;
 
+        const ids = [];
         const labels = [];
         const parents = [];
         const values = [];
@@ -126,15 +134,34 @@ const Dashboard = ({ onSelectStock }) => {
         const text = [];
 
         const presentSectors = new Set(marketStocks.map(s => getSector(s.code)));
+
+        const sectorVolumes = {};
+        marketStocks.forEach(s => {
+            const sector = getSector(s.code);
+            sectorVolumes[sector] = (sectorVolumes[sector] || 0) + (s.volume || 1);
+        });
+
+        const totalVolume = Object.values(sectorVolumes).reduce((a, b) => a + b, 0);
+
+        // Single Root Node
+        ids.push("Thị Trường");
+        labels.push("Thị Trường");
+        parents.push("");
+        values.push(totalVolume);
+        exactColors.push('#111213');
+        text.push("<b>Thị Trường</b>");
+
         presentSectors.forEach(sector => {
+            ids.push(sector);
             labels.push(sector);
-            parents.push("");
-            values.push(0);
+            parents.push("Thị Trường");
+            values.push(sectorVolumes[sector]);
             exactColors.push('#1a1c1e');
             text.push(`<b>${sector}</b>`);
         });
 
         marketStocks.forEach(s => {
+            ids.push(s.code);
             labels.push(s.code);
             parents.push(getSector(s.code));
             values.push(s.volume || 1);
@@ -154,12 +181,14 @@ const Dashboard = ({ onSelectStock }) => {
 
         return [{
             type: "treemap",
+            ids: ids,
             labels: labels,
             parents: parents,
             values: values,
             text: text,
             textinfo: "label+text",
             hoverinfo: "text",
+            branchvalues: "total",
             pathbar: { visible: false },
             tiling: { pad: 3 },
             marker: {
@@ -173,7 +202,7 @@ const Dashboard = ({ onSelectStock }) => {
     if (!gateOpen) {
         const pct = progress.total > 0 ? Math.round((progress.loaded / Math.max(progress.total, MIN_STOCKS_TO_SHOW)) * 100) : 0;
         return (
-            <div className="h-full w-full flex flex-col items-center justify-center bg-[#111213] gap-6 p-8">
+            <div className="flex-1 w-full flex flex-col items-center justify-center bg-[#111213] gap-6 p-8">
                 <div className="flex flex-col items-center gap-4 max-w-md w-full">
                     {/* Spinner */}
                     <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -204,7 +233,7 @@ const Dashboard = ({ onSelectStock }) => {
 
     // --- Normal Dashboard ---
     return (
-        <div className="h-full w-full flex flex-col bg-[#111213] overflow-hidden p-2 gap-2">
+        <div className="flex-1 w-full flex flex-col bg-[#111213] overflow-hidden p-2 gap-2">
 
             {/* Top Row: Indices */}
             <div className="flex w-full shrink-0 gap-2">
@@ -220,34 +249,36 @@ const Dashboard = ({ onSelectStock }) => {
             </div>
 
             {/* Bottom Row: Heatmap */}
-            <div className="flex-1 bg-[#1a1c1e] rounded-sm overflow-hidden relative shadow-lg">
-                {!loading && marketStocks.length > 0 ? (
-                    <Plot
-                        data={treemapData()}
-                        layout={{
-                            autosize: true,
-                            margin: { l: 0, r: 0, b: 0, t: 0, pad: 0 },
-                            paper_bgcolor: '#1a1c1e',
-                            font: { color: '#ffffff', family: 'sans-serif', size: 13 }
-                        }}
-                        config={{ displayModeBar: false, responsive: true }}
-                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                        useResizeHandler={true}
-                        onClick={(data) => {
-                            if (!data || !data.points || data.points.length === 0) return;
-                            const point = data.points[0];
-                            if (!point || !point.label) return;
-                            const code = point.label;
-                            if (code && !SECTORS[code]) {
-                                onSelectStock(code);
-                            }
-                        }}
-                    />
-                ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-                        {loading ? "Loading Market Data..." : "No Data Available"}
-                    </div>
-                )}
+            <div className="flex-1 bg-[#1a1c1e] rounded-sm relative shadow-lg min-h-[400px] overflow-hidden">
+                <div className="absolute inset-0">
+                    {!loading && marketStocks.length > 0 ? (
+                        <Plot
+                            data={treemapData()}
+                            layout={{
+                                autosize: true,
+                                margin: { l: 0, r: 0, b: 0, t: 0, pad: 0 },
+                                paper_bgcolor: '#1a1c1e',
+                                font: { color: '#ffffff', family: 'sans-serif', size: 13 }
+                            }}
+                            config={{ displayModeBar: false, responsive: true }}
+                            style={{ width: '100%', height: '100%', display: 'block' }}
+                            useResizeHandler={true}
+                            onClick={(data) => {
+                                if (!data || !data.points || data.points.length === 0) return;
+                                const point = data.points[0];
+                                if (!point || !point.label) return;
+                                const code = point.label;
+                                if (code && !SECTORS[code]) {
+                                    onSelectStock(code);
+                                }
+                            }}
+                        />
+                    ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-gray-500 bg-[#1a1c1e]">
+                            {loading ? "Loading Market Data..." : "No Data Available"}
+                        </div>
+                    )}
+                </div>
             </div>
 
         </div >

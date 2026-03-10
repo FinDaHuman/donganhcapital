@@ -22,3 +22,6 @@ dist/
 
 # To Do List
 ToDoList.txt
+
+# Agents
+.agents/
