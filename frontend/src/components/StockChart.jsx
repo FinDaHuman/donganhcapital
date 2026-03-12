@@ -10,8 +10,11 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         // history: {Date, Open, High, Low, Close, Volume}
         // forecast: {Date, Open, High, Low, Close, lower_bound, upper_bound...}
 
-        const histData = history.map(d => ({ ...d, type: 'history' }));
-        const foreData = (forecast || []).map(d => ({ ...d, type: 'forecast' }));
+        const safeHistory = Array.isArray(history) ? history : [];
+        const safeForecast = Array.isArray(forecast) ? forecast : [];
+
+        const histData = safeHistory.map(d => ({ ...d, type: 'history' }));
+        const foreData = safeForecast.map(d => ({ ...d, type: 'forecast' }));
 
         // Merge: Use History, append unique Forecast
         const combined = [...histData];
@@ -26,15 +29,15 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
 
         return combined.map(d => ({
             time: d.Date || d.date || d.time,
-            open: d.Open,
-            high: d.High,
-            low: d.Low,
-            close: d.Close,
-            volume: d.Volume || 0,
+            open: Number(d.Open),
+            high: Number(d.High),
+            low: Number(d.Low),
+            close: Number(d.Close),
+            volume: Number(d.Volume || 0),
             isForecast: d.type === 'forecast',
-            upper: d.upper_bound,
-            lower: d.lower_bound
-        })).filter(d => d.close > 0 && d.open > 0);
+            upper: d.upper_bound !== undefined && d.upper_bound !== null ? Number(d.upper_bound) : null,
+            lower: d.lower_bound !== undefined && d.lower_bound !== null ? Number(d.lower_bound) : null
+        })).filter(d => !isNaN(d.close) && d.close > 0 && !isNaN(d.open) && d.open > 0);
     }, [history, forecast]);
 
     // Viewport State (Indices)
@@ -89,6 +92,8 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         const width = container.clientWidth;
         const height = container.clientHeight;
 
+        if (width === 0 || height === 0) return;
+
         // Handle High DPI
         const dpr = window.devicePixelRatio || 1;
         canvas.width = width * dpr;
@@ -131,15 +136,19 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
             if (validHigh > maxY) maxY = validHigh;
         });
 
+        if (minY === Infinity || maxY === -Infinity) return;
+
         // Add padding
-        const range = maxY - minY;
-        const padding = range * 0.05 || 1; // Fallback if flat
+        let range = maxY - minY;
+        if (range === 0) range = 1; // Fallback if flat
+        const padding = range * 0.05;
         const rawMin = minY - padding;
         const rawMax = maxY + padding;
 
         // ===== 3. NICE SCALE =====
         const tickCount = 6; // User said 5, let's try 6 for better grid
-        const tickStep = niceNumber((rawMax - rawMin) / tickCount);
+        let tickStep = niceNumber((rawMax - rawMin) / tickCount);
+        if (tickStep <= 0 || isNaN(tickStep) || !isFinite(tickStep)) tickStep = 1;
 
         const yMin = Math.floor(rawMin / tickStep) * tickStep;
         const yMax = Math.ceil(rawMax / tickStep) * tickStep;
@@ -327,15 +336,28 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
 
     // Re-draw on resizing/viewport change
     useEffect(() => {
-        window.requestAnimationFrame(drawChart);
-    }, [fullData, viewport]);
+        let rafId;
+        const doDraw = () => { rafId = window.requestAnimationFrame(drawChart); };
 
-    // Handle Resize
-    useEffect(() => {
-        const handleResize = () => requestAnimationFrame(drawChart);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+        const container = containerRef.current;
+        if (container) {
+            let lastWidth = -1;
+            let lastHeight = -1;
+            const ro = new ResizeObserver((entries) => {
+                for (let entry of entries) {
+                    const { width, height } = entry.contentRect;
+                    if (Math.abs(width - lastWidth) > 1 || Math.abs(height - lastHeight) > 1) {
+                        lastWidth = width;
+                        lastHeight = height;
+                        doDraw();
+                    }
+                }
+            });
+            ro.observe(container);
+            doDraw();
+            return () => { ro.disconnect(); cancelAnimationFrame(rafId); };
+        }
+    }, [fullData, viewport]);
 
 
     // ==================== EVENT HANDLERS ====================

@@ -19,3 +19,9 @@ dist/
 
 # Data (Optional: Comment out if you want to commit specific data)
 # data/
+
+# To Do List
+ToDoList.txt
+
+# Agents
+.agents/

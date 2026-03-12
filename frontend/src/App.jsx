@@ -3,10 +3,11 @@ import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import StockChart from './components/StockChart';
 import { getPrediction, getTickers } from './services/stock_api';
+import LandingPage from './components/LandingPage';
 import { Search } from 'lucide-react';
 
 function App() {
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTab] = useState('home');
     const [selectedTicker, setSelectedTicker] = useState(null);
     const [predictionData, setPredictionData] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -54,21 +55,26 @@ function App() {
     const filteredStocks = stockList.filter(s => s.includes(searchTerm.toUpperCase()));
 
     return (
-        <div className="absolute inset-0 flex flex-col overflow-hidden bg-black text-gray-200 font-sans selection:bg-blue-900">
-            <Header activeTab={activeTab} onTabChange={setActiveTab} />
+        <div className="w-full min-h-screen flex flex-col overflow-hidden text-gray-200 font-sans" style={{ backgroundColor: '#000' }}>
+            {activeTab !== 'home' && <Header activeTab={activeTab} onTabChange={setActiveTab} />}
 
             <div className="flex-1 flex flex-col w-full min-h-0 relative">
-                {/* MarketBar Removed per user request */}
+                <main className="flex-1 overflow-hidden relative flex flex-col min-h-0" style={{ backgroundColor: '#000' }}>
 
-                <main className="flex-1 overflow-hidden bg-black relative flex flex-col min-h-0">
+                    {activeTab === 'home' && (
+                        <div className="h-full w-full overflow-y-auto">
+                            <LandingPage onTabChange={setActiveTab} />
+                        </div>
+                    )}
+
                     {activeTab === 'dashboard' && (
-                        <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800">
+                        <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <Dashboard onSelectStock={handleSelectStock} />
                         </div>
                     )}
 
                     {activeTab === 'chart' && (
-                        <div className="h-full w-full flex flex-row min-h-0 overflow-hidden">
+                        <div className="flex-1 w-full flex flex-row min-h-0 overflow-hidden" style={{ minHeight: '600px' }}>
                             {/* Main Chart Area */}
                             <div className="flex-1 flex flex-col border-r border-gray-800 min-w-0 min-h-0 overflow-hidden">
                                 {/* Chart Container */}
