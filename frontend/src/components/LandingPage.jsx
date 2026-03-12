@@ -63,7 +63,7 @@ const LandingPage = ({ onTabChange }) => {
                         </motion.div>
 
                         {/* Headline */}
-                        <motion.h1 variants={itemVariants} className="text-5xl sm:text-7xl md:text-[80px] font-bold leading-[1.05] tracking-tighter mb-8 cursor-default bg-clip-text text-transparent bg-gradient-to-b from-white to-gray-400">
+                        <motion.h1 variants={itemVariants} className="text-5xl sm:text-7xl md:text-[80px] font-bold leading-[1.05] tracking-tighter mb-4 pb-4 cursor-default bg-clip-text text-transparent bg-gradient-to-b from-white to-gray-400">
                             Where Market Data<br />Meets Smart Investing
                         </motion.h1>
 
@@ -94,7 +94,24 @@ const LandingPage = ({ onTabChange }) => {
                     DongAnh Capital
                 </div>
 
-                <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300 px-8 py-3 rounded-full border border-white/10 bg-white/5 backdrop-blur-md">
+                <div 
+                    onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        e.currentTarget.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+                        e.currentTarget.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
+                    }}
+                    className="group relative hidden md:flex items-center gap-8 text-sm font-medium text-gray-300 px-8 py-3 rounded-full bg-white/5 backdrop-blur-md border border-white/10"
+                >
+                    <div
+                        className="pointer-events-none absolute -inset-px opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-full"
+                        style={{
+                            background: `radial-gradient(100px circle at var(--mouse-x) var(--mouse-y), rgba(96, 165, 250, 0.8), transparent 100%)`,
+                            WebkitMask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
+                            WebkitMaskComposite: `xor`,
+                            maskComposite: `exclude`,
+                            padding: `1px`,
+                        }}
+                    />
                     {navLinks.map((link) => (
                         <button
                             key={link.id}
