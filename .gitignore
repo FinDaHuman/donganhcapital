@@ -25,3 +25,5 @@ ToDoList.txt
 
 # Agents
 .agents/
+AGENTS.md
+.cursor/
