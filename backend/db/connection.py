@@ -4,9 +4,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_engine = None
+
 def get_engine():
+    global _engine
+    if _engine is not None:
+        return _engine
+
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         return None
     
-    return create_engine(database_url)
+    _engine = create_engine(database_url)
+    return _engine

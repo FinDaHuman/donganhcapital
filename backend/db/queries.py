@@ -1,4 +1,5 @@
 import pandas as pd
+from sqlalchemy import text
 from .connection import get_engine
 
 def get_stocks_from_db():
@@ -19,25 +20,27 @@ def get_stock_ohlc(stock_id: str, limit: int = None):
         return pd.DataFrame()
     
     if limit:
-        query = f"""
+        query = text("""
         SELECT * FROM (
             SELECT Ngay as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
             FROM stock_ohlc 
-            WHERE stock_id = '{stock_id}' 
+            WHERE stock_id = :stock_id 
             ORDER BY Ngay DESC 
-            LIMIT {limit}
+            LIMIT :limit
         ) sub ORDER BY "Date" ASC
-        """
+        """)
+        params = {"stock_id": stock_id, "limit": limit}
     else:
-        query = f"""
+        query = text("""
         SELECT Ngay as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
         FROM stock_ohlc 
-        WHERE stock_id = '{stock_id}' 
+        WHERE stock_id = :stock_id 
         ORDER BY Ngay ASC
-        """
+        """)
+        params = {"stock_id": stock_id}
         
     try:
-        df = pd.read_sql(query, engine)
+        df = pd.read_sql(query, engine, params=params)
         df['Date'] = pd.to_datetime(df['Date'])
         return df
     except Exception as e:
@@ -88,23 +91,25 @@ def get_vnindex_from_db(limit: int = None):
         return pd.DataFrame()
     
     if limit:
-        query = f"""
+        query = text("""
         SELECT * FROM (
             SELECT Ngay as "Date", index_open as "Open", index_high as "High", index_low as "Low", index_close as "Close", index_volume as "Volume"
             FROM vnindex_ohlc
             ORDER BY Ngay DESC
-            LIMIT {limit}
+            LIMIT :limit
         ) sub ORDER BY "Date" ASC
-        """
+        """)
+        params = {"limit": limit}
     else:
-        query = """
+        query = text("""
         SELECT Ngay as "Date", index_open as "Open", index_high as "High", index_low as "Low", index_close as "Close", index_volume as "Volume"
         FROM vnindex_ohlc
         ORDER BY Ngay ASC
-        """
+        """)
+        params = None
         
     try:
-        df = pd.read_sql(query, engine)
+        df = pd.read_sql(query, engine, params=params)
         if not df.empty:
             df['Date'] = pd.to_datetime(df['Date'])
         return df
@@ -143,14 +148,14 @@ def get_ai_signals(date_str: str = None, latest: bool = False):
     if not date_str:
         return {"date": None, "signal_count": 0, "signals": []}
         
-    query = f"""
+    query = text("""
     SELECT date as "Ngay", stock_id, entry_price, tp_price, sl_price, prob
     FROM ai_signals
-    WHERE date = '{date_str}'
+    WHERE date = :date_str
     ORDER BY prob DESC
-    """
+    """)
     try:
-        df = pd.read_sql(query, engine)
+        df = pd.read_sql(query, engine, params={"date_str": date_str})
         if df.empty:
             return {"date": date_str, "signal_count": 0, "signals": []}
             
