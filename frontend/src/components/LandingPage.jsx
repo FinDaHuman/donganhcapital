@@ -25,8 +25,8 @@ const LandingPage = ({ onTabChange }) => {
     };
 
     const itemVariants = {
-        hidden: { opacity: 0, y: 30 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" } }
+        hidden: { opacity: 0 },
+        visible: { opacity: 1, transition: { duration: 0.8, ease: "easeOut" } }
     };
 
     const navLinks = [
@@ -85,9 +85,9 @@ const LandingPage = ({ onTabChange }) => {
         <div className="w-full min-h-screen bg-[#000000] text-white flex flex-col relative overflow-hidden font-sans">
 
             {/* Fallback gradient background — always visible, hidden when Spline is ready */}
-            <div 
+            <div
                 className="absolute inset-0 z-0 transition-opacity duration-1000"
-                style={{ 
+                style={{
                     opacity: splineReady ? 0 : 1,
                     background: 'radial-gradient(ellipse at 50% 80%, #0a1628 0%, #060d18 40%, #000000 100%)',
                     pointerEvents: 'none'
@@ -95,12 +95,12 @@ const LandingPage = ({ onTabChange }) => {
             />
 
             {/* Background Spline Animation — fades in when loaded */}
-            <div 
-                className="absolute inset-0 z-0 transition-opacity duration-1000" 
+            <div
+                className="absolute inset-0 z-0 transition-opacity duration-1000"
                 style={{ opacity: splineReady ? 1 : 0 }}
             >
-                <Spline 
-                    scene="https://prod.spline.design/KtfPeH8BYpGVHFCB/scene.splinecode" 
+                <Spline
+                    scene="https://prod.spline.design/KtfPeH8BYpGVHFCB/scene.splinecode"
                     onLoad={handleSplineLoad}
                 />
             </div>
@@ -115,7 +115,7 @@ const LandingPage = ({ onTabChange }) => {
                     DongAnh Capital
                 </div>
 
-                <div 
+                <div
                     onMouseMove={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         e.currentTarget.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
