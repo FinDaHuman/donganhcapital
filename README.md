@@ -1,72 +1,79 @@
-# DongAnh Capital - AI Stock Prediction Platform
+# DongAnh Capital - AI Stock Prediction & Signal Platform
 
-A comprehensive stock analysis and prediction platform for the Vietnam market ("DongAnh Capital"), featuring a high-fidelity **Finpath Pro** clone frontend and a **Quantile Regression LSTM** backend for probabilistic price forecasting.
+DongAnh Capital is a professional stock analysis and AI prediction platform tailored for the Vietnam market. It combines high-fidelity market visualization with advanced Machine Learning models to provide actionable insights for investors.
+
+---
 
 ## 🚀 Key Features
 
-### Frontend (User Interface)
-- **Pixel-Perfect Finpath Clone**: Dark mode aesthetic (`#111213`), professional stock charting, and responsive layout.
-- **Market Heatmap**: Real-time (or static demo) treemap visualization of market performance by volume and price change.
-- **Pro Charting Workstation**:
-    - Interactive **Candlestick Chart** (Open, High, Low, Close).
-    - **Prediction Bands**: Visual confidence intervals (5th, 50th, 95th percentiles) for future prices.
-    - **Drawing Tools**: Custom toolbar for technical analysis.
-    - **Zoom/Pan**: Mouse wheel zooming and drag-to-pan functionality.
+### 📊 Market Visualization
+- **Pro Charting Workstation**: High-performance Canvas-based candlestick charts with real-time zoom/pan and AI forecast bands.
+- **Market Heatmap**: Interactive Plotly-based treemap for sector-wide performance tracking.
+- **VNINDEX Analytics**: Real-time integration and historical tracking of the Vietnam index.
 
-### Backend (AI Core)
-- **Quantile Regression LSTM**: Advanced Deep Learning model architecture tailored for financial time-series.
-    - **Bidirectional LSTM**: Captures both past momentum and reversal patterns.
-    - **Confidence Intervals**: Outputs P5, P50 (Median), and P95 price forecasts to model uncertainty (crucial for VN market limits).
-- **FastAPI**: High-performance asynchronous API for real-time predictions.
-- **Model Loading**: Efficient "Load-Once" architecture using FastAPI lifespan events.
+### 🤖 AI Prediction & Signals
+- **Hybrid AI Models**: Support for both **XGBoost** (momentum-based) and **Quantile LSTM** (probabilistic forecasting).
+- **Daily AI Signals**: Automated pipeline generating Buy/Sell suggestions with Entry, Target (TP), and Stop Loss (SL) levels.
+- **Confidence Bands**: Visual P5/P50/P95 forecast intervals to quantify market uncertainty.
+
+### 🏛️ Architecture & Data
+- **Real-time Data**: Integrated with **Vnstock/VCI** for latest market data.
+- **NeonDB Scaling**: Cloud-native PostgreSQL (NeonDB) architecture for reliable and scalable data storage.
+- **FastAPI Core**: Asynchronous, high-performance API backend.
+
+---
 
 ## 🛠 Tech Stack
 
-- **Frontend**: React, Vite, Tailwind CSS, Plotly.js, Lucide React.
-- **Backend**: Python 3.10+, FastAPI, TensorFlow/Keras, Joblib, Uvicorn.
-- **Data**: Excel-based data ingestion (Bluechips & Midcaps).
+- **Frontend**: React 18, Vite, Tailwind CSS, Plotly.js, Framer Motion.
+- **Backend**: Python 3.10+, FastAPI, SQLAlchemy, NeonDB.
+- **AI/ML Core**: TensorFlow 2.15 (LSTM), XGBoost, Scikit-learn.
+
+---
 
 ## 📂 Project Structure
 
-```
+```text
 DongAnhCapital/
-├── frontend/                # React Application
+├── frontend/                 # React Application (Vite)
 │   ├── src/
-│   │   ├── components/      # UI Components (StockChart, Dashboard, MarketBar)
-│   │   ├── App.jsx          # Main Router & Layout
-│   │   └── main.jsx         # Entry Point
-│   └── tailwind.config.js   # Design Tokens (Finpath Colors)
+│   │   ├── components/       # UI (Dashboard, StockChart, Heatmap)
+│   │   ├── services/         # API integration (stock_api.js)
+│   │   └── App.jsx           # SPA Main Router
 │
-├── backend/                 # API & AI Model
-│   ├── data/                # Training Data (Excel)
-│   ├── models/              # Model Architecture
-│   │   └── quantile_lstm.py # The LSTM Class
-│   ├── main.py              # FastAPI Application
-│   ├── train_and_save.py    # Training Script
-│   └── requirements.txt     # Python Dependencies
+├── backend/                  # FastAPI & AI Backend
+│   ├── db/                   # NeonDB Connection & Queries
+│   ├── models/               # XGBoost & LSTM Model architectures
+│   ├── data/                 # Training datasets (Excel/Parquet)
+│   └── main.py               # API Entry Point (FastAPI)
 │
-└── README.md                # This file
+├── daily_suggestion_system/  # AI Signal Generation Pipeline
+│   ├── daily_pipeline/       # Automation scripts
+│   └── signals/              # Signal logic and backtesting
+│
+└── Documentations/           # Comprehensive SRS & Project Docs
 ```
+
+---
 
 ## ⚡ Getting Started
 
 ### 1. Backend Setup
 ```bash
 cd backend
-# Create virtual environment (optional but recommended)
+# Create & activate venv
 python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Train the Model (Required first time)
-python train_and_save.py
+# Configure Environment (.env)
+# DATABASE_URL=postgresql://user:pass@ep-hostname.region.aws.neon.tech/neondb
 
-# Start the API Server
+# Start Server
 uvicorn main:app --reload
 ```
-*API will run at `http://localhost:8000`*
 
 ### 2. Frontend Setup
 ```bash
@@ -77,15 +84,24 @@ npm install
 # Start Dev Server
 npm run dev
 ```
-*App will open at `http://localhost:5173`*
 
-## 📝 Training the Model
-The `train_and_save.py` script automatically:
-1. Loads all `.xlsx` files from `backend/data/`.
-2. Preprocesses data (Scaling, Sequence Generation).
-3. Trains the Quantile LSTM model.
-4. Saves the model (`.h5`) and scaler (`.pkl`) to `backend/models/`.
+---
 
-## ⚠️ Notes for Production
-- The frontend currently uses a **static fallback** for the Heatmap to avoid CORS issues on Vercel with the external VNDirect API.
-- Ensure the backend API URL is correctly configured in the frontend `.env` (currently hardcoded or relative).
+## 📝 Training & Signals
+- **Retraining**: Run `python backend/train_and_save.py` (ensure `backend/data` has latest OHLC data).
+- **Signal Generation**: Navigate to `daily_suggestion_system` and execute the pipeline scripts to update NeonDB signals.
+
+---
+
+## ⚠️ Notes
+- The platform is designed as a **Single Page Application (SPA)**. Start from the landing page and click "Get Started" to access the dashboard.
+- Prediction models require at least 60 trading days of history to generate valid forecasts.
+
+---
+
+## 👥 Contributors
+- **[Fullstack]** - Trần Huy Tuấn
+- **[Data Analyst]** - 
+- **[Data Engineer]** - 
+- **[AI Engineer]** - 
+- **[AI Engineer]** - 

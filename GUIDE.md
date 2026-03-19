@@ -1,78 +1,75 @@
-# 📘 DongAnh Capital Guide
+# 📘 DongAnh Capital Operations Guide
 
-This project consists of two parts:
-1.  **Frontend**: React + Vite (Port 5173 default)
-2.  **Backend**: FastAPI + TensorFlow (Port 8000 default)
+This guide provides technical instructions for configuring, running, and deploying the DongAnh Capital platform.
 
 ---
 
-## 💻 1. How to Run Locally
+## 🛠️ 1. Local Configuration
 
-### Prerequisites
-- Python 3.10 or higher
-- Node.js 18 or higher
+### NeonDB Connection
+The platform uses **NeonDB (PostgreSQL)** for all persistent storage. To connect your local backend:
+1.  Obtain your connection string from the Neon Console.
+2.  Set the `DATABASE_URL` environment variable:
+    ```bash
+    # Example format
+    export DATABASE_URL="postgresql://user:pass@ep-hostname.region.aws.neon.tech/neondb?sslmode=require"
+    ```
+3.  The backend uses SQLAlchemy with `psycopg2-binary` to interact with the database.
 
-### Step-by-Step
-
-**1. Start the Backend (API)**
-Open a terminal in the root folder:
-```powershell
-# Windows
-run_api.bat
-```
-*Or manually:*
-```powershell
-cd backend
-python -m venv venv
-.\venv\Scripts\activate
-pip install -r requirements.txt
-python train_and_save.py  # Run once to generate model
-uvicorn main:app --reload --port 8000
-```
-> API will run at: `http://localhost:8000`
-
-**2. Start the Frontend (Website)**
-Open a second terminal:
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-> App will run at: `http://localhost:5173`
+### Environment Variables
+- **Backend (`backend/.env`)**:
+  - `DATABASE_URL`: Connection string for NeonDB.
+  - `USE_XGB`: Set to `true` (default) for XGBoost, `false` for LSTM.
+  - `PORT`: API port (default: 8000).
+- **Frontend (`frontend/.env`)**:
+  - `VITE_API_URL`: Backend API URL (local: `http://localhost:8000`).
 
 ---
 
-## 🚀 2. How to Deploy (Go Public)
+## 🚀 2. AI Signal Pipeline
 
-### A. Deploy Frontend (Vercel)
-*Best for React apps. Free & Fast.*
+The **Daily Suggestion System** generates AI-driven buy/sell signals.
 
-1.  Push your code to **GitHub**.
-2.  Go to [Vercel.com](https://vercel.com) -> **Add New Project**.
-3.  Import your `donganhcapital` repo.
-4.  **Settings**:
-    -   **Framework**: Vite
-    -   **Root Directory**: `frontend` (Important!)
-5.  **Environment Variables**:
-    -   `VITE_API_URL`: `https://your-backend-url.onrender.com/api` (See Backend step below)
-6.  Click **Deploy**.
+### Running the Pipeline
+To manually trigger a signal update:
+1.  Navigate to `daily_suggestion_system/`.
+2.  Install requirements: `pip install -r requirements.txt`.
+3.  Run the main pipeline: `python -m daily_pipeline.run` (or similar entry point).
+4.  This script will:
+    -   Fetch latest OHLC from NeonDB.
+    -   Run signals logic.
+    -   Write results back to `ai_signals` and `daily_signal_summary` tables.
 
-### B. Deploy Backend (Render)
-*Best for Python APIs with ML models.*
+---
 
-1.  Go to [Render.com](https://render.com) -> **New Web Service**.
-2.  Connect your GitHub repo.
-3.  **Settings**:
-    -   **Root Directory**: `backend` (Important!)
-    -   **Build Command**: `pip install -r requirements.txt`
-    -   **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-    -   **Instance Type**: Select **Starter** or higher (Free tier might struggle with TensorFlow memory usage).
-4.  **Important**: Because the model training takes time/resources, ensure `vn_stock_predictor_model.h5` is **committed to Git** inside `backend/models/`.
-    -   *If the file is too large (>100MB), use Git LFS or run `python train_and_save.py` as part of the Build Command (but this increases build time).*
-5.  Click **Deploy**.
-6.  Copy the URL (e.g., `https://donganhcapital.onrender.com`) and update your Frontend's env var.
+## ☁️ 3. Deployment
 
-### C. Backend Strategy for Model Files
-Since you trained the model locally, the easiest path is to **commit the model files** so Render doesn't have to retrain.
-1. Ensure `backend/models/vn_stock_predictor_model.h5` is in your git repo.
-2. If it's ignored by `.gitignore`, un-ignore it: `git add -f backend/models/*.h5`
+### A. Backend (Render.com)
+- **Root Directory**: `backend`
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- **Model Files**: Ensure `backend/models/xgb_model` or `vn_stock_predictor` is committed. If using Git LFS, ensure Render supports it or train as part of the build step.
+
+### B. Frontend (Vercel)
+- **Framework Preset**: Vite
+- **Root Directory**: `frontend`
+- **Output Directory**: `dist`
+- **Environment Variable**: Set `VITE_API_URL` to your Render backend URL.
+
+---
+
+## 📊 4. Database Schema Reference
+
+The platform relies on the following key tables in NeonDB:
+- **`stocks`**: List of all available tickers.
+- **`stock_ohlc`**: Historical price data (Open, High, Low, Close, Volume).
+- **`vnindex_ohlc`**: Historical data for the VNINDEX.
+- **`ai_signals`**: Generated AI Buy/Sell recommendations.
+- **`daily_signal_summary`**: Aggregate counts of signals per day.
+
+---
+
+## 🧪 5. Troubleshooting
+- **Missing Predicton**: If the API returns a 503 error, the model files are likely missing from `backend/models/`. Run `python backend/train_and_save.py` locally first.
+- **Connection Refused**: Ensure the backend is running and `VITE_API_URL` in the frontend exactly matches the backend host (including port).
+- **Data Gaps**: The background poller requires a stable internet connection to reach Vnstock APIs. Check backend logs for rate-limiting errors.
