@@ -52,7 +52,11 @@ TRADE_END = datetime.today()
 TRADE_START = (TRADE_END - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
 TRADE_END = TRADE_END.strftime("%Y-%m-%d")
 
-MODEL_PATH = "/home/doanlong/Do_an/Project/backend/model/breakout_model.pkl"
+# Resolve model path relative to this file (works in both local and CI)
+MODEL_PATH = str(Path(__file__).resolve().parents[2] / "model" / "breakout_model.pkl")
+
+# CI_MODE skips local-only features (TradeManager, JSON saving)
+CI_MODE = os.environ.get("CI", "").lower() == "true"
 
 
 # ===============================
@@ -150,12 +154,16 @@ def build_dataset():
 
 
 # ===============================
-# SAVE JSON SIGNAL
+# SAVE JSON SIGNAL (local only)
 # ===============================
 
 def save_json_signal(df):
+    """Save signals to local JSON file. Skipped in CI mode."""
+    if CI_MODE:
+        logger.info("CI mode: skipping JSON save")
+        return
 
-    os.makedirs("signals", exist_ok=True)
+    os.makedirs("signals/daily", exist_ok=True)
 
     date = datetime.today().strftime("%Y-%m-%d")
     path = f"signals/daily/{date}.json"
@@ -240,6 +248,38 @@ def save_db_signal(df):
     except Exception as e:
         logger.error(f"Error saving signals to DB: {e}")
 
+
+# ===============================
+# SAVE DB SUMMARY
+# ===============================
+
+def save_db_summary(signal_count):
+    """Save daily signal count to daily_signal_summary table."""
+    try:
+        engine = get_engine()
+        if not engine:
+            logger.warning("No DB engine available for saving summary.")
+            return
+
+        date_str = datetime.today().strftime("%Y-%m-%d")
+
+        with engine.begin() as conn:
+            query = text("""
+            INSERT INTO daily_signal_summary (date, signal_count, updated_at)
+            VALUES (:date, :signal_count, NOW())
+            ON CONFLICT (date)
+            DO UPDATE SET
+                signal_count = EXCLUDED.signal_count,
+                updated_at = NOW();
+            """)
+            conn.execute(query, {
+                "date": date_str,
+                "signal_count": signal_count
+            })
+        logger.info(f"Summary saved: {date_str} → {signal_count} signals")
+    except Exception as e:
+        logger.error(f"Error saving summary to DB: {e}")
+
 # ===============================
 # PREDICT
 # ===============================
@@ -260,6 +300,7 @@ def predict_today():
     if len(today_df) == 0:
         logger.info("No breakout today")
         save_json_signal(pd.DataFrame())
+        save_db_summary(0)
         return
 
 
@@ -296,6 +337,7 @@ def predict_today():
     if len(today_df) == 0:
         logger.info("No stock today (filtered)")
         save_json_signal(pd.DataFrame())
+        save_db_summary(0)
         return
 
 
@@ -339,6 +381,7 @@ def predict_today():
     if len(today_df) == 0:
         logger.info("No stock today (missing features)")
         save_json_signal(pd.DataFrame())
+        save_db_summary(0)
         return
 
 
@@ -401,24 +444,30 @@ def predict_today():
 
 
     # ===============================
-    # TRADE MANAGER
+    # TRADE MANAGER (local only)
     # ===============================
 
-    from manager.trade_manager import TradeManager
+    if not CI_MODE:
+        try:
+            from manager.trade_manager import TradeManager
 
-    tm = TradeManager()
+            tm = TradeManager()
 
-    # load market data để check TP/SL
-    market_df = load_stock_df()
+            # load market data để check TP/SL
+            market_df = load_stock_df()
 
-    tm.update_positions(market_df)
+            tm.update_positions(market_df)
 
-    # add signal mới
-    tm.add_new_signals(today_df)
+            # add signal mới
+            tm.add_new_signals(today_df)
 
-    tm.finalize()
+            tm.finalize()
 
-    tm.save()
+            tm.save()
+        except Exception as e:
+            logger.warning(f"TradeManager skipped: {e}")
+    else:
+        logger.info("CI mode: skipping TradeManager")
 
     # ===============================
     # SAVE SIGNAL JSON & DB
@@ -426,6 +475,7 @@ def predict_today():
 
     save_json_signal(today_df)
     save_db_signal(today_df)
+    save_db_summary(len(today_df))
 
     return today_df
 

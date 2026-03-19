@@ -207,3 +207,20 @@ def get_ai_signals(date_str: str = None, latest: bool = False):
     except Exception as e:
         print(f"Error fetching ai_signals: {e}")
         return {"date": date_str, "signal_count": 0, "signals": []}
+
+
+def get_daily_signal_summary():
+    """Return list of {date, signal_count} from daily_signal_summary."""
+    engine = get_engine()
+    if not engine:
+        return []
+    query = 'SELECT date, signal_count FROM daily_signal_summary ORDER BY date DESC'
+    try:
+        df = pd.read_sql(query, engine)
+        if df.empty:
+            return []
+        df['date'] = df['date'].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
+        return df.to_dict(orient="records")
+    except Exception as e:
+        print(f"Error fetching daily_signal_summary: {e}")
+        return []

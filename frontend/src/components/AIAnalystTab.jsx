@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { getAISignals, getAISignalsDates } from '../services/stock_api';
+import { getAISignals, getAISignalsDates, getAISignalsSummary } from '../services/stock_api';
 
 const AIAnalystTab = ({ onSelectStock }) => {
     const [dates, setDates] = useState([]);
     const [selectedDate, setSelectedDate] = useState('');
     const [data, setData] = useState({ signal_count: 0, signals: [] });
     const [loading, setLoading] = useState(true);
+    const [summary, setSummary] = useState([]);
 
     useEffect(() => {
         const fetchDates = async () => {
-            const fetchedDates = await getAISignalsDates();
+            const [fetchedDates, fetchedSummary] = await Promise.all([
+                getAISignalsDates(),
+                getAISignalsSummary()
+            ]);
             setDates(fetchedDates);
+            setSummary(fetchedSummary);
             if (fetchedDates.length > 0) {
                 setSelectedDate(fetchedDates[0]);
                 fetchSignals(fetchedDates[0]);
@@ -56,6 +61,26 @@ const AIAnalystTab = ({ onSelectStock }) => {
                         </select>
                     </div>
                 </div>
+
+                {/* Summary Stats */}
+                {summary.length > 0 && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                        <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
+                            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Trading Days</div>
+                            <div className="text-2xl font-bold text-white">{summary.length}</div>
+                        </div>
+                        <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
+                            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Signals</div>
+                            <div className="text-2xl font-bold text-blue-400">
+                                {summary.reduce((acc, s) => acc + (s.signal_count || 0), 0)}
+                            </div>
+                        </div>
+                        <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
+                            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Today's Signals</div>
+                            <div className="text-2xl font-bold text-green-400">{data.signal_count}</div>
+                        </div>
+                    </div>
+                )}
 
                 {loading ? (
                     <div className="flex justify-center items-center py-20">

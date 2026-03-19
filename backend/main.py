@@ -17,7 +17,8 @@ import time
 from db.queries import (
     get_stocks_from_db, get_stock_ohlc, 
     get_market_status_from_db, get_vnindex_from_db,
-    get_ai_signals_dates, get_ai_signals
+    get_ai_signals_dates, get_ai_signals,
+    get_daily_signal_summary
 )
 
 # Disable GPU for lighter inference if needed
@@ -152,6 +153,13 @@ async def get_ai_signals_dates_endpoint(concurrency: Any = Depends(limit_concurr
     def compute():
         return get_ai_signals_dates()
     return get_cached("ai_signals_dates", 120, compute)
+
+@app.get("/api/ai-signals/summary")
+async def get_ai_signals_summary_endpoint(concurrency: Any = Depends(limit_concurrency)):
+    """Return daily signal count summary"""
+    def compute():
+        return get_daily_signal_summary()
+    return get_cached("ai_signals_summary", 120, compute)
 
 @app.get("/api/sectors")
 async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):

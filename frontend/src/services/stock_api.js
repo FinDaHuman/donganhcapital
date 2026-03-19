@@ -131,3 +131,13 @@ export const getSectors = async () => {
         return {};
     }
 };
+
+export const getAISignalsSummary = async () => {
+    try {
+        const response = await axios.get(`${API_Base_URL}/ai-signals/summary`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching AI signals summary:", error);
+        return [];
+    }
+};
