@@ -1,6 +1,58 @@
+import math
+import numpy as np
 import pandas as pd
 from sqlalchemy import text
 from .connection import get_engine
+
+
+def _safe_float(x):
+    """Convert to float, returning None for NaN/inf/-inf/NaT/None."""
+    if x is None or (isinstance(x, float) and not math.isfinite(x)):
+        return None
+    try:
+        if pd.isna(x):
+            return None
+    except (ValueError, TypeError):
+        pass
+    try:
+        val = float(x)
+        return val if math.isfinite(val) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _safe_round(x, decimals=2):
+    """Round a value safely, returning None for NaN/inf/-inf."""
+    val = _safe_float(x)
+    return round(val, decimals) if val is not None else None
+
+
+def _sanitize_records(records):
+    """Convert all non-JSON-serializable values (numpy types, NaN, NaT, inf) to None or native Python types."""
+    clean = []
+    for row in records:
+        clean_row = {}
+        for key, val in row.items():
+            # Handle None
+            if val is None:
+                clean_row[key] = None
+            # Handle pandas NaT and numpy NaN
+            elif pd.isna(val):
+                clean_row[key] = None
+            # Handle numpy integer types
+            elif isinstance(val, (np.integer,)):
+                clean_row[key] = int(val)
+            # Handle numpy float types and Python floats
+            elif isinstance(val, (np.floating, float)):
+                clean_row[key] = float(val) if math.isfinite(float(val)) else None
+            # Handle numpy bool
+            elif isinstance(val, (np.bool_,)):
+                clean_row[key] = bool(val)
+            else:
+                clean_row[key] = val
+        clean.append(clean_row)
+    return clean
+
 
 def get_stocks_from_db():
     engine = get_engine()
@@ -195,12 +247,12 @@ def get_ai_signals(date_str: str = None, latest: bool = False):
         # convert numeric types to float and round prices
         for col in ['entry_price', 'tp_price', 'sl_price']:
             if col in df.columns:
-                df[col] = df[col].apply(lambda x: round(float(x), 2) if pd.notnull(x) else None)
+                df[col] = df[col].apply(lambda x: _safe_round(x, 2))
         if 'prob' in df.columns:
-            df['prob'] = df['prob'].apply(lambda x: round(float(x), 4) if pd.notnull(x) else None)
+            df['prob'] = df['prob'].apply(lambda x: _safe_round(x, 4))
             
         signals = df.to_dict(orient="records")
-        return {"date": date_str, "signal_count": len(signals), "signals": signals}
+        return {"date": date_str, "signal_count": len(signals), "signals": _sanitize_records(signals)}
     except Exception as e:
         print(f"Error fetching ai_signals: {e}")
         return {"date": date_str, "signal_count": 0, "signals": []}
@@ -256,19 +308,20 @@ def get_trade_history(status_filter: str = None):
         for col in ['entry_date', 'exit_date']:
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
-        # Convert numerics to float, round prices, replace NaN with None
+        # Convert numerics safely (handles NaN, inf, -inf)
         for col in ['entry_price', 'tp_price', 'sl_price', 'exit_price']:
             if col in df.columns:
-                df[col] = df[col].apply(lambda x: round(float(x), 2) if pd.notnull(x) else None)
+                df[col] = df[col].apply(lambda x: _safe_round(x, 2))
         if 'return_pct' in df.columns:
-            df['return_pct'] = df['return_pct'].apply(lambda x: round(float(x), 6) if pd.notnull(x) else None)
+            df['return_pct'] = df['return_pct'].apply(lambda x: _safe_round(x, 6))
         if 'holding_days' in df.columns:
-            df['holding_days'] = df['holding_days'].apply(lambda x: int(x) if pd.notnull(x) else None)
+            df['holding_days'] = df['holding_days'].apply(lambda x: int(x) if pd.notnull(x) and _safe_float(x) is not None else None)
 
-        # Replace any remaining NaN with None (critical for JSON serialization)
+        # Replace any remaining NaN/inf with None
         df = df.where(df.notnull(), None)
 
-        return df.to_dict(orient="records")
+        records = df.to_dict(orient="records")
+        return _sanitize_records(records)
     except Exception as e:
         print(f"Error fetching trade_history: {e}")
         return []

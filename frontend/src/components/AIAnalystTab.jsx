@@ -39,14 +39,22 @@ const AIAnalystTab = ({ onSelectStock }) => {
                 getAISignalsDates(),
                 getAISignalsSummary()
             ]);
-            setDates(fetchedDates);
-            setSummary(fetchedSummary);
-            if (fetchedDates.length > 0) {
-                setSelectedDate(fetchedDates[0]);
-                fetchSignals(fetchedDates[0]);
-            } else {
-                fetchSignals(null, true);
+            
+            // Get today's date in YYYY-MM-DD format (Vietnam timezone)
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+            
+            // Add today to the dates list if not already present
+            let allDates = fetchedDates;
+            if (!fetchedDates.includes(today)) {
+                allDates = [today, ...fetchedDates];
             }
+            
+            setDates(allDates);
+            setSummary(fetchedSummary);
+            
+            // Default to today
+            setSelectedDate(today);
+            fetchSignals(today);
         };
         fetchDates();
         fetchTradeData();
@@ -156,12 +164,20 @@ const AIAnalystTab = ({ onSelectStock }) => {
                             <div className="flex justify-center items-center py-20">
                                 <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                             </div>
-                        ) : data.signals.length === 0 ? (
-                            <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center animate-fade-in">
-                                <h3 className="text-xl text-gray-300 mb-2">No signals found for {selectedDate}</h3>
-                                <p className="text-gray-500">The AI model did not detect any breakout patterns on this date.</p>
-                            </div>
-                        ) : (
+                        ) : data.signals.length === 0 ? (() => {
+                            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+                            const isToday = selectedDate === today;
+                            return (
+                                <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center animate-fade-in">
+                                    <h3 className="text-xl text-gray-300 mb-2">No signals found for {selectedDate}</h3>
+                                    {isToday ? (
+                                        <p className="text-gray-500">Signals are generated daily at <span className="text-blue-400 font-medium">3:02 PM (Vietnam time)</span>. Check back after the pipeline completes.</p>
+                                    ) : (
+                                        <p className="text-gray-500">The AI model did not detect any breakout patterns on this date.</p>
+                                    )}
+                                </div>
+                            );
+                        })() : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 animate-fade-in">
                                 {data.signals.map((sig, idx) => (
                                     <div 
