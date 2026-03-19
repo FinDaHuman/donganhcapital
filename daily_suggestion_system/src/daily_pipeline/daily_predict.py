@@ -5,9 +5,8 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 import joblib
-import json
-import os
 import logging
+
 
 from datetime import datetime, timedelta
 from sqlalchemy import text
@@ -55,8 +54,7 @@ TRADE_END = TRADE_END.strftime("%Y-%m-%d")
 # Resolve model path relative to this file (works in both local and CI)
 MODEL_PATH = str(Path(__file__).resolve().parents[2] / "model" / "breakout_model.pkl")
 
-# CI_MODE skips local-only features (TradeManager, JSON saving)
-CI_MODE = os.environ.get("CI", "").lower() == "true"
+
 
 
 # ===============================
@@ -153,55 +151,6 @@ def build_dataset():
     return feature_df
 
 
-# ===============================
-# SAVE JSON SIGNAL (local only)
-# ===============================
-
-def save_json_signal(df):
-    """Save signals to local JSON file. Skipped in CI mode."""
-    if CI_MODE:
-        logger.info("CI mode: skipping JSON save")
-        return
-
-    os.makedirs("signals/daily", exist_ok=True)
-
-    date = datetime.today().strftime("%Y-%m-%d")
-    path = f"signals/daily/{date}.json"
-
-    if df is None or len(df) == 0:
-
-        result = {
-            "date": date,
-            "signal_count": 0,
-            "signals": []
-        }
-
-        with open(path, "w") as f:
-            json.dump(result, f, indent=4)
-
-        logger.info(f"JSON saved → {path}")
-        return
-
-
-    signals = df[
-        ["Ngay", "stock_id", "entry_price", "tp_price", "sl_price", "prob"]
-    ].copy()
-
-    signals["Ngay"] = signals["Ngay"].astype(str)
-
-    num_cols = signals.select_dtypes(include=["float64", "float32"]).columns
-    signals[num_cols] = signals[num_cols].round(4)
-
-    result = {
-        "date": date,
-        "signal_count": len(signals),
-        "signals": signals.to_dict("records")
-    }
-
-    with open(path, "w") as f:
-        json.dump(result, f, indent=4)
-
-    logger.info(f"{len(signals)} signals saved → {path}")
 
 # ===============================
 # SAVE DB SIGNAL
@@ -299,7 +248,6 @@ def predict_today():
 
     if len(today_df) == 0:
         logger.info("No breakout today")
-        save_json_signal(pd.DataFrame())
         save_db_summary(0)
         return
 
@@ -336,7 +284,6 @@ def predict_today():
 
     if len(today_df) == 0:
         logger.info("No stock today (filtered)")
-        save_json_signal(pd.DataFrame())
         save_db_summary(0)
         return
 
@@ -380,7 +327,6 @@ def predict_today():
 
     if len(today_df) == 0:
         logger.info("No stock today (missing features)")
-        save_json_signal(pd.DataFrame())
         save_db_summary(0)
         return
 
@@ -444,36 +390,37 @@ def predict_today():
 
 
     # ===============================
-    # TRADE MANAGER (local only)
+    # TRADE MANAGER
     # ===============================
 
-    if not CI_MODE:
-        try:
-            from manager.trade_manager import TradeManager
+    try:
+        from manager.trade_manager import TradeManager
 
-            tm = TradeManager()
+        engine = get_engine()
 
-            # load market data để check TP/SL
-            market_df = load_stock_df()
+        tm = TradeManager(engine=engine)
 
-            tm.update_positions(market_df)
+        # load market data to check TP/SL
+        market_df = load_stock_df()
 
-            # add signal mới
-            tm.add_new_signals(today_df)
+        tm.update_positions(market_df)
 
-            tm.finalize()
+        # add new signals
+        tm.add_new_signals(today_df)
 
-            tm.save()
-        except Exception as e:
-            logger.warning(f"TradeManager skipped: {e}")
-    else:
-        logger.info("CI mode: skipping TradeManager")
+        tm.finalize()
+
+        # Sync to NeonDB
+        if engine:
+            tm.save_to_db()
+
+    except Exception as e:
+        logger.warning(f"TradeManager error: {e}")
 
     # ===============================
-    # SAVE SIGNAL JSON & DB
+    # SAVE SIGNAL TO DB
     # ===============================
 
-    save_json_signal(today_df)
     save_db_signal(today_df)
     save_db_summary(len(today_df))
 

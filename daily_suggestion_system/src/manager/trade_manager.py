@@ -1,28 +1,63 @@
-import json
-import os
+import logging
 import pandas as pd
 from datetime import datetime
+from sqlalchemy import text
+
+
+logger = logging.getLogger(__name__)
 
 
 class TradeManager:
 
-    def __init__(self):
+    def __init__(self, engine=None):
+        """
+        Args:
+            engine: SQLAlchemy engine for DB operations.
+        """
+        self.engine = engine
 
-        self.path = "signals/history/trade_history.json"
-
-        os.makedirs("data", exist_ok=True)
-
-        if os.path.exists(self.path):
-
-            with open(self.path, "r") as f:
-                self.data = json.load(f)
-
+        if engine:
+            self._load_from_db()
         else:
+            logger.warning("No DB engine provided — starting with empty state")
+            self.data = {"last_update": None, "trades": []}
+
+
+    def _load_from_db(self):
+        """Load trade history from NeonDB trade_history table."""
+        try:
+            query = """
+            SELECT stock_id, entry_date, entry_price, tp_price, sl_price,
+                   exit_date, exit_price, status, return_pct, holding_days
+            FROM trade_history
+            ORDER BY entry_date ASC
+            """
+            df = pd.read_sql(query, self.engine)
+
+            trades = []
+            for _, row in df.iterrows():
+                trade = {
+                    "stock_id": row["stock_id"],
+                    "entry_date": str(row["entry_date"]),
+                    "entry_price": float(row["entry_price"]) if pd.notnull(row["entry_price"]) else None,
+                    "tp_price": float(row["tp_price"]) if pd.notnull(row["tp_price"]) else None,
+                    "sl_price": float(row["sl_price"]) if pd.notnull(row["sl_price"]) else None,
+                    "exit_date": str(row["exit_date"]) if pd.notnull(row["exit_date"]) else None,
+                    "exit_price": float(row["exit_price"]) if pd.notnull(row["exit_price"]) else None,
+                    "status": row["status"],
+                    "return_pct": float(row["return_pct"]) if pd.notnull(row["return_pct"]) else None,
+                    "holding_days": int(row["holding_days"]) if pd.notnull(row["holding_days"]) else None,
+                }
+                trades.append(trade)
 
             self.data = {
-                "last_update": None,
-                "trades": []
+                "last_update": datetime.today().strftime("%Y-%m-%d"),
+                "trades": trades
             }
+            logger.info(f"Loaded {len(trades)} trades from DB")
+        except Exception as e:
+            logger.error(f"Error loading trades from DB: {e}")
+            self.data = {"last_update": None, "trades": []}
 
 
     # ==================================
@@ -148,13 +183,50 @@ class TradeManager:
 
 
     # ==================================
-    # SAVE JSON
+    # SAVE TO NEONDB
     # ==================================
 
-    def save(self):
+    def save_to_db(self):
+        """Upsert all trades into NeonDB trade_history table."""
+        if not self.engine:
+            logger.warning("No DB engine available for saving trade history.")
+            return
 
-        self.data["last_update"] = datetime.today().strftime("%Y-%m-%d")
+        try:
+            with self.engine.begin() as conn:
+                for trade in self.data["trades"]:
+                    entry_date = trade["entry_date"].split(" ")[0] if trade.get("entry_date") else None
+                    exit_date = trade["exit_date"].split(" ")[0] if trade.get("exit_date") else None
 
-        with open(self.path, "w") as f:
+                    query = text("""
+                    INSERT INTO trade_history 
+                        (stock_id, entry_date, entry_price, tp_price, sl_price,
+                         exit_date, exit_price, status, return_pct, holding_days)
+                    VALUES 
+                        (:stock_id, :entry_date, :entry_price, :tp_price, :sl_price,
+                         :exit_date, :exit_price, :status, :return_pct, :holding_days)
+                    ON CONFLICT (stock_id, entry_date) 
+                    DO UPDATE SET
+                        exit_date = EXCLUDED.exit_date,
+                        exit_price = EXCLUDED.exit_price,
+                        status = EXCLUDED.status,
+                        return_pct = EXCLUDED.return_pct,
+                        holding_days = EXCLUDED.holding_days;
+                    """)
 
-            json.dump(self.data, f, indent=4)
+                    conn.execute(query, {
+                        "stock_id": trade["stock_id"],
+                        "entry_date": entry_date,
+                        "entry_price": trade.get("entry_price"),
+                        "tp_price": trade.get("tp_price"),
+                        "sl_price": trade.get("sl_price"),
+                        "exit_date": exit_date,
+                        "exit_price": trade.get("exit_price"),
+                        "status": trade["status"],
+                        "return_pct": trade.get("return_pct"),
+                        "holding_days": trade.get("holding_days"),
+                    })
+
+            logger.info(f"{len(self.data['trades'])} trades synced to NeonDB")
+        except Exception as e:
+            logger.error(f"Error saving trades to DB: {e}")

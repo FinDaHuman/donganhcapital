@@ -33,7 +33,6 @@ jobs:
       - name: Run daily pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          CI: 'true'
         working-directory: daily_suggestion_system/src/daily_pipeline
         run: |
           python run_daily_pipeline.py

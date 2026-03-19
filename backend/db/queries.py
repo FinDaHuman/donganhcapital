@@ -224,3 +224,103 @@ def get_daily_signal_summary():
     except Exception as e:
         print(f"Error fetching daily_signal_summary: {e}")
         return []
+
+
+def get_trade_history(status_filter: str = None):
+    """Return trade history records, optionally filtered by status."""
+    engine = get_engine()
+    if not engine:
+        return []
+
+    if status_filter:
+        query = text("""
+        SELECT stock_id, entry_date, entry_price, tp_price, sl_price,
+               exit_date, exit_price, status, return_pct, holding_days
+        FROM trade_history
+        WHERE status = :status
+        ORDER BY entry_date DESC
+        """)
+        params = {"status": status_filter.upper()}
+    else:
+        query = text("""
+        SELECT stock_id, entry_date, entry_price, tp_price, sl_price,
+               exit_date, exit_price, status, return_pct, holding_days
+        FROM trade_history
+        ORDER BY entry_date DESC
+        """)
+        params = None
+
+    try:
+        df = pd.read_sql(query, engine, params=params)
+        if df.empty:
+            return []
+
+        # Format dates
+        for col in ['entry_date', 'exit_date']:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
+        # Convert numerics to float
+        for col in ['entry_price', 'tp_price', 'sl_price', 'exit_price', 'return_pct']:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: float(x) if pd.notnull(x) else None)
+        if 'holding_days' in df.columns:
+            df['holding_days'] = df['holding_days'].apply(lambda x: int(x) if pd.notnull(x) else None)
+
+        return df.to_dict(orient="records")
+    except Exception as e:
+        print(f"Error fetching trade_history: {e}")
+        return []
+
+
+def get_trade_history_stats():
+    """Return portfolio stats computed from trade_history."""
+    engine = get_engine()
+    if not engine:
+        return {}
+
+    query = """
+    SELECT stock_id, status, return_pct, holding_days
+    FROM trade_history
+    """
+    try:
+        df = pd.read_sql(query, engine)
+        if df.empty:
+            return {"total_trades": 0}
+
+        total = len(df)
+        closed = df[df['status'].isin(['TP', 'SL', 'TIMEOUT'])]
+        tp_count = len(df[df['status'] == 'TP'])
+        sl_count = len(df[df['status'] == 'SL'])
+        timeout_count = len(df[df['status'] == 'TIMEOUT'])
+        hold_count = len(df[df['status'] == 'HOLD'])
+
+        # Win rate (TP / closed trades)
+        win_rate = (tp_count / len(closed) * 100) if len(closed) > 0 else 0
+
+        # Avg return on closed trades
+        closed_returns = closed['return_pct'].dropna()
+        avg_return = float(closed_returns.mean() * 100) if len(closed_returns) > 0 else 0
+
+        # Best and worst trade
+        best_return = float(closed_returns.max() * 100) if len(closed_returns) > 0 else 0
+        worst_return = float(closed_returns.min() * 100) if len(closed_returns) > 0 else 0
+
+        # Avg holding days for closed trades
+        closed_days = closed['holding_days'].dropna()
+        avg_holding = float(closed_days.mean()) if len(closed_days) > 0 else 0
+
+        return {
+            "total_trades": total,
+            "tp_count": tp_count,
+            "sl_count": sl_count,
+            "timeout_count": timeout_count,
+            "hold_count": hold_count,
+            "win_rate": round(win_rate, 1),
+            "avg_return": round(avg_return, 2),
+            "best_return": round(best_return, 2),
+            "worst_return": round(worst_return, 2),
+            "avg_holding_days": round(avg_holding, 1),
+        }
+    except Exception as e:
+        print(f"Error fetching trade_history stats: {e}")
+        return {"total_trades": 0}

@@ -18,7 +18,8 @@ from db.queries import (
     get_stocks_from_db, get_stock_ohlc, 
     get_market_status_from_db, get_vnindex_from_db,
     get_ai_signals_dates, get_ai_signals,
-    get_daily_signal_summary
+    get_daily_signal_summary,
+    get_trade_history, get_trade_history_stats
 )
 
 # Disable GPU for lighter inference if needed
@@ -160,6 +161,21 @@ async def get_ai_signals_summary_endpoint(concurrency: Any = Depends(limit_concu
     def compute():
         return get_daily_signal_summary()
     return get_cached("ai_signals_summary", 120, compute)
+
+@app.get("/api/trade-history")
+async def get_trade_history_endpoint(status: Optional[str] = None, concurrency: Any = Depends(limit_concurrency)):
+    """Return trade history records, optionally filtered by status (TP, SL, TIMEOUT, HOLD)"""
+    def compute():
+        return get_trade_history(status)
+    cache_key = f"trade_history_{status}"
+    return get_cached(cache_key, 120, compute)
+
+@app.get("/api/trade-history/stats")
+async def get_trade_history_stats_endpoint(concurrency: Any = Depends(limit_concurrency)):
+    """Return portfolio stats from trade history"""
+    def compute():
+        return get_trade_history_stats()
+    return get_cached("trade_history_stats", 120, compute)
 
 @app.get("/api/sectors")
 async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):

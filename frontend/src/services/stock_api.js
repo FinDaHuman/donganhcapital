@@ -141,3 +141,26 @@ export const getAISignalsSummary = async () => {
         return [];
     }
 };
+
+export const getTradeHistory = async (status = null) => {
+    try {
+        let url = `${API_Base_URL}/trade-history`;
+        if (status) url += `?status=${status}`;
+        const response = await axios.get(url);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching trade history:", error);
+        return [];
+    }
+};
+
+export const getTradeHistoryStats = async () => {
+    try {
+        const response = await axios.get(`${API_Base_URL}/trade-history/stats`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching trade history stats:", error);
+        return { total_trades: 0 };
+    }
+};
+
