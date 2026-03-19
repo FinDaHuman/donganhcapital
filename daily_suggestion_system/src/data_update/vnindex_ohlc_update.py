@@ -51,15 +51,15 @@ def update_vnindex_ohlc(start="2009-06-01", end=None):
         ]
     ]
 
-    # loại duplicate trong dataframe
+    # Remove duplicate in dataframe
     market_df = market_df.drop_duplicates(subset=["Ngay"])
 
-    # tránh lỗi numeric
+    # avoid numeric error
     market_df = market_df.replace([np.inf, -np.inf], np.nan)
 
     with engine.begin() as conn:
 
-        # 1️⃣ insert vào bảng tạm
+        # Insert temp table
         market_df.to_sql(
             "vnindex_temp",
             conn,
@@ -69,7 +69,7 @@ def update_vnindex_ohlc(start="2009-06-01", end=None):
             method="multi"
         )
 
-        # 2️⃣ upsert vào bảng chính
+        # Upsert main table
         conn.execute(text("""
         INSERT INTO vnindex_ohlc (
             "Ngay",
@@ -90,7 +90,7 @@ def update_vnindex_ohlc(start="2009-06-01", end=None):
         ON CONFLICT ("Ngay") DO NOTHING
         """))
 
-        # 3️⃣ drop bảng tạm
+        # Remove temp table
         conn.execute(text("DROP TABLE vnindex_temp"))
 
     print("VNINDEX updated:", len(market_df), "rows")
