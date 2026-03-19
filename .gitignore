@@ -12,6 +12,8 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.example
+.env
 
 # IDE
 .vscode/
@@ -27,3 +29,6 @@ ToDoList.txt
 .agents/
 AGENTS.md
 .cursor/
+
+#Reference model
+xgb_model.ipynb

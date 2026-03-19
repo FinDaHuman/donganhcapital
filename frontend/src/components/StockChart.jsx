@@ -397,7 +397,6 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         setLastMouseX(e.clientX);
 
         // Convert px to candles
-        // We need 'pixels per candle' to know how many candles we shifted
         const container = containerRef.current;
         if (!container) return;
 
@@ -405,15 +404,26 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         const candlesVisible = viewport.end - viewport.start;
         const pixelsPerCandle = chartWidth / candlesVisible;
 
-        const deltaCandles = -dx / pixelsPerCandle; // Invert (drag left -> moves view right -> start increases?)
-        // If I drag mouse LEFT (negative dx), I want to see future (move right).
-        // visible range shifts RIGHT. So start increases.
-        // -(-10) = +10. Correct.
+        const deltaCandles = -dx / pixelsPerCandle; 
 
-        setViewport(prev => ({
-            start: prev.start + deltaCandles,
-            end: prev.end + deltaCandles
-        }));
+        setViewport(prev => {
+            let newStart = prev.start + deltaCandles;
+            let newEnd = prev.end + deltaCandles;
+
+            // Prevent panning out of bounds
+            if (newStart < -10) {
+                const diff = newStart - (-10);
+                newStart -= diff;
+                newEnd -= diff;
+            }
+            if (newEnd > fullData.length + 10) {
+                const diff = newEnd - (fullData.length + 10);
+                newStart -= diff;
+                newEnd -= diff;
+            }
+
+            return { start: newStart, end: newEnd };
+        });
     };
 
     const handleMouseUp = () => {
@@ -452,16 +462,38 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
             const isZoomIn = e.deltaY < 0;
             const newWidth = isZoomIn ? width / factor : width * factor;
 
-            // Mouse focus zoom could be better, but centering is safer for now.
             const center = (vp.start + vp.end) / 2;
             let newStart = center - newWidth / 2;
             let newEnd = center + newWidth / 2;
+
+            // Clamping limits
+            const minItems = 10;
+            const maxItems = fullData.length + 20;
+
+            if (newEnd - newStart < minItems) {
+                newEnd = center + minItems / 2;
+                newStart = center - minItems / 2;
+            }
+            if (newEnd - newStart > maxItems) {
+                newEnd = center + maxItems / 2;
+                newStart = center - maxItems / 2;
+            }
+
+            // Prevent panning way out of bounds during zoom
+            if (newStart < -10) {
+                newEnd += (-10 - newStart);
+                newStart = -10;
+            }
+            if (newEnd > fullData.length + 10) {
+                newStart -= (newEnd - (fullData.length + 10));
+                newEnd = fullData.length + 10;
+            }
 
             setViewport({ start: newStart, end: newEnd });
         };
         canvas.addEventListener('wheel', onWheel, { passive: false });
         return () => canvas.removeEventListener('wheel', onWheel);
-    }, []);
+    }, [fullData.length]);
 
 
     return (

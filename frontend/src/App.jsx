@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import StockChart from './components/StockChart';
+import AIAnalystTab from './components/AIAnalystTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import { Search } from 'lucide-react';
@@ -10,6 +11,7 @@ function App() {
     const [activeTab, setActiveTab] = useState('home');
     const [selectedTicker, setSelectedTicker] = useState(null);
     const [predictionData, setPredictionData] = useState(null);
+    const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
 
     // Stock List State
@@ -40,12 +42,14 @@ function App() {
         setSelectedTicker(ticker);
         setActiveTab('chart');
         setPredictionData(null); // Clear previous data to show loading screen
+        setError(null);
         setLoading(true);
         try {
             const data = await getPrediction(ticker);
             setPredictionData(data);
         } catch (e) {
-            console.error(e);
+            console.error("Fetch error:", e);
+            setError(`Failed to load data for ${ticker}. Please try again.`);
         } finally {
             setLoading(false);
         }
@@ -83,6 +87,24 @@ function App() {
                                         <div className="absolute inset-0 flex items-center justify-center bg-[#111213] flex-col gap-4 z-10">
                                             <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                                             <span className="text-gray-400 font-medium tracking-wide animate-pulse">Loading {selectedTicker} Data...</span>
+                                        </div>
+                                    ) : error ? (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-[#111213] flex-col gap-4 z-10">
+                                            <div className="text-red-400 font-medium tracking-wide bg-red-500/10 px-4 py-2 rounded border border-red-500/20 shadow break-words max-w-md text-center">{error}</div>
+                                            <div className="flex gap-4 mt-2">
+                                                <button 
+                                                    onClick={() => handleSelectStock(selectedTicker)}
+                                                    className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded transition-colors"
+                                                >
+                                                    Retry
+                                                </button>
+                                                <button 
+                                                    onClick={() => { setError(null); setSelectedTicker(null); }}
+                                                    className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium rounded transition-colors"
+                                                >
+                                                    Back to Search
+                                                </button>
+                                            </div>
                                         </div>
                                     ) : predictionData ? (
                                         <StockChart
@@ -138,6 +160,12 @@ function App() {
                                     )}
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'analyst' && (
+                        <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
+                            <AIAnalystTab onSelectStock={handleSelectStock} />
                         </div>
                     )}
 

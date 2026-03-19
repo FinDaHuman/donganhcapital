@@ -40,6 +40,15 @@ const Header = ({ activeTab, onTabChange }) => {
                 >
                     Chart
                 </button>
+                <button
+                    onClick={() => onTabChange('analyst')}
+                    className={`h-full flex items-center px-1 font-medium transition-all border-b-2 ${activeTab === 'analyst'
+                        ? 'text-blue-500 border-blue-500'
+                        : 'text-gray-400 border-transparent hover:text-gray-200'
+                        }`}
+                >
+                    AI Analyst
+                </button>
             </div>
         </div>
     );

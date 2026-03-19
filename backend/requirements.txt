@@ -9,9 +9,11 @@ scikit-learn
 openpyxl
 pydantic
 python-dotenv
-# Fix dependency conflict with TF 2.15
 protobuf==4.25.3
 grpcio==1.62.1
 grpcio-status==1.62.1
 vnstock==3.4.2
 pytz
+sqlalchemy
+psycopg2-binary
+xgboost
