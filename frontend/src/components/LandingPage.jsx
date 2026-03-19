@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import Spline from '@splinetool/react-spline';
@@ -6,6 +6,11 @@ import { FeaturesSection, CoursesSection, FutureSection, QAndASection, AboutUsSe
 
 const LandingPage = ({ onTabChange }) => {
     const [activeSection, setActiveSection] = useState('hero');
+    const [splineReady, setSplineReady] = useState(false);
+
+    const handleSplineLoad = useCallback(() => {
+        setSplineReady(true);
+    }, []);
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -79,9 +84,25 @@ const LandingPage = ({ onTabChange }) => {
     return (
         <div className="w-full min-h-screen bg-[#000000] text-white flex flex-col relative overflow-hidden font-sans">
 
-            {/* Background Spline Animation */}
-            <div className="absolute inset-0 z-0">
-                <Spline scene="https://prod.spline.design/KtfPeH8BYpGVHFCB/scene.splinecode" />
+            {/* Fallback gradient background — always visible, hidden when Spline is ready */}
+            <div 
+                className="absolute inset-0 z-0 transition-opacity duration-1000"
+                style={{ 
+                    opacity: splineReady ? 0 : 1,
+                    background: 'radial-gradient(ellipse at 50% 80%, #0a1628 0%, #060d18 40%, #000000 100%)',
+                    pointerEvents: 'none'
+                }}
+            />
+
+            {/* Background Spline Animation — fades in when loaded */}
+            <div 
+                className="absolute inset-0 z-0 transition-opacity duration-1000" 
+                style={{ opacity: splineReady ? 1 : 0 }}
+            >
+                <Spline 
+                    scene="https://prod.spline.design/KtfPeH8BYpGVHFCB/scene.splinecode" 
+                    onLoad={handleSplineLoad}
+                />
             </div>
 
             {/* Navbar */}

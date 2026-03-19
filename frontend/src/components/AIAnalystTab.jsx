@@ -146,7 +146,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                     </div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
-                                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Today's Signals</div>
+                                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Selected Date</div>
                                     <div className="text-2xl font-bold text-green-400">{data.signal_count}</div>
                                 </div>
                             </div>
@@ -159,7 +159,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                         ) : data.signals.length === 0 ? (
                             <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center animate-fade-in">
                                 <h3 className="text-xl text-gray-300 mb-2">No signals found for {selectedDate}</h3>
-                                <p className="text-gray-500">The AI model did not detect any breakout patterns today.</p>
+                                <p className="text-gray-500">The AI model did not detect any breakout patterns on this date.</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 animate-fade-in">
@@ -184,17 +184,17 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                         <div className="grid grid-cols-2 gap-3 mb-4">
                                             <div className="bg-[#0a0a0c] p-3 rounded-lg border border-gray-800/50">
                                                 <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider font-semibold">Entry</div>
-                                                <div className="text-lg text-gray-200 font-medium">{sig.entry_price}</div>
+                                                <div className="text-lg text-gray-200 font-medium">{Number(sig.entry_price).toFixed(2)}</div>
                                             </div>
                                             <div className="bg-[#0a0a0c] p-3 rounded-lg border border-gray-800/50 flex flex-col items-end">
                                                 <div className="text-xs text-green-500/70 mb-1 uppercase tracking-wider font-semibold">Take Profit</div>
-                                                <div className="text-lg text-green-400 font-medium">{sig.tp_price}</div>
+                                                <div className="text-lg text-green-400 font-medium">{Number(sig.tp_price).toFixed(2)}</div>
                                             </div>
                                         </div>
                                         
                                         <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-lg flex justify-between items-center">
                                             <span className="text-xs text-red-400/70 uppercase tracking-wider font-semibold">Stop Loss</span>
-                                            <span className="text-red-400 font-medium">{sig.sl_price}</span>
+                                            <span className="text-red-400 font-medium">{Number(sig.sl_price).toFixed(2)}</span>
                                         </div>
                                         
                                         <div className="mt-4 pt-4 border-t border-gray-800/50 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">

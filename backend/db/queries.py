@@ -192,15 +192,12 @@ def get_ai_signals(date_str: str = None, latest: bool = False):
             return {"date": date_str, "signal_count": 0, "signals": []}
             
         df['Ngay'] = df['Ngay'].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
-        # convert numeric types to float
-        if 'entry_price' in df.columns:
-            df['entry_price'] = df['entry_price'].astype(float)
-        if 'tp_price' in df.columns:
-            df['tp_price'] = df['tp_price'].astype(float)
-        if 'sl_price' in df.columns:
-            df['sl_price'] = df['sl_price'].astype(float)
+        # convert numeric types to float and round prices
+        for col in ['entry_price', 'tp_price', 'sl_price']:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: round(float(x), 2) if pd.notnull(x) else None)
         if 'prob' in df.columns:
-            df['prob'] = df['prob'].astype(float)
+            df['prob'] = df['prob'].apply(lambda x: round(float(x), 4) if pd.notnull(x) else None)
             
         signals = df.to_dict(orient="records")
         return {"date": date_str, "signal_count": len(signals), "signals": signals}
@@ -259,12 +256,17 @@ def get_trade_history(status_filter: str = None):
         for col in ['entry_date', 'exit_date']:
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
-        # Convert numerics to float
-        for col in ['entry_price', 'tp_price', 'sl_price', 'exit_price', 'return_pct']:
+        # Convert numerics to float, round prices, replace NaN with None
+        for col in ['entry_price', 'tp_price', 'sl_price', 'exit_price']:
             if col in df.columns:
-                df[col] = df[col].apply(lambda x: float(x) if pd.notnull(x) else None)
+                df[col] = df[col].apply(lambda x: round(float(x), 2) if pd.notnull(x) else None)
+        if 'return_pct' in df.columns:
+            df['return_pct'] = df['return_pct'].apply(lambda x: round(float(x), 6) if pd.notnull(x) else None)
         if 'holding_days' in df.columns:
             df['holding_days'] = df['holding_days'].apply(lambda x: int(x) if pd.notnull(x) else None)
+
+        # Replace any remaining NaN with None (critical for JSON serialization)
+        df = df.where(df.notnull(), None)
 
         return df.to_dict(orient="records")
     except Exception as e:
