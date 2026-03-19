@@ -2,9 +2,9 @@
 import pandas as pd
 import numpy as np
 import os
-import glob
 from sklearn.preprocessing import MinMaxScaler
 from models.quantile_lstm import QuantileLSTM
+from db.queries import get_all_stock_ohlc
 
 # Configuration
 DATA_DIR = "data"
@@ -18,30 +18,16 @@ PREDICTION_STEPS = 10
 FEATURES = ['log_ret', 'log_vol']
 
 def load_and_process_data():
-    all_files = glob.glob(os.path.join(DATA_DIR, "*.xlsx"))
-    rename_map = {
-        '<Ticker>': 'Ticker', '<DTYYYYMMDD>': 'Date', '<Open>': 'Open', '<High>': 'High', '<Low>': 'Low', '<Close>': 'Close', '<Volume>': 'Volume',
-        'Mã CP': 'Ticker', 'Ngày': 'Date', 'Đóng cửa': 'Close', 'Mở cửa': 'Open', 'Cao nhất': 'High', 'Thấp nhất': 'Low', 'KL': 'Volume',
-        'stock_id': 'Ticker', 'Ngay': 'Date', 'adj_close': 'Close', 'adj_open': 'Open', 'adj_high': 'High', 'adj_low': 'Low', 'volume': 'Volume'
-    }
+    print("Fetching all stocks history from NeonDB...")
+    df = get_all_stock_ohlc()
     
-    combined_df = pd.DataFrame()
-    for f in all_files:
-        try:
-            df = pd.read_excel(f)
-            df = df.rename(columns=rename_map)
-            if 'Ticker' in df.columns and 'Date' in df.columns and 'Close' in df.columns:
-                df['Date'] = pd.to_datetime(df['Date'])
-                # Cleaning
-                df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-                df['Volume'] = pd.to_numeric(df['Volume'], errors='coerce')
-                df = df.dropna(subset=['Close', 'Ticker'])
-                combined_df = pd.concat([combined_df, df], ignore_index=True)
-        except Exception as e:
-            print(f"Error loading {f}: {e}")
-
-    print(f"Total Rows: {len(combined_df)}")
-    return combined_df
+    if not df.empty and 'Close' in df.columns:
+        df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+        df['Volume'] = pd.to_numeric(df['Volume'], errors='coerce')
+        df = df.dropna(subset=['Close', 'Ticker'])
+            
+    print(f"Total Rows fetched from DB: {len(df)}")
+    return df
 
 def prepare_sequences(df):
     # Calculate Log Returns per Ticker

@@ -1,6 +1,7 @@
 import os
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
+from sqlalchemy.pool import NullPool
 
 load_dotenv()
 
@@ -15,5 +16,8 @@ def get_engine():
     if not database_url:
         return None
     
-    _engine = create_engine(database_url)
+    _engine = create_engine(
+        database_url,
+        poolclass=NullPool
+    )
     return _engine

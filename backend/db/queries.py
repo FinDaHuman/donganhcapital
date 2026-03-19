@@ -22,20 +22,20 @@ def get_stock_ohlc(stock_id: str, limit: int = None):
     if limit:
         query = text("""
         SELECT * FROM (
-            SELECT Ngay as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
+            SELECT "Ngay" as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
             FROM stock_ohlc 
             WHERE stock_id = :stock_id 
-            ORDER BY Ngay DESC 
+            ORDER BY "Ngay" DESC 
             LIMIT :limit
         ) sub ORDER BY "Date" ASC
         """)
         params = {"stock_id": stock_id, "limit": limit}
     else:
         query = text("""
-        SELECT Ngay as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
+        SELECT "Ngay" as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
         FROM stock_ohlc 
         WHERE stock_id = :stock_id 
-        ORDER BY Ngay ASC
+        ORDER BY "Ngay" ASC
         """)
         params = {"stock_id": stock_id}
         
@@ -47,6 +47,38 @@ def get_stock_ohlc(stock_id: str, limit: int = None):
         print(f"Error fetching OHLC: {e}")
         return pd.DataFrame()
 
+def get_all_stock_ohlc(limit_per_stock: int = None):
+    """Fetch all history for all stocks at once to avoid connection limits in training"""
+    engine = get_engine()
+    if not engine:
+        return pd.DataFrame()
+    
+    if limit_per_stock:
+        query = text("""
+        WITH RankedRows AS (
+            SELECT "Ngay" as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker",
+                   ROW_NUMBER() OVER(PARTITION BY stock_id ORDER BY "Ngay" DESC) as rn
+            FROM stock_ohlc
+        )
+        SELECT * FROM RankedRows WHERE rn <= :limit ORDER BY "Ticker", "Date" ASC
+        """)
+        params = {"limit": limit_per_stock}
+    else:
+        query = "SELECT \"Ngay\" as \"Date\", open as \"Open\", high as \"High\", low as \"Low\", close as \"Close\", volume as \"Volume\", stock_id as \"Ticker\" FROM stock_ohlc ORDER BY \"Ticker\", \"Date\" ASC"
+        params = None
+        
+    try:
+        if params:
+            df = pd.read_sql(query, engine, params=params)
+            df = df.drop(columns=['rn'])
+        else:
+            df = pd.read_sql(query, engine)
+        df['Date'] = pd.to_datetime(df['Date'])
+        return df
+    except Exception as e:
+        print(f"Error fetching all OHLC: {e}")
+        return pd.DataFrame()
+
 def get_market_status_from_db():
     engine = get_engine()
     if not engine:
@@ -54,8 +86,8 @@ def get_market_status_from_db():
     
     query = """
     WITH RankedRows AS (
-        SELECT stock_id, close, volume, Ngay,
-               ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY Ngay DESC) as rn
+        SELECT stock_id, close, volume, "Ngay",
+               ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY "Ngay" DESC) as rn
         FROM stock_ohlc
     )
     SELECT stock_id, close, volume, rn
@@ -93,18 +125,18 @@ def get_vnindex_from_db(limit: int = None):
     if limit:
         query = text("""
         SELECT * FROM (
-            SELECT Ngay as "Date", index_open as "Open", index_high as "High", index_low as "Low", index_close as "Close", index_volume as "Volume"
+            SELECT "Ngay" as "Date", index_open as "Open", index_high as "High", index_low as "Low", index_close as "Close", index_volume as "Volume"
             FROM vnindex_ohlc
-            ORDER BY Ngay DESC
+            ORDER BY "Ngay" DESC
             LIMIT :limit
         ) sub ORDER BY "Date" ASC
         """)
         params = {"limit": limit}
     else:
         query = text("""
-        SELECT Ngay as "Date", index_open as "Open", index_high as "High", index_low as "Low", index_close as "Close", index_volume as "Volume"
+        SELECT "Ngay" as "Date", index_open as "Open", index_high as "High", index_low as "Low", index_close as "Close", index_volume as "Volume"
         FROM vnindex_ohlc
-        ORDER BY Ngay ASC
+        ORDER BY "Ngay" ASC
         """)
         params = None
         

@@ -325,4 +325,5 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Prediction error for {stock_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
