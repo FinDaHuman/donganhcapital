@@ -102,6 +102,6 @@ npm run dev
 ## 👥 Contributors
 - **[Fullstack]** - Trần Huy Tuấn
 - **[Data Analyst]** - 
-- **[Data Engineer]** - 
+- **[Data Engineer]** - Nguyễn Nhật Minh
 - **[AI Engineer]** - 
 - **[AI Engineer]** - 
