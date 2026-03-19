@@ -95,6 +95,49 @@ export const getPrediction = async (ticker) => {
         return response.data;
     } catch (error) {
         console.error(`Error predicting for ${ticker}:`, error);
-        throw error;
+    }
+};
+
+export const getAISignalsDates = async () => {
+    try {
+        const response = await axios.get(`${API_Base_URL}/ai-signals/dates`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching AI signal dates:", error);
+        return [];
+    }
+};
+
+export const getAISignals = async (date = null, latest = false) => {
+    try {
+        let url = `${API_Base_URL}/ai-signals`;
+        if (latest) url += '?latest=true';
+        else if (date) url += `?date=${date}`;
+        
+        const response = await axios.get(url);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching AI signals:", error);
+        return { date: null, signal_count: 0, signals: [] };
+    }
+};
+
+export const getSectors = async () => {
+    try {
+        const response = await axios.get(`${API_Base_URL}/sectors`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching sectors:", error);
+        return {};
+    }
+};
+
+export const getAISignalsSummary = async () => {
+    try {
+        const response = await axios.get(`${API_Base_URL}/ai-signals/summary`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching AI signals summary:", error);
+        return [];
     }
 };

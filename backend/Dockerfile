@@ -13,13 +13,6 @@ RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 # Copy the backend code
 COPY . /code
 
-# Copy the data folder (Must be at root level relative to build context)
-# Assuming build context is 'backend' folder, but data is inside backend/data based on current structure.
-# If build context is root, we need to adjust. 
-# Standard practice: Build from backend folder. 
-# Verify: data is in `d:\Vs Code\DongAnhCapital\backend\data`. 
-# So `COPY . /code` includes `data/`.
-
 # Expose port
 EXPOSE 8000
 

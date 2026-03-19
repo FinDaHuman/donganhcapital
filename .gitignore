@@ -12,16 +12,23 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
+# .env.example is NOT ignored — it should be committed as a template
+.env
 
 # IDE
 .vscode/
 .idea/
 
-# Data (Optional: Comment out if you want to commit specific data)
-# data/
+# Data — prevent large xlsx/csv from being committed
+data/
 
 # To Do List
 ToDoList.txt
 
 # Agents
 .agents/
+AGENTS.md
+.cursor/
+
+#Reference model
+xgb_model.ipynb

@@ -1,56 +1,42 @@
-
 import pandas as pd
 import numpy as np
 import os
-from sklearn.preprocessing import MinMaxScaler
-from models.quantile_lstm import QuantileLSTM
+from sklearn.preprocessing import StandardScaler
+from models.xgb_predictor import XGBPredictor
 from db.queries import get_all_stock_ohlc
 
 # Configuration
 DATA_DIR = "data"
 MODEL_DIR = "models"
-MODEL_NAME = "vn_stock_predictor"
-SEQUENCE_LENGTH = 60
+MODEL_NAME = "xgb_model"
+SEQUENCE_LENGTH = 10
 PREDICTION_STEPS = 10
-# We train on Log Returns of Close Price
-# Features: Log Return, Volume Change (optional, let's stick to Univariate Log Return for robustness first or minimal features)
-# Let's use: [Log_Return_Close, Log_Return_Volume]
-FEATURES = ['log_ret', 'log_vol']
 
 def load_and_process_data():
     print("Fetching all stocks history from NeonDB...")
     df = get_all_stock_ohlc()
     
     if not df.empty and 'Close' in df.columns:
+        df['Ticker'] = df['Ticker'].astype(str)
         df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-        df['Volume'] = pd.to_numeric(df['Volume'], errors='coerce')
         df = df.dropna(subset=['Close', 'Ticker'])
             
     print(f"Total Rows fetched from DB: {len(df)}")
     return df
 
 def prepare_sequences(df):
-    # Calculate Log Returns per Ticker
     df = df.sort_values(['Ticker', 'Date'])
     
-    # helper for log ret
     def calc_log_ret(group):
         group['log_ret'] = np.log(group['Close'] / group['Close'].shift(1))
-        # Add volume change too?
-        # group['log_vol'] = np.log(group['Volume'].replace(0, 1) / group['Volume'].shift(1).replace(0, 1))
-        # Let's stick to just Price momentum for the MVP stability
         return group.dropna()
 
     print("Computing Log Returns...")
     df_processed = df.groupby('Ticker', group_keys=False).apply(calc_log_ret)
-    
-    # Clip extreme outliers (e.g. data errors or massive splits not adjusted)
-    # VN market ceiling is 7% (approx 0.07). Let's clip at +/- 0.15 to be safe
     df_processed['log_ret'] = df_processed['log_ret'].clip(-0.15, 0.15)
     
-    # Global Scaler for Log Returns (they are already somewhat normalized, but MinMax helps LSTM)
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    
+    # Use StandardScaler to map mean to 0 and variance to 1. Yields better non-flat outputs for tree models
+    scaler = StandardScaler()
     data_vals = df_processed['log_ret'].values.reshape(-1, 1)
     scaler.fit(data_vals)
     df_processed['scaled_ret'] = scaler.transform(data_vals)
@@ -64,7 +50,6 @@ def prepare_sequences(df):
         if len(vals) < SEQUENCE_LENGTH + PREDICTION_STEPS:
             continue
             
-        # Optimization: stride?
         for i in range(0, len(vals) - SEQUENCE_LENGTH - PREDICTION_STEPS):
             X.append(vals[i : i + SEQUENCE_LENGTH])
             y.append(vals[i + SEQUENCE_LENGTH : i + SEQUENCE_LENGTH + PREDICTION_STEPS])
@@ -72,42 +57,29 @@ def prepare_sequences(df):
     X = np.array(X)
     y = np.array(y)
     
-    # X shape: (samples, seq_len) -> need (samples, seq_len, 1)
     X = np.expand_dims(X, axis=-1)
-    y = np.expand_dims(y, axis=-1) # (samples, pred_steps, 1)
+    y = np.expand_dims(y, axis=-1)
     
     return X, y, scaler
 
 def main():
-    if not os.path.exists(MODEL_DIR):
-        os.makedirs(MODEL_DIR)
+    os.makedirs(MODEL_DIR, exist_ok=True)
         
     df = load_and_process_data()
-    
-    # Filter only tickers with enough data to speed up train?
-    # For now use all.
-    
     X, y, scaler = prepare_sequences(df)
     
-    print(f"Training Data: X={X.shape}, y={y.shape}")
+    print(f"Training XGB Data: X={X.shape}, y={y.shape}")
     
-    # Model
-    model = QuantileLSTM(
-        sequence_length=SEQUENCE_LENGTH,
-        n_steps=PREDICTION_STEPS,
-        quantiles=[0.05, 0.5, 0.95]
-    )
-    
-    # We save the features list just to know what input expected (1 dim)
+    model = XGBPredictor(n_steps=PREDICTION_STEPS)
+    model.sequence_length = SEQUENCE_LENGTH
     model.scaler = scaler
-    model.feature_columns = ['log_ret'] 
     
-    print("Starting deep training (10 epochs) to improve confidence intervals...")
-    model.train(X, y, epochs=10, batch_size=128) 
+    print("Starting XGB training...")
+    model.train(X, y)
     
     save_path = os.path.join(MODEL_DIR, MODEL_NAME)
     model.save(save_path)
-    print("Done!")
+    print("XGB Training Done!")
 
 if __name__ == "__main__":
     main()

@@ -10,37 +10,30 @@ import joblib
 import os
 import json
 import gc
-import tensorflow as tf
-from models.quantile_lstm import QuantileLSTM
-from vnstock import Vnstock
-from rate_limiter import RateLimiter, retry_async
 from fastapi import Depends
-from typing import Any
+from typing import Any, Optional
 import time
+
+from db.queries import (
+    get_stocks_from_db, get_stock_ohlc, 
+    get_market_status_from_db, get_vnindex_from_db,
+    get_ai_signals_dates, get_ai_signals,
+    get_daily_signal_summary
+)
 
 # Disable GPU for lighter inference if needed
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # --- Globals ---
+USE_XGB = os.getenv("USE_XGB", "true").lower() == "true"
 predictor = None
-stock_data_store = {} # {stock_id: DataFrame}
-MODEL_PATH = "models/vn_stock_predictor"
 DATA_DIR = "data"
 MAX_ROWS_PER_TICKER = 60  # Keep only ~60 trading days to save memory
 
-# Global rate limiter: max 10 calls per minute (reduced for free tier)
-rate_limiter = RateLimiter(max_calls=10, period_seconds=60)
 # Concurrency limiter for incoming requests (max 5 simultaneous users)
 concurrency_limiter = asyncio.Semaphore(5)
 # Simple in‑memory cache with TTL
 _cache: dict[str, tuple[Any, float]] = {}
-
-async def call_sync_with_retry(sync_func, *args, **kwargs):
-    """Execute a synchronous function in a thread with retry and rate limiting."""
-    async def wrapper():
-        return await asyncio.to_thread(sync_func, *args, **kwargs)
-    await rate_limiter.acquire()
-    return await retry_async(wrapper)
 
 async def limit_concurrency():
     """FastAPI dependency to limit concurrent requests."""
@@ -60,154 +53,23 @@ def get_cached(key: str, ttl: int, compute):
     _cache[key] = (value, now + ttl)
     return value
 
-# --- Helper: Initialize Trackers ---
-def initialize_trackers():
-    global stock_data_store
-    print("Loading Tickers from tickers.json...")
-    try:
-        with open("tickers.json", "r") as f:
-            tickers = json.load(f)
-        for t in tickers:
-            stock_data_store[t] = pd.DataFrame()
-        
-        # Ensure VN30F1M is also initialized
-        stock_data_store["VN30F1M"] = pd.DataFrame()
-        
-        print(f"✅ Initialized storage for {len(tickers)} stocks + VN30F1M.")
-    except Exception as e:
-        print(f"⚠️ Error loading tickers.json: {e}")
-
-# --- Background Tasks ---
-async def poll_hourly_stocks():
-    global stock_data_store
-    print("background task: poll_hourly_stocks started")
-    # Wait 30s on startup to let the server fully stabilize
-    await asyncio.sleep(30)
-    
-    while True:
-        try:
-            print(f"[{datetime.now().isoformat()}] Polling stock data...")
-            tickers = list(stock_data_store.keys())
-            # Don't poll VN30F1M here if it gets added to store
-            tickers = [t for t in tickers if t != "VN30F1M"]
-            
-            for index, ticker in enumerate(tickers):
-                try:
-                    # Always fetch only 60 days to stay within memory limits
-                    start_date = (datetime.now() - pd.Timedelta(days=60)).strftime('%Y-%m-%d')
-                    end_date = datetime.now().strftime('%Y-%m-%d')
-                    
-                    def fetch_hourly_data():
-                        return Vnstock().stock(symbol=ticker, source='VCI').quote.history(start=start_date, end=end_date)
-
-                    df_new = await call_sync_with_retry(fetch_hourly_data)
-                    
-                    if df_new is not None and not df_new.empty:
-                        # Convert Date column to datetime
-                        # Data returned might have different col names
-                        if 'time' in df_new.columns:
-                            df_new = df_new.rename(columns={'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume', 'ticker': 'Ticker'})
-                        
-                        df_new['Date'] = pd.to_datetime(df_new['Date'])
-                        df_new['Ticker'] = ticker
-                        
-                        # Merge with existing
-                        df_existing = stock_data_store[ticker]
-                        
-                        # Combine and drop duplicates based on Date
-                        df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-                        df_combined = df_combined.drop_duplicates(subset=['Date'], keep='last')
-                        df_combined = df_combined.sort_values('Date')
-                        
-                        # Trim to MAX_ROWS_PER_TICKER to save memory
-                        df_combined = df_combined.tail(MAX_ROWS_PER_TICKER)
-                        
-                        stock_data_store[ticker] = df_combined
-                        print(f"Updated {ticker}. Rows: {len(df_combined)}")
-                except Exception as e:
-                    print(f"Error polling {ticker}: {e}")
-                
-                # Rate limiting: wait 3 seconds between tickers
-                await asyncio.sleep(3)
-            
-            # Force garbage collection after full poll cycle
-            gc.collect()
-            print(f"[{datetime.now().isoformat()}] Completed poll cycle. GC done.")
-            # Sleep for 4 hours between poll cycles
-            await asyncio.sleep(14400)
-            
-        except Exception as e:
-            print(f"Error in poll_hourly_stocks loop: {e}")
-            await asyncio.sleep(120)
-
-async def poll_vn30f1m():
-    global stock_data_store
-    print("background task: poll_vn30f1m started")
-    # Wait for main poll to get a head start
-    await asyncio.sleep(60)
-    
-    ticker = "VN30F1M"
-    while True:
-        try:
-            end_date = datetime.now().strftime('%Y-%m-%d')
-            # Only fetch 60 days instead of 5 years
-            start_date = (datetime.now() - pd.Timedelta(days=60)).strftime('%Y-%m-%d')
-            
-            def fetch_f1m_data():
-                return Vnstock().stock(symbol=ticker, source='VCI').quote.history(start=start_date, end=end_date)
-
-            df_new = await call_sync_with_retry(fetch_f1m_data)
-            
-            if df_new is not None and not df_new.empty:
-                if 'time' in df_new.columns:
-                    df_new = df_new.rename(columns={'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
-                
-                df_new['Date'] = pd.to_datetime(df_new['Date'])
-                df_new['Ticker'] = ticker
-                
-                if ticker in stock_data_store and not stock_data_store[ticker].empty:
-                    df_existing = stock_data_store[ticker]
-                    df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-                    df_combined = df_combined.drop_duplicates(subset=['Date'], keep='last')
-                    df_combined = df_combined.sort_values('Date')
-                    # Trim to save memory
-                    df_combined = df_combined.tail(MAX_ROWS_PER_TICKER)
-                    stock_data_store[ticker] = df_combined
-                else:
-                    stock_data_store[ticker] = df_new.tail(MAX_ROWS_PER_TICKER)
-                    print(f"Initialized VN30F1M in stock_data_store.")
-                
-        except Exception as e:
-            print(f"Error polling VN30F1M: {e}")
-            
-        # Poll every 5 minutes instead of 15 seconds
-        await asyncio.sleep(300)
-
 # --- Lifespan for Model Loading ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global predictor
     
-    # Store background tasks so they don't get garbage collected
-    app.state.bg_tasks = []
-    
     try:
-        # Initialize trackers from configuration
-        initialize_trackers()
-        
-        # Start background tasks
-        app.state.bg_tasks.append(asyncio.create_task(poll_hourly_stocks()))
-        app.state.bg_tasks.append(asyncio.create_task(poll_vn30f1m()))
-        
-        print("Loading Quantile LSTM Model...")
-        # Check if model exists
-        if os.path.exists(f"{MODEL_PATH}_meta.pkl"):
-            predictor = QuantileLSTM.load(MODEL_PATH)
-            print("✅ Model loaded successfully!")
+        if USE_XGB:
+            from models.xgb_predictor import XGBPredictor
+            model_path = os.path.join(os.path.dirname(__file__), "models", "xgb_model")
+            predictor = XGBPredictor.load(model_path)
         else:
-            print("⚠️ Model file not found. Ensure 'train_and_save.py' has been run.")
+            from models.quantile_lstm import QuantileLSTM
+            model_path = os.path.join(os.path.dirname(__file__), "models", "vn_stock_predictor")
+            predictor = QuantileLSTM.load(model_path)
+        print(f"Prediction Model loaded successfully (XGB: {USE_XGB}).")
     except Exception as e:
-        print(f"❌ Failed to load model: {e}")
+        print(f"Prediction model load error: {e}")
     
     yield
     print("Shutting down...")
@@ -230,10 +92,11 @@ def root():
 
 @app.get("/api")
 def home():
+    stocks = get_stocks_from_db()
     return {
         "status": "active", 
         "model_loaded": predictor is not None,
-        "stocks_available": len(stock_data_store)
+        "stocks_available": len(stocks)
     }
 
 @app.get("/api/health")
@@ -243,81 +106,137 @@ def health():
 
 @app.get("/api/loading-progress")
 def loading_progress():
-    """Return how many stocks have been loaded with data (≥2 rows)."""
-    loaded = sum(1 for df in stock_data_store.values() if len(df) >= 2)
-    total = len(stock_data_store)
-    return {"loaded": loaded, "total": total}
+    """Return how many stocks have been loaded. For NeonDB we assume all are instantly loaded."""
+    stocks = get_stocks_from_db()
+    return {"loaded": len(stocks), "total": len(stocks)}
 
 @app.get("/api/stocks")
 async def get_stocks(concurrency: Any = Depends(limit_concurrency)):
-    """Return list of all available stock IDs (cached 30 s)"""
+    """Return list of all available stock IDs (cached 120s)"""
     def compute():
-        return {"count": len(stock_data_store), "stocks": list(stock_data_store.keys())}
+        stocks = get_stocks_from_db()
+        return {"count": len(stocks), "stocks": stocks}
     return get_cached("stocks", 120, compute)
 
 @app.get("/api/market-status")
 async def get_market_status(concurrency: Any = Depends(limit_concurrency)):
     """Return latest snapshot for heatmap (cached 120s)"""
     def compute():
-        results = []
-        for ticker, df in stock_data_store.items():
-            if len(df) < 2:
-                continue
-            last_row = df.iloc[-1]
-            prev_row = df.iloc[-2]
-            change = (last_row['Close'] - prev_row['Close']) / prev_row['Close'] * 100
-            results.append({
-                "ticker": ticker,
-                "value": float(change),
-                "size": int(last_row.get('Volume', 1000))
-            })
-        return results
+        return get_market_status_from_db()
     return get_cached("market_status", 120, compute)
+
+@app.get("/api/vnindex")
+async def get_vnindex_endpoint(limit: Optional[int] = None, concurrency: Any = Depends(limit_concurrency)):
+    """Return VNINDEX data"""
+    def compute():
+        df = get_vnindex_from_db(limit)
+        if df.empty:
+            return []
+        
+        # Convert Timestamp to ISO format string
+        df['Date'] = df['Date'].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
+        return df.to_dict(orient="records")
+    return get_cached(f"vnindex_{limit}", 120, compute)
+
+@app.get("/api/ai-signals")
+async def get_ai_signals_endpoint(date: Optional[str] = None, latest: bool = False, concurrency: Any = Depends(limit_concurrency)):
+    """Return AI signals for a specific date or latest"""
+    def compute():
+        return get_ai_signals(date, latest)
+    # cache for 2 mins
+    cache_key = f"ai_signals_{date}_{latest}"
+    return get_cached(cache_key, 120, compute)
+
+@app.get("/api/ai-signals/dates")
+async def get_ai_signals_dates_endpoint(concurrency: Any = Depends(limit_concurrency)):
+    """Return list of dates that have AI signals"""
+    def compute():
+        return get_ai_signals_dates()
+    return get_cached("ai_signals_dates", 120, compute)
+
+@app.get("/api/ai-signals/summary")
+async def get_ai_signals_summary_endpoint(concurrency: Any = Depends(limit_concurrency)):
+    """Return daily signal count summary"""
+    def compute():
+        return get_daily_signal_summary()
+    return get_cached("ai_signals_summary", 120, compute)
+
+@app.get("/api/sectors")
+async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):
+    """Read categories.txt and return Sector -> [tickers] mapping"""
+    def compute():
+        try:
+            import os
+            path1 = "config/categories.txt"
+            path2 = "../daily_suggestion_system/categories.txt"
+            target_path = path1 if os.path.exists(path1) else path2
+            
+            with open(target_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                
+            sectors = {}
+            for line in lines[2:]:
+                line = line.strip()
+                if not line or ':' not in line:
+                    continue
+                sector, tickers_str = line.split(':', 1)
+                tickers = [t.strip() for t in tickers_str.split(',') if t.strip()]
+                sectors[sector.strip()] = tickers
+            return sectors
+        except Exception as e:
+            print(f"Error loading sectors: {e}")
+            return {}
+            
+    return get_cached("sectors", 3600, compute)
+
+@app.get("/api/ohlc/{stock_id}")
+async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any = Depends(limit_concurrency)):
+    """Return stock OHLC data"""
+    def compute():
+        df = get_stock_ohlc(stock_id, limit)
+        if df.empty:
+            return []
+        
+        # formatted data
+        formatted = df.apply(lambda row: {
+            "Date": row['Date'].isoformat() if pd.notnull(row['Date']) else None,
+            "Close": row['Close'],
+            "Open": row['Open'],
+            "High": row['High'],
+            "Low": row['Low'],
+            "Volume": row['Volume']
+        }, axis=1).tolist()
+        return formatted
+    return get_cached(f"ohlc_{stock_id}_{limit}", 120, compute)
 
 @app.get("/api/predict/{stock_id}")
 async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurrency)):
-    global predictor, stock_data_store
+    global predictor
     
     # 1. Check Model & Data
     if predictor is None:
         raise HTTPException(status_code=503, detail="Prediction model is not loaded.")
     
     stock_id = stock_id.upper()
-    if stock_id not in stock_data_store:
-        raise HTTPException(status_code=404, detail=f"Stock '{stock_id}' not found in database.")
         
     try:
-        # 2. Fetch fresh data on-demand for prediction (store only has ~60 rows)
-        #    We need more history for the prediction model, so fetch it live.
         cache_key = f"predict_{stock_id}"
         cached = _cache.get(cache_key)
         if cached and time.time() < cached[1]:
             return cached[0]
         
         # Fetch enough data for the model (sequence_length + buffer)
-        needed_days = max(predictor.sequence_length * 3, 120)  # ~120 trading days
-        start_date = (datetime.now() - pd.Timedelta(days=needed_days)).strftime('%Y-%m-%d')
-        end_date = datetime.now().strftime('%Y-%m-%d')
-        
-        def fetch_predict_data():
-            return Vnstock().stock(symbol=stock_id, source='VCI').quote.history(start=start_date, end=end_date)
-        
-        df = await call_sync_with_retry(fetch_predict_data)
+        needed_days = max(int(predictor.sequence_length) * 3, 120)  # ~120 trading days
+        df = get_stock_ohlc(stock_id, limit=needed_days)
         
         if df is None or df.empty:
             raise HTTPException(status_code=400, detail="Could not fetch data for prediction.")
-        
-        # Normalize column names
-        if 'time' in df.columns:
-            df = df.rename(columns={'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume', 'ticker': 'Ticker'})
-        df['Date'] = pd.to_datetime(df['Date'])
-        df['Ticker'] = stock_id
         
         if len(df) < predictor.sequence_length + 1:
              raise HTTPException(status_code=400, detail="Not enough history for this stock.")
              
         # Take last N entries for context visualization
-        history_window = min(len(df), 250)  # Reduced from 1250 to save bandwidth
+        history_window = min(len(df), 250)
         history_df = df.tail(history_window).copy()
         
         # 3. Preprocess for Prediction (Compute Log Returns)
@@ -340,21 +259,21 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
         preds = predictor.predict(X_input)[0] 
         
         # 5. Inverse Transform & Reconstruct Price
-        last_price = input_prices['Close'].iloc[-1]
+        last_price = float(input_prices['Close'].iloc[-1])
         forecast_results = []
         last_date = history_df['Date'].iloc[-1]
         
-        def inverse(val):
-            return (val - predictor.scaler.min_[0]) / predictor.scaler.scale_[0]
+        def inverse_transform(val):
+            return float(predictor.scaler.inverse_transform([[val]])[0][0])
         
         current_med_price = last_price
         prices_low = []
         prices_high = []
         
         for i in range(len(preds)):
-            ret_low = inverse(preds[i, 0])
-            ret_med = inverse(preds[i, 1])
-            ret_high = inverse(preds[i, 2])
+            ret_low = inverse_transform(preds[i, 0])
+            ret_med = inverse_transform(preds[i, 1])
+            ret_high = inverse_transform(preds[i, 2])
             
             next_price = current_med_price * np.exp(ret_med)
             
@@ -378,12 +297,12 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
             
             forecast_results.append({
                 "Date": next_date.isoformat(),
-                "Close": round(candle_close, 2),
-                "Open": round(candle_open, 2),
-                "High": round(candle_high, 2),
-                "Low": round(candle_low, 2),
-                "lower_bound": round(price_path_low, 2),
-                "upper_bound": round(price_path_high, 2)
+                "Close": round(float(candle_close), 2),
+                "Open": round(float(candle_open), 2),
+                "High": round(float(candle_high), 2),
+                "Low": round(float(candle_low), 2),
+                "lower_bound": round(float(price_path_low), 2),
+                "upper_bound": round(float(price_path_high), 2)
             })
         
         # Format History for Frontend
@@ -414,4 +333,5 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Prediction error for {stock_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

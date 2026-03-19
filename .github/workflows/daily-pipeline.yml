@@ -1,0 +1,39 @@
+name: Daily Signal Pipeline
+
+on:
+  schedule:
+    # 08:02 UTC = 15:02 Vietnam time (UTC+7), weekdays only
+    - cron: '2 8 * * 1-5'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions UI
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true  # Pull Git LFS files (breakout_model.pkl)
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: daily_suggestion_system/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r daily_suggestion_system/requirements.txt
+
+      - name: Run daily pipeline
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CI: 'true'
+        working-directory: daily_suggestion_system/src/daily_pipeline
+        run: |
+          python run_daily_pipeline.py
