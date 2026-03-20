@@ -103,5 +103,5 @@ npm run dev
 - **[Fullstack]** - Trần Huy Tuấn
 - **[Data Analyst]** - 
 - **[Data Engineer]** - Nguyễn Nhật Minh
-- **[AI Engineer]** - 
+- **[AI Engineer]** - Đoàn Minh Hiếu
 - **[AI Engineer]** - 
