@@ -104,4 +104,4 @@ npm run dev
 - **[Data Analyst]** - Hoàng Hiếu Trung
 - **[Data Engineer]** - Nguyễn Nhật Minh
 - **[AI Engineer]** - Đoàn Minh Hiếu
-- **[AI Engineer]** - 
+- **[AI Engineer]** - Đoàn Duy Long
