@@ -26,7 +26,7 @@ DongAnh Capital is a professional stock analysis and AI prediction platform tail
 ## 🛠 Tech Stack
 
 - **Frontend**: React 18, Vite, Tailwind CSS, Plotly.js, Framer Motion.
-- **Backend**: Python 3.10+, FastAPI, SQLAlchemy, NeonDB.
+- **Backend**: Python 3.11+, FastAPI, SQLAlchemy, NeonDB.
 - **AI/ML Core**: TensorFlow 2.15 (LSTM), XGBoost, Scikit-learn.
 
 ---
