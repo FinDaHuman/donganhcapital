@@ -13,11 +13,12 @@ const STATUS_COLORS = {
     HOLD: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30', label: 'Holding' },
 };
 
-const STATUS_STYLES = {
-  TP:      { card: 'bg-green-500/20 border-green-500/50 ring-green-500/30',  count: 'text-green-400'  },
-  SL:      { card: 'bg-red-500/20 border-red-500/50 ring-red-500/30',        count: 'text-red-400'    },
-  TIMEOUT: { card: 'bg-yellow-500/20 border-yellow-500/50 ring-yellow-500/30', count: 'text-yellow-400' },
-  HOLD:    { card: 'bg-blue-500/20 border-blue-500/50 ring-blue-500/30',     count: 'text-blue-400'   },
+// Static lookup for filter button active styles (dynamic classes get purged by Tailwind)
+const STATUS_FILTER_STYLES = {
+    TP: { active: 'bg-green-500/20 border-green-500/50 ring-1 ring-green-500/30', count: 'text-green-400' },
+    SL: { active: 'bg-red-500/20 border-red-500/50 ring-1 ring-red-500/30', count: 'text-red-400' },
+    TIMEOUT: { active: 'bg-yellow-500/20 border-yellow-500/50 ring-1 ring-yellow-500/30', count: 'text-yellow-400' },
+    HOLD: { active: 'bg-blue-500/20 border-blue-500/50 ring-1 ring-blue-500/30', count: 'text-blue-400' },
 };
 
 const StatusBadge = ({ status }) => {
@@ -178,18 +179,18 @@ const AIAnalystTab = ({ onSelectStock }) => {
                 <div className="flex gap-1 mb-6 bg-[#111213] rounded-xl p-1 border border-gray-800">
                     <button
                         onClick={() => setActiveSection('signals')}
-                        className={`flex-1 py-3 px-4 rounded-lg font-semibold text-xs sm:text-sm tracking-wide transition-all ${activeSection === 'signals'
-                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                : 'text-gray-400 hover:text-white hover:bg-[#1a1c1e]'
+                        className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm tracking-wide transition-all ${activeSection === 'signals'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                            : 'text-gray-400 hover:text-white hover:bg-[#1a1c1e]'
                             }`}
                     >
                         AI Breakout Signals
                     </button>
                     <button
                         onClick={() => setActiveSection('history')}
-                        className={`flex-1 py-3 px-4 rounded-lg font-semibold text-xs sm:text-sm tracking-wide transition-all ${activeSection === 'history'
-                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                : 'text-gray-400 hover:text-white hover:bg-[#1a1c1e]'
+                        className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm tracking-wide transition-all ${activeSection === 'history'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                            : 'text-gray-400 hover:text-white hover:bg-[#1a1c1e]'
                             }`}
                     >
                         Trade History
@@ -199,7 +200,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                 {/* ==================== SIGNALS SECTION ==================== */}
                 {activeSection === 'signals' && (
                     <div className="animate-fade-in">
-                        <div className="flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center mb-6 border-b border-gray-800 pb-4">
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-4">
                             <h2 className="text-2xl font-bold text-white">AI Breakout Signals</h2>
                             <div className="flex items-center gap-3">
                                 <label className="text-gray-400 font-medium">Select Date:</label>
@@ -218,7 +219,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
 
                         {/* Summary Stats */}
                         {summary.length > 0 && (
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Trading Days</div>
                                     <div className="text-2xl font-bold text-white">{summary.length}</div>
@@ -261,7 +262,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                         onClick={() => onSelectStock(sig.stock_id)}
                                         className="bg-[#111213] border border-gray-800 rounded-xl p-5 hover:border-blue-500/50 hover:bg-[#1a1c1e] transition-all cursor-pointer group shadow-lg"
                                     >
-                                        <div className="flex flex-wrap gap-y-2 justify-between items-center mb-4">
+                                        <div className="flex justify-between items-center mb-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-lg">
                                                     {sig.stock_id.charAt(0)}
@@ -323,7 +324,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
 
                         {/* Portfolio Stats Cards */}
                         {dynamicStats.total_trades > 0 && (
-                            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Trades</div>
                                     <div className="text-2xl font-bold text-white">{dynamicStats.total_trades}</div>
@@ -344,7 +345,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Best Trade</div>
                                     <div className="text-2xl font-bold text-green-400">+{dynamicStats.best_return}%</div>
                                 </div>
-                                <div className="bg-[#111213] border border-gray-800 rounded-lg p-4 col-span-2 lg:col-span-1">
+                                <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Avg Hold Days</div>
                                     <div className="text-2xl font-bold text-blue-400">{dynamicStats.avg_holding_days}</div>
                                 </div>
@@ -363,12 +364,12 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                     <button
                                         key={key}
                                         onClick={() => handleStatusFilter(key)}
-                                        className={`p-3 min-h-[64px] rounded-lg border transition-all text-center ${statusFilter === key
-                                                ? `ring-1 ${STATUS_STYLES[key].card}`
+                                        className={`p-3 rounded-lg border transition-all text-center min-h-[64px] ${statusFilter === key
+                                                ? STATUS_FILTER_STYLES[key].active
                                                 : 'bg-[#111213] border-gray-800 hover:border-gray-600'
                                             }`}
                                     >
-                                        <div className={`text-lg font-bold ${STATUS_STYLES[key].count}`}>{count}</div>
+                                        <div className={`text-lg font-bold ${STATUS_FILTER_STYLES[key].count}`}>{count}</div>
                                         <div className="text-xs text-gray-500 uppercase tracking-wider mt-0.5">{STATUS_COLORS[key].label}</div>
                                     </button>
                                 ))}
@@ -387,6 +388,59 @@ const AIAnalystTab = ({ onSelectStock }) => {
                             </div>
                         ) : (
                             <div className="bg-[#111213] border border-gray-800 rounded-xl overflow-hidden">
+                                {/* ── Mobile card list (< md) ── */}
+                                <div className="md:hidden space-y-2 p-2">
+                                    {sortedTrades.map((trade, idx) => (
+                                        <div
+                                            key={idx}
+                                            onClick={() => onSelectStock(trade.stock_id)}
+                                            className="bg-[#111213] border border-gray-800 rounded-xl p-4 cursor-pointer active:bg-[#1a1c1e] transition-colors"
+                                        >
+                                            {/* Ticker + Status */}
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm shrink-0">
+                                                        {trade.stock_id.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-white leading-tight">{trade.stock_id}</div>
+                                                        <div className="text-xs text-gray-500">{trade.entry_date}</div>
+                                                    </div>
+                                                </div>
+                                                <StatusBadge status={trade.status} />
+                                            </div>
+                                            {/* Entry / TP / SL prices */}
+                                            <div className="grid grid-cols-3 gap-1.5 mb-3 text-xs">
+                                                <div className="bg-[#1a1c1e] rounded-lg p-2 text-center">
+                                                    <div className="text-gray-500 mb-0.5">Entry</div>
+                                                    <div className="text-white font-medium">{trade.entry_price?.toFixed(2) ?? '—'}</div>
+                                                </div>
+                                                <div className="bg-[#1a1c1e] rounded-lg p-2 text-center">
+                                                    <div className="text-green-500/70 mb-0.5">TP</div>
+                                                    <div className="text-green-400 font-medium">{trade.tp_price?.toFixed(2) ?? '—'}</div>
+                                                </div>
+                                                <div className="bg-[#1a1c1e] rounded-lg p-2 text-center">
+                                                    <div className="text-red-500/70 mb-0.5">SL</div>
+                                                    <div className="text-red-400 font-medium">{trade.sl_price?.toFixed(2) ?? '—'}</div>
+                                                </div>
+                                            </div>
+                                            {/* Return / Win Rate / Days */}
+                                            <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-800/50">
+                                                <span className={`font-bold ${trade.return_pct == null ? 'text-gray-500' : trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                    {trade.return_pct != null ? `${(trade.return_pct * 100).toFixed(2)}%` : '—'}
+                                                </span>
+                                                {trade.prob != null && (
+                                                    <span className="text-blue-400 text-xs">WR {(trade.prob * 100).toFixed(1)}%</span>
+                                                )}
+                                                <span className="text-gray-500 text-xs">
+                                                    {trade.holding_days != null ? `${trade.holding_days}d` : '—'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* ── Desktop table (≥ md) ── */}
                                 <div className="hidden md:block overflow-x-auto">
                                     <table className="w-full text-sm">
                                         <thead>
@@ -428,7 +482,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                     <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.exit_price?.toFixed(2) || '—'}</td>
                                                     <td className="px-5 py-4 text-center"><StatusBadge status={trade.status} /></td>
                                                     <td className={`px-5 py-4 text-right font-bold ${trade.return_pct == null ? 'text-gray-500' :
-                                                            trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'
+                                                        trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'
                                                         }`}>
                                                         {trade.return_pct != null ? `${(trade.return_pct * 100).toFixed(2)}%` : '—'}
                                                     </td>
@@ -437,48 +491,6 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                             ))}
                                         </tbody>
                                     </table>
-                                </div>
-                                <div className="md:hidden space-y-3 p-4">
-                                    {sortedTrades.map((trade, idx) => (
-                                        <div
-                                            key={idx}
-                                            onClick={() => onSelectStock(trade.stock_id)}
-                                            className="bg-[#111213] border border-gray-800 rounded-xl p-4 cursor-pointer hover:border-blue-500/40 transition-colors"
-                                        >
-                                            <div className="flex justify-between items-center mb-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">
-                                                        {trade.stock_id.charAt(0)}
-                                                    </div>
-                                                    <span className="font-bold text-white text-lg">{trade.stock_id}</span>
-                                                </div>
-                                                <StatusBadge status={trade.status} />
-                                            </div>
-                                            <div className="grid grid-cols-3 gap-2 mb-2 text-sm">
-                                                <div><span className="text-gray-500">Entry:</span> <span className="text-gray-200">{trade.entry_price?.toFixed(2)}</span></div>
-                                                <div className="text-center"><span className="text-gray-500">TP:</span> <span className="text-green-400/80">{trade.tp_price?.toFixed(2)}</span></div>
-                                                <div className="text-right"><span className="text-gray-500">SL:</span> <span className="text-red-400/80">{trade.sl_price?.toFixed(2)}</span></div>
-                                            </div>
-                                            <div className="text-xs text-gray-500 mb-2">
-                                                Date: {trade.entry_date} &rarr; {trade.exit_date || '?'}
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm border-t border-gray-800/50 pt-2 mt-2">
-                                                <div>
-                                                    <span className="text-gray-500">Exit:</span> <span className="text-gray-200">{trade.exit_price?.toFixed(2) || '—'}</span>
-                                                </div>
-                                                <div className="flex gap-3">
-                                                    <span className={`font-bold ${trade.return_pct == null ? 'text-gray-500' : trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                        {trade.return_pct != null ? `${trade.return_pct > 0 ? '+' : ''}${(trade.return_pct * 100).toFixed(2)}%` : '—'}
-                                                    </span>
-                                                    <span className="text-gray-400">{trade.holding_days ?? '—'} days</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex justify-between items-center mt-2 text-sm">
-                                                <span className="text-gray-500">Win Rate:</span>
-                                                <span className="text-blue-400 font-medium">{trade.prob != null ? `${(trade.prob * 100).toFixed(1)}%` : '—'}</span>
-                                            </div>
-                                        </div>
-                                    ))}
                                 </div>
                             </div>
                         )}

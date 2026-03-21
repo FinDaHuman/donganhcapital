@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Menu, X } from 'lucide-react';
 import Spline from '@splinetool/react-spline';
 import { FeaturesSection, CoursesSection, FutureSection, QAndASection, AboutUsSection } from './LandingSections';
 
@@ -9,6 +9,7 @@ const LandingPage = ({ onTabChange }) => {
     const [splineVisible, setSplineVisible] = useState(false);
     const [placeholderOut, setPlaceholderOut] = useState(false);
     const [brightening, setBrightening] = useState(false);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     // Slowly warm the background toward the globe's ambient navy during loading
     useEffect(() => {
@@ -91,15 +92,6 @@ const LandingPage = ({ onTabChange }) => {
         }
     };
 
-    const scrollToSection = (sectionId) => {
-        setActiveSection(sectionId);
-        // You might want to add smooth scrolling logic here if sections are not full-page
-    };
-
-    const onLaunchApp = () => {
-        onTabChange && onTabChange('dashboard');
-    };
-
     return (
         <div className="w-full min-h-screen bg-[#000000] text-white flex flex-col relative overflow-hidden font-sans">
 
@@ -138,13 +130,13 @@ const LandingPage = ({ onTabChange }) => {
             </div>
 
             {/* Navbar */}
-            <nav className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 md:px-12 py-3 sm:py-5 flex items-center justify-between bg-[#000000]/80 backdrop-blur-md border-b border-gray-800/50">
+            <nav className="fixed top-0 left-0 right-0 z-50 px-6 md:px-12 py-5 flex items-center justify-between">
                 <div
                     className="text-white font-medium text-xl tracking-tight flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     onClick={() => setActiveSection('hero')}
                 >
                     <div className="w-8 h-8 bg-blue-600 text-white flex items-center justify-center font-bold text-lg">D</div>
-                    <span className="hidden sm:inline">DongAnh Capital</span>
+                    DongAnh Capital
                 </div>
 
                 <div
@@ -176,27 +168,47 @@ const LandingPage = ({ onTabChange }) => {
                     ))}
                 </div>
 
-                <div className="flex items-center gap-4 hidden sm:flex">
-                    <button className="whitespace-nowrap px-5 py-2.5 text-sm font-medium rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-md hover:bg-white/20 transition-all cursor-pointer flex items-center gap-2" onClick={onLaunchApp}>
+                <div className="flex items-center gap-3">
+                    {/* Get Started — desktop only */}
+                    <button
+                        className="hidden md:flex px-5 py-2.5 text-sm font-medium rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-md hover:bg-white/20 transition-all cursor-pointer items-center gap-2 whitespace-nowrap"
+                        onClick={() => onTabChange && onTabChange('dashboard')}
+                    >
                         Get Started for Free
                         <ArrowRight size={16} />
+                    </button>
+                    {/* Hamburger — mobile only */}
+                    <button
+                        className="md:hidden flex items-center justify-center w-10 h-10 rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-md"
+                        onClick={() => setIsMobileMenuOpen(v => !v)}
+                        aria-label="Toggle menu"
+                    >
+                        {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
                     </button>
                 </div>
             </nav>
 
-            {/* Mobile Section Links */}
-            <div className="fixed top-[60px] w-full z-40 flex md:hidden overflow-x-auto gap-4 px-4 py-3 bg-[#000000]/95 backdrop-blur-md border-b border-gray-800/50">
-                <button onClick={onLaunchApp} className="whitespace-nowrap px-4 py-1.5 bg-blue-600 text-white font-semibold rounded-full text-sm">Launch App</button>
-                {navLinks.map((link) => (
+            {/* Mobile nav dropdown — section links + launch button */}
+            {isMobileMenuOpen && (
+                <div className="fixed top-[72px] left-0 right-0 z-50 md:hidden bg-black/95 backdrop-blur-md flex flex-col px-6 py-4 gap-1">
+                    {navLinks.map((link) => (
+                        <button
+                            key={link.id}
+                            onClick={() => { setActiveSection(link.id); setIsMobileMenuOpen(false); }}
+                            className={`text-left py-3.5 text-lg font-medium border-b border-white/5 last:border-0 transition-colors ${activeSection === link.id ? 'text-blue-400' : 'text-gray-300'
+                                }`}
+                        >
+                            {link.label}
+                        </button>
+                    ))}
                     <button
-                        key={link.id}
-                        onClick={() => scrollToSection(link.id)}
-                        className={`whitespace-nowrap text-sm font-medium ${activeSection === link.id ? 'text-blue-400' : 'text-gray-300'}`}
+                        onClick={() => { onTabChange && onTabChange('dashboard'); setIsMobileMenuOpen(false); }}
+                        className="mt-4 w-full py-3 px-5 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center justify-center gap-2 transition-colors"
                     >
-                        {link.label}
+                        Launch App <ArrowRight size={16} />
                     </button>
-                ))}
-            </div>
+                </div>
+            )}
 
             {/* Main Content */}
             <main className={`flex-1 flex flex-col items-center relative z-10 px-4 pt-[120px] pb-24 min-h-[100dvh] overflow-y-auto ${activeSection === 'hero' ? 'justify-end pointer-events-none' : 'justify-start'}`}>

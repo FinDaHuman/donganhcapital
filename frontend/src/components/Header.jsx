@@ -9,13 +9,13 @@ const Header = ({ activeTab, onTabChange }) => {
         setIsMenuOpen(false);
     };
     return (
-        <div className="h-[60px] w-full flex items-center px-4 sm:px-6 z-50 shrink-0 relative" style={{ backgroundColor: '#000000' }}>
+        <div className="h-[60px] w-full flex items-center px-6 z-50 shrink-0 relative" style={{ backgroundColor: '#000000' }}>
             {/* Brand Logo & Name */}
             <div className="flex items-center mr-auto sm:mr-10 cursor-pointer text-gray-100 hover:text-white transition-colors">
                 <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-white mr-3 shrink-0">
                     D
                 </div>
-                <span className="font-bold text-base sm:text-xl tracking-tight hidden sm:block">DongAnh Capital</span>
+                <span className="font-bold text-xl tracking-tight hidden sm:block">DongAnh Capital</span>
             </div>
 
             {/* Mobile Menu Button */}
@@ -68,7 +68,7 @@ const Header = ({ activeTab, onTabChange }) => {
 
             {/* Mobile Dropdown Menu */}
             {isMenuOpen && (
-                <div className="absolute top-[60px] left-0 right-0 bg-[#000000] border-t border-gray-800 flex flex-col px-6 py-4 gap-4 sm:hidden z-50 shadow-2xl pointer-events-auto">
+                <div className="absolute top-[60px] left-0 right-0 bg-[#000000] border-t border-gray-800 flex flex-col px-6 py-4 gap-4 sm:hidden z-50 shadow-2xl">
                     <button
                         onClick={() => handleTabChange('home')}
                         className={`text-left text-lg font-medium transition-colors ${activeTab === 'home' ? 'text-white' : 'text-gray-400'}`}
