@@ -1,5 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { getAISignals, getAISignalsDates, getAISignalsSummary, getTradeHistory, getTradeHistoryStats } from '../services/stock_api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getAISignals, getAISignalsDates, getAISignalsSummary, getTradeHistory } from '../services/stock_api';
+
+const SortIndicator = ({ sortConfig, columnKey }) => {
+    if (!sortConfig || sortConfig.key !== columnKey) return null;
+    return <span className="ml-1 text-blue-400">{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>;
+};
 
 const STATUS_COLORS = {
     TP: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30', label: 'Take Profit' },
@@ -26,10 +31,10 @@ const AIAnalystTab = ({ onSelectStock }) => {
 
     // Trade history state
     const [trades, setTrades] = useState([]);
-    const [tradeStats, setTradeStats] = useState({ total_trades: 0 });
     const [statusFilter, setStatusFilter] = useState(null);
     const [tradesLoading, setTradesLoading] = useState(true);
     const [minWinRate, setMinWinRate] = useState(0);
+    const [sortConfig, setSortConfig] = useState({ key: 'entry_date', direction: 'desc' });
 
     // Active section
     const [activeSection, setActiveSection] = useState('signals');
@@ -40,19 +45,19 @@ const AIAnalystTab = ({ onSelectStock }) => {
                 getAISignalsDates(),
                 getAISignalsSummary()
             ]);
-            
+
             // Get today's date in YYYY-MM-DD format (Vietnam timezone)
             const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
-            
+
             // Add today to the dates list if not already present
             let allDates = fetchedDates;
             if (!fetchedDates.includes(today)) {
                 allDates = [today, ...fetchedDates];
             }
-            
+
             setDates(allDates);
             setSummary(fetchedSummary);
-            
+
             // Default to today
             setSelectedDate(today);
             fetchSignals(today);
@@ -71,14 +76,10 @@ const AIAnalystTab = ({ onSelectStock }) => {
         setLoading(false);
     };
 
-    const fetchTradeData = async (status = null) => {
+    const fetchTradeData = async () => {
         setTradesLoading(true);
-        const [history, stats] = await Promise.all([
-            getTradeHistory(status),
-            status ? Promise.resolve(tradeStats) : getTradeHistoryStats()
-        ]);
+        const history = await getTradeHistory();
         setTrades(history);
-        if (!status) setTradeStats(stats);
         setTradesLoading(false);
     };
 
@@ -89,10 +90,79 @@ const AIAnalystTab = ({ onSelectStock }) => {
     };
 
     const handleStatusFilter = (status) => {
-        const newStatus = statusFilter === status ? null : status;
-        setStatusFilter(newStatus);
-        fetchTradeData(newStatus);
+        setStatusFilter(statusFilter === status ? null : status);
     };
+
+    const handleSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const filteredTrades = useMemo(() => {
+        return trades.filter(trade => {
+            if (minWinRate > 0 && (!trade.prob || trade.prob < minWinRate)) return false;
+            if (statusFilter && trade.status !== statusFilter) return false;
+            return true;
+        });
+    }, [trades, minWinRate, statusFilter]);
+
+    const sortedTrades = useMemo(() => {
+        const sorted = [...filteredTrades];
+        if (!sortConfig) return sorted;
+
+        sorted.sort((a, b) => {
+            let aVal = a[sortConfig.key];
+            let bVal = b[sortConfig.key];
+
+            if (aVal == null && bVal == null) return 0;
+            if (aVal == null) return sortConfig.direction === 'asc' ? 1 : -1;
+            if (bVal == null) return sortConfig.direction === 'asc' ? -1 : 1;
+
+            if (sortConfig.key === 'prob' || sortConfig.key === 'return_pct') {
+                return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+            if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+        return sorted;
+    }, [filteredTrades, sortConfig]);
+
+    const dynamicStats = useMemo(() => {
+        const tpCount = filteredTrades.filter(t => t.status === 'TP').length;
+        const slCount = filteredTrades.filter(t => t.status === 'SL').length;
+        const timeoutCount = filteredTrades.filter(t => t.status === 'TIMEOUT').length;
+        const holdCount = filteredTrades.filter(t => t.status === 'HOLD').length;
+
+        const closedTrades = filteredTrades.filter(t => ['TP', 'SL', 'TIMEOUT'].includes(t.status));
+        const winRate = closedTrades.length > 0 ? ((tpCount / closedTrades.length) * 100).toFixed(1) : 0;
+
+        const validReturns = closedTrades.map(t => t.return_pct).filter(r => r != null);
+        const avgReturn = validReturns.length > 0 ? ((validReturns.reduce((a, b) => a + b, 0) / validReturns.length) * 100).toFixed(2) : 0;
+        const bestReturn = validReturns.length > 0 ? (Math.max(...validReturns) * 100).toFixed(2) : 0;
+
+        const validDays = closedTrades.map(t => t.holding_days).filter(d => d != null);
+        const avgHoldingDays = validDays.length > 0 ? (validDays.reduce((a, b) => a + b, 0) / validDays.length).toFixed(1) : 0;
+
+        return {
+            total_trades: filteredTrades.length,
+            tp_count: tpCount,
+            sl_count: slCount,
+            timeout_count: timeoutCount,
+            hold_count: holdCount,
+            win_rate: Number(winRate),
+            avg_return: Number(avgReturn),
+            best_return: Number(bestReturn),
+            avg_holding_days: Number(avgHoldingDays)
+        };
+    }, [filteredTrades]);
 
     return (
         <div className="flex-1 overflow-y-auto p-6 bg-[#000]">
@@ -101,35 +171,33 @@ const AIAnalystTab = ({ onSelectStock }) => {
                 <div className="flex gap-1 mb-6 bg-[#111213] rounded-xl p-1 border border-gray-800">
                     <button
                         onClick={() => setActiveSection('signals')}
-                        className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm tracking-wide transition-all ${
-                            activeSection === 'signals'
+                        className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm tracking-wide transition-all ${activeSection === 'signals'
                                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                                 : 'text-gray-400 hover:text-white hover:bg-[#1a1c1e]'
-                        }`}
+                            }`}
                     >
-                         AI Breakout Signals
+                        AI Breakout Signals
                     </button>
                     <button
                         onClick={() => setActiveSection('history')}
-                        className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm tracking-wide transition-all ${
-                            activeSection === 'history'
+                        className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm tracking-wide transition-all ${activeSection === 'history'
                                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                                 : 'text-gray-400 hover:text-white hover:bg-[#1a1c1e]'
-                        }`}
+                            }`}
                     >
-                         Trade History
+                        Trade History
                     </button>
                 </div>
 
                 {/* ==================== SIGNALS SECTION ==================== */}
                 {activeSection === 'signals' && (
                     <div className="animate-fade-in">
-                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 justify-between items-start sm:items-center mb-6 border-b border-gray-800 pb-4">
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-4">
                             <h2 className="text-2xl font-bold text-white">AI Breakout Signals</h2>
                             <div className="flex items-center gap-3">
                                 <label className="text-gray-400 font-medium">Select Date:</label>
-                                <select 
-                                    value={selectedDate} 
+                                <select
+                                    value={selectedDate}
                                     onChange={handleDateChange}
                                     className="bg-[#1a1c1e] border border-gray-700 text-white rounded-md px-3 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
                                 >
@@ -181,7 +249,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                         })() : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 animate-fade-in">
                                 {data.signals.map((sig, idx) => (
-                                    <div 
+                                    <div
                                         key={idx}
                                         onClick={() => onSelectStock(sig.stock_id)}
                                         className="bg-[#111213] border border-gray-800 rounded-xl p-5 hover:border-blue-500/50 hover:bg-[#1a1c1e] transition-all cursor-pointer group shadow-lg"
@@ -197,7 +265,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                 Win Rate: <span className={sig.prob > 0.6 ? 'text-green-400' : 'text-blue-400'}>{(sig.prob * 100).toFixed(1)}%</span>
                                             </div>
                                         </div>
-                                        
+
                                         <div className="grid grid-cols-2 gap-3 mb-4">
                                             <div className="bg-[#0a0a0c] p-3 rounded-lg border border-gray-800/50">
                                                 <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider font-semibold">Entry</div>
@@ -208,12 +276,12 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                 <div className="text-lg text-green-400 font-medium">{Number(sig.tp_price).toFixed(2)}</div>
                                             </div>
                                         </div>
-                                        
+
                                         <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-lg flex justify-between items-center">
                                             <span className="text-xs text-red-400/70 uppercase tracking-wider font-semibold">Stop Loss</span>
                                             <span className="text-red-400 font-medium">{Number(sig.sl_price).toFixed(2)}</span>
                                         </div>
-                                        
+
                                         <div className="mt-4 pt-4 border-t border-gray-800/50 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
                                             <span className="text-sm text-gray-500">View detailed chart</span>
                                             <span className="text-blue-400">→</span>
@@ -228,16 +296,16 @@ const AIAnalystTab = ({ onSelectStock }) => {
                 {/* ==================== TRADE HISTORY SECTION ==================== */}
                 {activeSection === 'history' && (
                     <div className="animate-fade-in">
-                        <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-gray-800 pb-4">
                             <h2 className="text-2xl font-bold text-white">Trade History</h2>
-                            <div className="flex items-center gap-3">
-                                <label className="text-gray-400 text-sm font-medium">Min Win Rate:</label>
-                                <select 
-                                    value={minWinRate} 
+                            <div className="flex flex-wrap items-center gap-3 text-sm">
+                                <span className="text-gray-400">Min Win Rate:</span>
+                                <select
+                                    value={minWinRate}
                                     onChange={(e) => setMinWinRate(Number(e.target.value))}
-                                    className="bg-[#1a1c1e] border border-gray-700 text-white rounded-md px-3 py-1.5 focus:outline-none focus:border-blue-500 text-sm cursor-pointer"
+                                    className="bg-[#111213] border border-gray-800 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 transition-colors"
                                 >
-                                    <option value={0}>All Signals</option>
+                                    <option value={0}>Any</option>
                                     <option value={0.6}>&ge; 60%</option>
                                     <option value={0.7}>&ge; 70%</option>
                                     <option value={0.8}>&ge; 80%</option>
@@ -247,58 +315,54 @@ const AIAnalystTab = ({ onSelectStock }) => {
                         </div>
 
                         {/* Portfolio Stats Cards */}
-                        {tradeStats.total_trades > 0 && (
+                        {dynamicStats.total_trades > 0 && (
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Trades</div>
-                                    <div className="text-2xl font-bold text-white">{tradeStats.total_trades}</div>
+                                    <div className="text-2xl font-bold text-white">{dynamicStats.total_trades}</div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Win Rate</div>
-                                    <div className={`text-2xl font-bold ${tradeStats.win_rate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {tradeStats.win_rate}%
+                                    <div className={`text-2xl font-bold ${dynamicStats.win_rate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
+                                        {dynamicStats.win_rate}%
                                     </div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Avg Return</div>
-                                    <div className={`text-2xl font-bold ${tradeStats.avg_return >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {tradeStats.avg_return > 0 ? '+' : ''}{tradeStats.avg_return}%
+                                    <div className={`text-2xl font-bold ${dynamicStats.avg_return >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        {dynamicStats.avg_return > 0 ? '+' : ''}{dynamicStats.avg_return}%
                                     </div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Best Trade</div>
-                                    <div className="text-2xl font-bold text-green-400">+{tradeStats.best_return}%</div>
+                                    <div className="text-2xl font-bold text-green-400">+{dynamicStats.best_return}%</div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Avg Hold Days</div>
-                                    <div className="text-2xl font-bold text-blue-400">{tradeStats.avg_holding_days}</div>
+                                    <div className="text-2xl font-bold text-blue-400">{dynamicStats.avg_holding_days}</div>
                                 </div>
                             </div>
                         )}
 
                         {/* Status breakdown mini-cards */}
-                        {tradeStats.total_trades > 0 && (
+                        {dynamicStats.total_trades > 0 && (
                             <div className="grid grid-cols-4 gap-3 mb-6">
                                 {[
-                                    { key: 'TP', count: tradeStats.tp_count, color: 'green' },
-                                    { key: 'SL', count: tradeStats.sl_count, color: 'red' },
-                                    { key: 'TIMEOUT', count: tradeStats.timeout_count, color: 'yellow' },
-                                    { key: 'HOLD', count: tradeStats.hold_count, color: 'blue' },
+                                    { key: 'TP', count: dynamicStats.tp_count, color: 'green' },
+                                    { key: 'SL', count: dynamicStats.sl_count, color: 'red' },
+                                    { key: 'TIMEOUT', count: dynamicStats.timeout_count, color: 'yellow' },
+                                    { key: 'HOLD', count: dynamicStats.hold_count, color: 'blue' },
                                 ].map(({ key, count, color }) => (
                                     <button
                                         key={key}
                                         onClick={() => handleStatusFilter(key)}
-                                        className={`p-3 rounded-lg border transition-all text-center ${
-                                            statusFilter === key
+                                        className={`p-3 rounded-lg border transition-all text-center ${statusFilter === key
                                                 ? `bg-${color}-500/20 border-${color}-500/50 ring-1 ring-${color}-500/30`
                                                 : 'bg-[#111213] border-gray-800 hover:border-gray-600'
-                                        }`}
+                                            }`}
                                     >
                                         <div className={`text-lg font-bold text-${color}-400`}>{count}</div>
-                                        <div className="text-xs text-gray-500 uppercase tracking-wider mt-0.5">
-                                            <span className="hidden sm:inline">{STATUS_COLORS[key].label}</span>
-                                            <span className="sm:hidden">{key}</span>
-                                        </div>
+                                        <div className="text-xs text-gray-500 uppercase tracking-wider mt-0.5">{STATUS_COLORS[key].label}</div>
                                     </button>
                                 ))}
                             </div>
@@ -309,121 +373,66 @@ const AIAnalystTab = ({ onSelectStock }) => {
                             <div className="flex justify-center items-center py-20">
                                 <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                             </div>
-                        ) : (() => {
-                            const filteredTrades = trades.filter(trade => minWinRate === 0 || (trade.prob && trade.prob >= minWinRate));
-                            
-                            return filteredTrades.length === 0 ? (
-                                <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center">
-                                    <h3 className="text-xl text-gray-300 mb-2">No trades found</h3>
-                                    <p className="text-gray-500">No trade history is available with the current filters.</p>
-                                </div>
-                            ) : (
-                                <>
-                                    {/* Mobile Cards (Hidden on MD+) */}
-                                    <div className="md:hidden flex flex-col gap-4">
-                                        {filteredTrades.map((trade, idx) => (
-                                        <div 
-                                            key={idx}
-                                            onClick={() => onSelectStock(trade.stock_id)}
-                                            className="bg-[#111213] border border-gray-800 rounded-xl p-4 cursor-pointer hover:border-blue-500/30 transition-colors"
-                                        >
-                                            <div className="flex justify-between items-center mb-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">
-                                                        {trade.stock_id.charAt(0)}
-                                                    </div>
-                                                    <span className="font-bold text-white text-lg">{trade.stock_id}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-xs bg-[#1e2024] px-2 py-0.5 rounded text-gray-300">
-                                                        WR: <span className={trade.prob > 0.6 ? 'text-green-400 font-medium' : 'text-blue-400 font-medium'}>
-                                                            {trade.prob ? `${(trade.prob * 100).toFixed(1)}%` : '—'}
-                                                        </span>
-                                                    </div>
-                                                    <StatusBadge status={trade.status} />
-                                                </div>
-                                            </div>
-                                            <div className="flex justify-between items-end border-t border-gray-800/50 pt-3">
-                                                <div className="text-sm">
-                                                    <div className="text-gray-500 text-xs mb-1 uppercase tracking-wider">Entry Date</div>
-                                                    <div className="text-gray-300 font-medium">{trade.entry_date}</div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="text-gray-500 text-xs mb-1 uppercase tracking-wider">Return</div>
-                                                    <div className={`font-bold text-lg ${
-                                                        trade.return_pct == null ? 'text-gray-500' :
-                                                        trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'
-                                                    }`}>
-                                                        {trade.return_pct != null ? `${(trade.return_pct * 100).toFixed(2)}%` : '—'}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Desktop Table (Hidden on smaller screens) */}
-                                <div className="hidden md:block bg-[#111213] border border-gray-800 rounded-xl overflow-hidden">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="border-b border-gray-800 bg-[#0a0a0c]">
-                                                    <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Stock</th>
-                                                    <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Entry Date</th>
-                                                    <th className="text-right px-5 py-3.5 text-xs text-blue-500/80 uppercase tracking-wider font-semibold">Win Rate</th>
-                                                    <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Entry</th>
-                                                    <th className="text-right px-5 py-3.5 text-xs text-green-500/50 uppercase tracking-wider font-semibold">TP</th>
-                                                    <th className="text-right px-5 py-3.5 text-xs text-red-500/50 uppercase tracking-wider font-semibold">SL</th>
-                                                    <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Exit Date</th>
-                                                    <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Exit Price</th>
-                                                    <th className="text-center px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Status</th>
-                                                    <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Return</th>
-                                                    <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Days</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {filteredTrades.map((trade, idx) => (
-                                                    <tr 
-                                                        key={idx}
-                                                        onClick={() => onSelectStock(trade.stock_id)}
-                                                        className="border-b border-gray-800/50 hover:bg-[#1a1c1e] cursor-pointer transition-colors group"
-                                                    >
-                                                        <td className="px-5 py-4">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">
-                                                                    {trade.stock_id.charAt(0)}
-                                                                </div>
-                                                                <span className="font-bold text-white group-hover:text-blue-400 transition-colors">{trade.stock_id}</span>
+                        ) : sortedTrades.length === 0 ? (
+                            <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center">
+                                <h3 className="text-xl text-gray-300 mb-2">No trades found</h3>
+                                <p className="text-gray-500">No trade history is available with the current filters.</p>
+                            </div>
+                        ) : (
+                            <div className="bg-[#111213] border border-gray-800 rounded-xl overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b border-gray-800 bg-[#0a0a0c]">
+                                                <th onClick={() => handleSort('stock_id')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Stock<SortIndicator sortConfig={sortConfig} columnKey="stock_id" /></th>
+                                                <th onClick={() => handleSort('entry_date')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Entry Date<SortIndicator sortConfig={sortConfig} columnKey="entry_date" /></th>
+                                                <th onClick={() => handleSort('prob')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-blue-500/80 uppercase tracking-wider font-semibold select-none">Win Rate<SortIndicator sortConfig={sortConfig} columnKey="prob" /></th>
+                                                <th onClick={() => handleSort('entry_price')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Entry<SortIndicator sortConfig={sortConfig} columnKey="entry_price" /></th>
+                                                <th onClick={() => handleSort('tp_price')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-green-500/50 uppercase tracking-wider font-semibold select-none">TP<SortIndicator sortConfig={sortConfig} columnKey="tp_price" /></th>
+                                                <th onClick={() => handleSort('sl_price')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-red-500/50 uppercase tracking-wider font-semibold select-none">SL<SortIndicator sortConfig={sortConfig} columnKey="sl_price" /></th>
+                                                <th onClick={() => handleSort('exit_date')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Exit Date<SortIndicator sortConfig={sortConfig} columnKey="exit_date" /></th>
+                                                <th onClick={() => handleSort('exit_price')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Exit Price<SortIndicator sortConfig={sortConfig} columnKey="exit_price" /></th>
+                                                <th onClick={() => handleSort('status')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-center px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Status<SortIndicator sortConfig={sortConfig} columnKey="status" /></th>
+                                                <th onClick={() => handleSort('return_pct')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Return<SortIndicator sortConfig={sortConfig} columnKey="return_pct" /></th>
+                                                <th onClick={() => handleSort('holding_days')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Days<SortIndicator sortConfig={sortConfig} columnKey="holding_days" /></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {sortedTrades.map((trade, idx) => (
+                                                <tr
+                                                    key={idx}
+                                                    onClick={() => onSelectStock(trade.stock_id)}
+                                                    className="border-b border-gray-800/50 hover:bg-[#1a1c1e] cursor-pointer transition-colors group"
+                                                >
+                                                    <td className="px-5 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">
+                                                                {trade.stock_id.charAt(0)}
                                                             </div>
-                                                        </td>
-                                                        <td className="px-5 py-4 text-gray-400 text-xs">{trade.entry_date}</td>
-                                                        <td className="px-5 py-4 text-right">
-                                                            <span className={trade.prob > 0.6 ? 'text-green-400 font-medium' : 'text-blue-400 font-medium'}>
-                                                                {trade.prob ? `${(trade.prob * 100).toFixed(1)}%` : '—'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.entry_price?.toFixed(2)}</td>
-                                                        <td className="px-5 py-4 text-right text-green-400/80 font-medium">{trade.tp_price?.toFixed(2)}</td>
-                                                        <td className="px-5 py-4 text-right text-red-400/80 font-medium">{trade.sl_price?.toFixed(2)}</td>
-                                                        <td className="px-5 py-4 text-gray-400 text-xs">{trade.exit_date || '—'}</td>
-                                                        <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.exit_price?.toFixed(2) || '—'}</td>
-                                                        <td className="px-5 py-4 text-center"><StatusBadge status={trade.status} /></td>
-                                                        <td className={`px-5 py-4 text-right font-bold ${
-                                                            trade.return_pct == null ? 'text-gray-500' :
+                                                            <span className="font-bold text-white group-hover:text-blue-400 transition-colors">{trade.stock_id}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-5 py-4 text-gray-400 text-xs">{trade.entry_date}</td>
+                                                    <td className="px-5 py-4 text-right text-blue-400 font-medium">{trade.prob != null ? `${(trade.prob * 100).toFixed(1)}%` : '—'}</td>
+                                                    <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.entry_price?.toFixed(2)}</td>
+                                                    <td className="px-5 py-4 text-right text-green-400/80 font-medium">{trade.tp_price?.toFixed(2)}</td>
+                                                    <td className="px-5 py-4 text-right text-red-400/80 font-medium">{trade.sl_price?.toFixed(2)}</td>
+                                                    <td className="px-5 py-4 text-gray-400 text-xs">{trade.exit_date || '—'}</td>
+                                                    <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.exit_price?.toFixed(2) || '—'}</td>
+                                                    <td className="px-5 py-4 text-center"><StatusBadge status={trade.status} /></td>
+                                                    <td className={`px-5 py-4 text-right font-bold ${trade.return_pct == null ? 'text-gray-500' :
                                                             trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'
                                                         }`}>
-                                                            {trade.return_pct != null ? `${(trade.return_pct * 100).toFixed(2)}%` : '—'}
-                                                        </td>
-                                                        <td className="px-5 py-4 text-right text-gray-400">{trade.holding_days ?? '—'}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                        {trade.return_pct != null ? `${(trade.return_pct * 100).toFixed(2)}%` : '—'}
+                                                    </td>
+                                                    <td className="px-5 py-4 text-right text-gray-400">{trade.holding_days ?? '—'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
-                            </>
-                        );
-                        })()}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
