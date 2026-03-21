@@ -242,10 +242,10 @@ const Dashboard = ({ onSelectStock }) => {
             <div className="flex-1 w-full flex flex-col items-center justify-center bg-[#111213] gap-6 p-8">
                 <div className="flex flex-col items-center gap-4 max-w-md w-full">
                     <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <h2 className="text-xl font-bold text-white tracking-wide">Loading Market Data</h2>
-                    <p className="text-gray-500 text-sm text-center">
-                        Fetching live data from VN stock exchange. This takes about a minute on cold start.
-                    </p>
+                    <div className="mt-8 text-center max-w-sm px-6 relative z-10">
+                        <h3 className="text-2xl font-bold text-white mb-2 tracking-tight">Loading Market Data...</h3>
+                        <p className="text-gray-400 text-center px-4">Fetching latest stock prices & AI analysis</p>
+                    </div>
                     <div className="w-full bg-[#1a1c1e] rounded-full h-3 border border-[#2a2e39] overflow-hidden">
                         <div
                             className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all duration-700 ease-out"
@@ -263,9 +263,10 @@ const Dashboard = ({ onSelectStock }) => {
 
     // --- Normal Dashboard ---
     return (
-        <div className="flex-1 w-full flex flex-col bg-[#111213] overflow-hidden p-2 gap-2">
-            <div className="grid grid-cols-2 sm:grid-cols-4 w-full shrink-0 gap-2">
-                {indices.map(idx => (
+        <div className="flex-1 w-full flex flex-col bg-[#111213] p-2 gap-2">
+            {/* Index Cards Row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 z-10 relative">
+                {indices.map((idx, i) => (
                     <div key={idx.name} className="flex-1 bg-[#1a1c1e] border border-[#2a2e39] rounded-lg p-3 hover:bg-[#25282c] transition-colors cursor-pointer flex flex-col justify-center">
                         <div className="flex justify-between items-center mb-1">
                             <span className="font-bold text-sm text-gray-300">{idx.name}</span>
@@ -275,8 +276,8 @@ const Dashboard = ({ onSelectStock }) => {
                     </div>
                 ))}
             </div>
-
-            <div className="flex-1 bg-[#1a1c1e] rounded-sm relative shadow-lg min-h-[300px] sm:min-h-[400px] overflow-hidden">
+            {/* Heatmap Area */}
+            <div className="bg-[#111213] border border-gray-800 rounded-xl p-4 shadow-lg min-h-[50vh] sm:min-h-[300px] flex flex-col z-10 relative">
                 <div className="absolute inset-0">
                     {!loading && marketStocks.length > 0 ? (
                         <Plot

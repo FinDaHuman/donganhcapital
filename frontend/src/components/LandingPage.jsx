@@ -91,6 +91,15 @@ const LandingPage = ({ onTabChange }) => {
         }
     };
 
+    const scrollToSection = (sectionId) => {
+        setActiveSection(sectionId);
+        // You might want to add smooth scrolling logic here if sections are not full-page
+    };
+
+    const onLaunchApp = () => {
+        onTabChange && onTabChange('dashboard');
+    };
+
     return (
         <div className="w-full min-h-screen bg-[#000000] text-white flex flex-col relative overflow-hidden font-sans">
 
@@ -129,13 +138,13 @@ const LandingPage = ({ onTabChange }) => {
             </div>
 
             {/* Navbar */}
-            <nav className="fixed top-0 left-0 right-0 z-50 px-6 md:px-12 py-5 flex items-center justify-between">
+            <nav className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 md:px-12 py-3 sm:py-5 flex items-center justify-between bg-[#000000]/80 backdrop-blur-md border-b border-gray-800/50">
                 <div
                     className="text-white font-medium text-xl tracking-tight flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     onClick={() => setActiveSection('hero')}
                 >
                     <div className="w-8 h-8 bg-blue-600 text-white flex items-center justify-center font-bold text-lg">D</div>
-                    DongAnh Capital
+                    <span className="hidden sm:inline">DongAnh Capital</span>
                 </div>
 
                 <div
@@ -167,13 +176,27 @@ const LandingPage = ({ onTabChange }) => {
                     ))}
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <button className="px-5 py-2.5 text-sm font-medium rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-md hover:bg-white/20 transition-all cursor-pointer flex items-center gap-2" onClick={() => onTabChange && onTabChange('dashboard')}>
+                <div className="flex items-center gap-4 hidden sm:flex">
+                    <button className="whitespace-nowrap px-5 py-2.5 text-sm font-medium rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-md hover:bg-white/20 transition-all cursor-pointer flex items-center gap-2" onClick={onLaunchApp}>
                         Get Started for Free
                         <ArrowRight size={16} />
                     </button>
                 </div>
             </nav>
+
+            {/* Mobile Section Links */}
+            <div className="fixed top-[60px] w-full z-40 flex md:hidden overflow-x-auto gap-4 px-4 py-3 bg-[#000000]/95 backdrop-blur-md border-b border-gray-800/50">
+                <button onClick={onLaunchApp} className="whitespace-nowrap px-4 py-1.5 bg-blue-600 text-white font-semibold rounded-full text-sm">Launch App</button>
+                {navLinks.map((link) => (
+                    <button
+                        key={link.id}
+                        onClick={() => scrollToSection(link.id)}
+                        className={`whitespace-nowrap text-sm font-medium ${activeSection === link.id ? 'text-blue-400' : 'text-gray-300'}`}
+                    >
+                        {link.label}
+                    </button>
+                ))}
+            </div>
 
             {/* Main Content */}
             <main className={`flex-1 flex flex-col items-center relative z-10 px-4 pt-[120px] pb-24 min-h-[100dvh] overflow-y-auto ${activeSection === 'hero' ? 'justify-end pointer-events-none' : 'justify-start'}`}>

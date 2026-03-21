@@ -575,7 +575,7 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
             {/* Ticker & Search Overlay */}
             <div className="absolute top-4 left-4 z-20 flex items-center gap-3 bg-[#111213]/80 p-2 rounded backdrop-blur-sm border border-[#2a2e39]/50">
                 <h1
-                    className="text-2xl font-black text-white tracking-wider max-w-[150px] truncate drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]"
+                    className="text-lg sm:text-2xl font-black text-white tracking-wider max-w-[120px] sm:max-w-[200px] truncate drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]"
                     style={{ WebkitTextStroke: '1px rgba(0,0,0,0.8)' }}
                 >
                     {ticker}
@@ -590,7 +590,7 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
 
             {/* Search Dropdown Modal */}
             {showSearch && (
-                <div className="absolute top-16 left-4 z-30 w-[min(288px,calc(100vw-2rem))] bg-[#1a1c1e] border border-[#2a2e39] rounded-lg shadow-2xl flex flex-col max-h-[400px]">
+                <div className="absolute top-16 left-2 sm:left-4 right-2 sm:right-auto z-30 w-[min(288px,calc(100vw-2rem))] bg-[#1a1c1e] border border-[#2a2e39] rounded-lg shadow-2xl flex flex-col max-h-[400px]">
                     <div className="p-3 border-b border-[#2a2e39] flex items-center gap-2">
                         <Search size={16} className="text-gray-500" />
                         <input
@@ -614,7 +614,7 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
                                     setShowSearch(false);
                                     setSearchTerm('');
                                 }}
-                                className={`px-4 py-2 text-sm cursor-pointer rounded hover:bg-[#25282c] ${s === ticker ? 'text-blue-500 font-bold bg-[#1e2228]' : 'text-gray-300'}`}
+                                className={`px-4 py-3 text-sm cursor-pointer rounded hover:bg-[#25282c] ${s === ticker ? 'text-blue-500 font-bold bg-[#1e2228]' : 'text-gray-300'}`}
                             >
                                 {s}
                             </div>

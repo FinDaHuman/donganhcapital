@@ -78,7 +78,7 @@ function App() {
                     )}
 
                     {activeTab === 'chart' && (
-                        <div className="flex-1 w-full flex flex-row min-h-[400px] overflow-hidden">
+                        <div className="flex-1 w-full flex flex-col min-h-[400px] overflow-hidden">
                             {/* Main Chart Area */}
                             <div className="flex-1 flex flex-col border-r border-gray-800 min-w-0 min-h-0 overflow-hidden">
                                 {/* Chart Container */}
@@ -91,7 +91,7 @@ function App() {
                                     ) : error ? (
                                         <div className="absolute inset-0 flex items-center justify-center bg-[#111213] flex-col gap-4 z-10">
                                             <div className="text-red-400 font-medium tracking-wide bg-red-500/10 px-4 py-2 rounded border border-red-500/20 shadow break-words max-w-md text-center">{error}</div>
-                                            <div className="flex gap-4 mt-2">
+                                            <div className="flex flex-wrap justify-center gap-4 mt-2">
                                                 <button 
                                                     onClick={() => handleSelectStock(selectedTicker)}
                                                     className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded transition-colors"
@@ -120,7 +120,7 @@ function App() {
                                         />
                                     ) : (
                                         <div className="absolute inset-0 flex items-center justify-center bg-[#111213]/80 backdrop-blur-sm z-20">
-                                            <div className="w-[calc(100vw-2rem)] max-w-[450px] bg-[#1a1c1e] border border-[#2a2e39] rounded-2xl shadow-2xl flex flex-col max-h-[60vh] overflow-hidden">
+                                            <div className="w-[calc(100vw-2rem)] max-w-[450px] mx-4 bg-[#1a1c1e] border border-[#2a2e39] rounded-2xl shadow-2xl flex flex-col max-h-[60vh] overflow-hidden">
                                                 <div className="p-5 border-b border-[#2a2e39] flex items-center gap-3 bg-[#151719]">
                                                     <Search size={20} className="text-gray-500" />
                                                     <input

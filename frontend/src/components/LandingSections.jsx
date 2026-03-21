@@ -35,10 +35,10 @@ export const FeaturesSection = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Feature 1 */}
-                <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 relative group rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md p-8 overflow-hidden">
+                <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 relative group rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md p-6 sm:p-8 overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                     <Activity className="text-blue-500 mb-6" size={32} />
-                    <h3 className="text-2xl font-bold text-white mb-3 tracking-tight">Real-Time Market Data Feed</h3>
+                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-3 tracking-tight">Real-Time Market Data Feed</h3>
                     <p className="text-gray-400 leading-relaxed mb-6">Direct low-latency connections to HOSE, HNX, and UPCoM ensuring you receive millisecond-accurate pricing, volume, and order book dynamics before the wider retail market.</p>
                 </motion.div>
 
@@ -59,10 +59,10 @@ export const FeaturesSection = () => {
                 </motion.div>
 
                 {/* Feature 4 */}
-                <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 relative group rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md p-8 overflow-hidden">
+                <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 relative group rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md p-6 sm:p-8 overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                     <ShieldCheck className="text-emerald-400 mb-6" size={32} />
-                    <h3 className="text-2xl font-bold text-white mb-3 tracking-tight">Smart Portfolio Analytics</h3>
+                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-3 tracking-tight">Smart Portfolio Analytics</h3>
                     <p className="text-gray-400 leading-relaxed">Sync your brokerage accounts securely to run risk-adjusted return models, Monte Carlo simulations, and automated rebalancing alerts tailored to your personal strategy.</p>
                 </motion.div>
             </div>
@@ -90,7 +90,7 @@ export const CoursesSection = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {placeholders.map((item) => (
                     <motion.div key={item} variants={itemVariants} className="relative rounded-xl border border-white/5 bg-black/20 backdrop-blur-sm overflow-hidden group">
-                        <div className="aspect-video bg-gray-900/50 flex flex-col items-center justify-center border-b border-white/5 relative">
+                        <div className="aspect-video bg-gray-900/50 flex flex-col items-center justify-center border-b border-white/5 relative overflow-hidden rounded-t-xl">
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent z-10"></div>
                             <PlayCircle size={48} className="text-gray-600 z-20 group-hover:text-blue-500 transition-colors duration-300" />
                             <div className="absolute top-3 right-3 bg-black/60 px-2 py-1 rounded text-xs text-gray-400 font-mono z-20 border border-white/10">XX:XX</div>
@@ -123,21 +123,21 @@ export const FutureSection = () => {
                 <motion.div variants={itemVariants} className="relative pl-8">
                     <div className="absolute -left-2 top-1.5 w-4 h-4 rounded-full bg-blue-500 ring-4 ring-black"></div>
                     <div className="flex items-center gap-2 text-blue-400 text-sm font-semibold tracking-wider mb-1"><Calendar size={14} /> Q3 2026</div>
-                    <h3 className="text-2xl font-bold text-white mb-2">AI-Driven Portfolio Generation</h3>
+                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">AI-Driven Portfolio Generation</h3>
                     <p className="text-gray-400 text-base leading-relaxed max-w-2xl bg-black/30 p-4 rounded-lg border border-white/5 backdrop-blur-sm">Our proprietary LLM will automatically construct diversified, risk-optimized portfolios based on your qualitative inputs, macroeconomic forecasts, and real-time Vietnam market conditions.</p>
                 </motion.div>
 
                 <motion.div variants={itemVariants} className="relative pl-8">
                     <div className="absolute -left-2 top-1.5 w-4 h-4 rounded-full bg-gray-700 ring-4 ring-black"></div>
                     <div className="flex items-center gap-2 text-gray-500 text-sm font-semibold tracking-wider mb-1"><Calendar size={14} /> Q4 2026</div>
-                    <h3 className="text-2xl font-bold text-gray-300 mb-2">Options & Warrants Pricing Engine</h3>
+                    <h3 className="text-xl sm:text-2xl font-bold text-gray-300 mb-2">Options & Warrants Pricing Engine</h3>
                     <p className="text-gray-500 text-base leading-relaxed max-w-2xl">Advanced Black-Scholes and binomial tree models integrated directly into the dashboard for instantaneous implied volatility surface mapping of covered warrants.</p>
                 </motion.div>
 
                 <motion.div variants={itemVariants} className="relative pl-8">
                     <div className="absolute -left-2 top-1.5 w-4 h-4 rounded-full bg-gray-800 ring-4 ring-black"></div>
                     <div className="flex items-center gap-2 text-gray-600 text-sm font-semibold tracking-wider mb-1"><Calendar size={14} /> Q1 2027</div>
-                    <h3 className="text-2xl font-bold text-gray-500 mb-2">Automated Execution Algorithms</h3>
+                    <h3 className="text-xl sm:text-2xl font-bold text-gray-500 mb-2">Automated Execution Algorithms</h3>
                     <p className="text-gray-600 text-base leading-relaxed max-w-2xl">Connect directly to partner brokerages via FIX protocol to deploy TWAP, VWAP, and custom algorithmic execution strategies with zero manual intervention.</p>
                 </motion.div>
             </div>
@@ -185,10 +185,10 @@ export const QAndASection = () => {
                         className={`rounded-xl border transition-colors duration-300 overflow-hidden ${openIndex === index ? 'bg-white/10 border-white/20' : 'bg-black/40 border-white/5 hover:bg-white/5'}`}
                     >
                         <button
-                            className="w-full px-6 py-5 flex items-center justify-between text-left focus:outline-none"
+                            className="w-full px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between text-left focus:outline-none"
                             onClick={() => setOpenIndex(openIndex === index ? -1 : index)}
                         >
-                            <span className="font-medium text-lg text-white pr-4">{faq.q}</span>
+                            <span className="font-medium text-base sm:text-lg text-white pr-4">{faq.q}</span>
                             {openIndex === index ? <ChevronUp className="text-blue-400 shrink-0" /> : <ChevronDown className="text-gray-500 shrink-0" />}
                         </button>
                         {openIndex === index && (
@@ -244,7 +244,7 @@ export const AboutUsSection = () => {
                 </motion.div>
 
                 {/* Right Column: Contact & Location */}
-                <motion.div variants={itemVariants} className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-md relative overflow-hidden flex flex-col justify-between">
+                <motion.div variants={itemVariants} className="bg-white/5 border border-white/10 rounded-3xl p-5 sm:p-8 backdrop-blur-md relative overflow-hidden flex flex-col justify-between">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
 
                     <div>
