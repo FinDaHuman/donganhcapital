@@ -283,19 +283,23 @@ def get_trade_history(status_filter: str = None):
 
     if status_filter:
         query = text("""
-        SELECT stock_id, entry_date, entry_price, tp_price, sl_price,
-               exit_date, exit_price, status, return_pct, holding_days
-        FROM trade_history
-        WHERE status = :status
-        ORDER BY entry_date DESC
+        SELECT t.stock_id, t.entry_date, t.entry_price, t.tp_price, t.sl_price,
+               t.exit_date, t.exit_price, t.status, t.return_pct, t.holding_days,
+               a.prob
+        FROM trade_history t
+        LEFT JOIN ai_signals a ON t.stock_id = a.stock_id AND t.entry_date = a.date
+        WHERE t.status = :status
+        ORDER BY t.entry_date DESC
         """)
         params = {"status": status_filter.upper()}
     else:
         query = text("""
-        SELECT stock_id, entry_date, entry_price, tp_price, sl_price,
-               exit_date, exit_price, status, return_pct, holding_days
-        FROM trade_history
-        ORDER BY entry_date DESC
+        SELECT t.stock_id, t.entry_date, t.entry_price, t.tp_price, t.sl_price,
+               t.exit_date, t.exit_price, t.status, t.return_pct, t.holding_days,
+               a.prob
+        FROM trade_history t
+        LEFT JOIN ai_signals a ON t.stock_id = a.stock_id AND t.entry_date = a.date
+        ORDER BY t.entry_date DESC
         """)
         params = None
 
@@ -314,6 +318,8 @@ def get_trade_history(status_filter: str = None):
                 df[col] = df[col].apply(lambda x: _safe_round(x, 2))
         if 'return_pct' in df.columns:
             df['return_pct'] = df['return_pct'].apply(lambda x: _safe_round(x, 6))
+        if 'prob' in df.columns:
+            df['prob'] = df['prob'].apply(lambda x: _safe_round(x, 4))
         if 'holding_days' in df.columns:
             df['holding_days'] = df['holding_days'].apply(lambda x: int(x) if pd.notnull(x) and _safe_float(x) is not None else None)
 

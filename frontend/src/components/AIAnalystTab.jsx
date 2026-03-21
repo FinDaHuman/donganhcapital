@@ -29,6 +29,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
     const [tradeStats, setTradeStats] = useState({ total_trades: 0 });
     const [statusFilter, setStatusFilter] = useState(null);
     const [tradesLoading, setTradesLoading] = useState(true);
+    const [minWinRate, setMinWinRate] = useState(0);
 
     // Active section
     const [activeSection, setActiveSection] = useState('signals');
@@ -229,6 +230,20 @@ const AIAnalystTab = ({ onSelectStock }) => {
                     <div className="animate-fade-in">
                         <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-4">
                             <h2 className="text-2xl font-bold text-white">Trade History</h2>
+                            <div className="flex items-center gap-3">
+                                <label className="text-gray-400 text-sm font-medium">Min Win Rate:</label>
+                                <select 
+                                    value={minWinRate} 
+                                    onChange={(e) => setMinWinRate(Number(e.target.value))}
+                                    className="bg-[#1a1c1e] border border-gray-700 text-white rounded-md px-3 py-1.5 focus:outline-none focus:border-blue-500 text-sm cursor-pointer"
+                                >
+                                    <option value={0}>All Signals</option>
+                                    <option value={0.6}>&ge; 60%</option>
+                                    <option value={0.7}>&ge; 70%</option>
+                                    <option value={0.8}>&ge; 80%</option>
+                                    <option value={0.9}>&ge; 90%</option>
+                                </select>
+                            </div>
                         </div>
 
                         {/* Portfolio Stats Cards */}
@@ -294,16 +309,19 @@ const AIAnalystTab = ({ onSelectStock }) => {
                             <div className="flex justify-center items-center py-20">
                                 <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                             </div>
-                        ) : trades.length === 0 ? (
-                            <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center">
-                                <h3 className="text-xl text-gray-300 mb-2">No trades found</h3>
-                                <p className="text-gray-500">No trade history is available{statusFilter ? ` for status "${statusFilter}"` : ''}.</p>
-                            </div>
-                        ) : (
-                            <>
-                                {/* Mobile Cards (Hidden on MD+) */}
-                                <div className="md:hidden flex flex-col gap-4">
-                                    {trades.map((trade, idx) => (
+                        ) : (() => {
+                            const filteredTrades = trades.filter(trade => minWinRate === 0 || (trade.prob && trade.prob >= minWinRate));
+                            
+                            return filteredTrades.length === 0 ? (
+                                <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center">
+                                    <h3 className="text-xl text-gray-300 mb-2">No trades found</h3>
+                                    <p className="text-gray-500">No trade history is available with the current filters.</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Mobile Cards (Hidden on MD+) */}
+                                    <div className="md:hidden flex flex-col gap-4">
+                                        {filteredTrades.map((trade, idx) => (
                                         <div 
                                             key={idx}
                                             onClick={() => onSelectStock(trade.stock_id)}
@@ -316,7 +334,14 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                     </div>
                                                     <span className="font-bold text-white text-lg">{trade.stock_id}</span>
                                                 </div>
-                                                <StatusBadge status={trade.status} />
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-xs bg-[#1e2024] px-2 py-0.5 rounded text-gray-300">
+                                                        WR: <span className={trade.prob > 0.6 ? 'text-green-400 font-medium' : 'text-blue-400 font-medium'}>
+                                                            {trade.prob ? `${(trade.prob * 100).toFixed(1)}%` : '—'}
+                                                        </span>
+                                                    </div>
+                                                    <StatusBadge status={trade.status} />
+                                                </div>
                                             </div>
                                             <div className="flex justify-between items-end border-t border-gray-800/50 pt-3">
                                                 <div className="text-sm">
@@ -345,6 +370,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                 <tr className="border-b border-gray-800 bg-[#0a0a0c]">
                                                     <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Stock</th>
                                                     <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Entry Date</th>
+                                                    <th className="text-right px-5 py-3.5 text-xs text-blue-500/80 uppercase tracking-wider font-semibold">Win Rate</th>
                                                     <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Entry</th>
                                                     <th className="text-right px-5 py-3.5 text-xs text-green-500/50 uppercase tracking-wider font-semibold">TP</th>
                                                     <th className="text-right px-5 py-3.5 text-xs text-red-500/50 uppercase tracking-wider font-semibold">SL</th>
@@ -356,7 +382,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {trades.map((trade, idx) => (
+                                                {filteredTrades.map((trade, idx) => (
                                                     <tr 
                                                         key={idx}
                                                         onClick={() => onSelectStock(trade.stock_id)}
@@ -371,6 +397,11 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                             </div>
                                                         </td>
                                                         <td className="px-5 py-4 text-gray-400 text-xs">{trade.entry_date}</td>
+                                                        <td className="px-5 py-4 text-right">
+                                                            <span className={trade.prob > 0.6 ? 'text-green-400 font-medium' : 'text-blue-400 font-medium'}>
+                                                                {trade.prob ? `${(trade.prob * 100).toFixed(1)}%` : '—'}
+                                                            </span>
+                                                        </td>
                                                         <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.entry_price?.toFixed(2)}</td>
                                                         <td className="px-5 py-4 text-right text-green-400/80 font-medium">{trade.tp_price?.toFixed(2)}</td>
                                                         <td className="px-5 py-4 text-right text-red-400/80 font-medium">{trade.sl_price?.toFixed(2)}</td>
@@ -391,7 +422,8 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                     </div>
                                 </div>
                             </>
-                        )}
+                        );
+                        })()}
                     </div>
                 )}
             </div>
