@@ -78,7 +78,7 @@ function App() {
                     )}
 
                     {activeTab === 'chart' && (
-                        <div className="flex-1 w-full flex flex-row min-h-0 overflow-hidden" style={{ minHeight: '600px' }}>
+                        <div className="flex-1 w-full flex flex-row min-h-[400px] overflow-hidden">
                             {/* Main Chart Area */}
                             <div className="flex-1 flex flex-col border-r border-gray-800 min-w-0 min-h-0 overflow-hidden">
                                 {/* Chart Container */}
@@ -120,7 +120,7 @@ function App() {
                                         />
                                     ) : (
                                         <div className="absolute inset-0 flex items-center justify-center bg-[#111213]/80 backdrop-blur-sm z-20">
-                                            <div className="w-[450px] bg-[#1a1c1e] border border-[#2a2e39] rounded-2xl shadow-2xl flex flex-col max-h-[60vh] overflow-hidden">
+                                            <div className="w-[calc(100vw-2rem)] max-w-[450px] bg-[#1a1c1e] border border-[#2a2e39] rounded-2xl shadow-2xl flex flex-col max-h-[60vh] overflow-hidden">
                                                 <div className="p-5 border-b border-[#2a2e39] flex items-center gap-3 bg-[#151719]">
                                                     <Search size={20} className="text-gray-500" />
                                                     <input

@@ -19,6 +19,12 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
 }
 
+html, body {
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

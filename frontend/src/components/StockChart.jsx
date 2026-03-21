@@ -430,6 +430,80 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         setIsDragging(false);
     };
 
+    // Touch pan/zoom State
+    const [touchDistance, setTouchDistance] = useState(null);
+
+    const handleTouchStart = (e) => {
+        if (e.touches.length === 1) {
+            setIsDragging(true);
+            setLastMouseX(e.touches[0].clientX);
+            setTouchDistance(null);
+        } else if (e.touches.length === 2) {
+            setIsDragging(false);
+            const dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            setTouchDistance(dist);
+        }
+    };
+
+    const handleTouchMove = (e) => {
+        if (e.touches.length === 1 && isDragging) {
+            const dx = e.touches[0].clientX - lastMouseX;
+            setLastMouseX(e.touches[0].clientX);
+
+            const container = containerRef.current;
+            if (!container) return;
+
+            const chartWidth = container.clientWidth;
+            const candlesVisible = viewport.end - viewport.start;
+            const pixelsPerCandle = chartWidth / candlesVisible;
+
+            const deltaCandles = -dx / pixelsPerCandle; 
+
+            setViewport(prev => {
+                let newStart = prev.start + deltaCandles;
+                let newEnd = prev.end + deltaCandles;
+
+                if (newStart < -10) { const diff = newStart - (-10); newStart -= diff; newEnd -= diff; }
+                if (newEnd > fullData.length + 10) { const diff = newEnd - (fullData.length + 10); newStart -= diff; newEnd -= diff; }
+
+                return { start: newStart, end: newEnd };
+            });
+        } else if (e.touches.length === 2 && touchDistance !== null) {
+            const dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            
+            const factor = touchDistance / dist;
+            const vp = viewportRef.current || viewport; 
+            const width = vp.end - vp.start;
+            const newWidth = width * factor;
+
+            const center = (vp.start + vp.end) / 2;
+            let newStart = center - newWidth / 2;
+            let newEnd = center + newWidth / 2;
+
+            const minItems = 10;
+            const maxItems = fullData.length + 20;
+
+            if (newEnd - newStart < minItems) { newEnd = center + minItems / 2; newStart = center - minItems / 2; }
+            if (newEnd - newStart > maxItems) { newEnd = center + maxItems / 2; newStart = center - maxItems / 2; }
+            if (newStart < -10) { newEnd += (-10 - newStart); newStart = -10; }
+            if (newEnd > fullData.length + 10) { newStart -= (newEnd - (fullData.length + 10)); newEnd = fullData.length + 10; }
+
+            setViewport({ start: newStart, end: newEnd });
+            setTouchDistance(dist);
+        }
+    };
+
+    const handleTouchEnd = () => {
+        setIsDragging(false);
+        setTouchDistance(null);
+    };
+
     // Prevent scrolling page when zooming chart
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -516,7 +590,7 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
 
             {/* Search Dropdown Modal */}
             {showSearch && (
-                <div className="absolute top-16 left-4 z-30 w-72 bg-[#1a1c1e] border border-[#2a2e39] rounded-lg shadow-2xl flex flex-col max-h-[400px]">
+                <div className="absolute top-16 left-4 z-30 w-[min(288px,calc(100vw-2rem))] bg-[#1a1c1e] border border-[#2a2e39] rounded-lg shadow-2xl flex flex-col max-h-[400px]">
                     <div className="p-3 border-b border-[#2a2e39] flex items-center gap-2">
                         <Search size={16} className="text-gray-500" />
                         <input
@@ -559,8 +633,11 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
             >
-                <canvas ref={canvasRef} className="absolute inset-0 block" />
+                <canvas ref={canvasRef} className="absolute inset-0 block" style={{ touchAction: 'none' }} />
             </div>
         </div>
     );

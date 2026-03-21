@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import Spline from '@splinetool/react-spline';
@@ -6,10 +6,20 @@ import { FeaturesSection, CoursesSection, FutureSection, QAndASection, AboutUsSe
 
 const LandingPage = ({ onTabChange }) => {
     const [activeSection, setActiveSection] = useState('hero');
-    const [splineReady, setSplineReady] = useState(false);
+    const [splineVisible, setSplineVisible] = useState(false);
+    const [placeholderOut, setPlaceholderOut] = useState(false);
+    const [brightening, setBrightening] = useState(false);
 
+    // Slowly warm the background toward the globe's ambient navy during loading
+    useEffect(() => {
+        const t = setTimeout(() => setBrightening(true), 150);
+        return () => clearTimeout(t);
+    }, []);
+
+    // When Spline loads: wait 400ms then cross-dissolve
     const handleSplineLoad = useCallback(() => {
-        setSplineReady(true);
+        setTimeout(() => setSplineVisible(true), 400);
+        setTimeout(() => setPlaceholderOut(true), 600);
     }, []);
 
     const containerVariants = {
@@ -25,8 +35,8 @@ const LandingPage = ({ onTabChange }) => {
     };
 
     const itemVariants = {
-        hidden: { opacity: 0, y: 30 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" } }
+        hidden: { opacity: 0 },
+        visible: { opacity: 1, transition: { duration: 0.8, ease: "easeOut" } }
     };
 
     const navLinks = [
@@ -84,23 +94,36 @@ const LandingPage = ({ onTabChange }) => {
     return (
         <div className="w-full min-h-screen bg-[#000000] text-white flex flex-col relative overflow-hidden font-sans">
 
-            {/* Fallback gradient background — always visible, hidden when Spline is ready */}
-            <div 
-                className="absolute inset-0 z-0 transition-opacity duration-1000"
-                style={{ 
-                    opacity: splineReady ? 0 : 1,
-                    background: 'radial-gradient(ellipse at 50% 80%, #0a1628 0%, #060d18 40%, #000000 100%)',
-                    pointerEvents: 'none'
+            {/* Placeholder — full-screen, warms from black toward globe's ambient navy
+                during loading, then fades out once Spline cross-dissolves in.
+                No circle, no position assumptions — just a colour field that primes
+                the eye so the Spline reveal feels like a brightening, not a snap. */}
+            <div
+                className="absolute inset-0 z-0 pointer-events-none"
+                style={{
+                    opacity: placeholderOut ? 0 : 1,
+                    background: brightening
+                        ? 'radial-gradient(ellipse at 50% 45%, #0b2240 0%, #06131f 50%, #010508 100%)'
+                        : '#000000',
+                    // Use only longhand properties to avoid React's shorthand-conflict warning
+                    transitionProperty: placeholderOut ? 'opacity' : 'background',
+                    transitionDuration: placeholderOut ? '2s' : '7s',
+                    transitionTimingFunction: placeholderOut ? 'ease-in-out' : 'ease-in-out',
                 }}
             />
 
-            {/* Background Spline Animation — fades in when loaded */}
-            <div 
-                className="absolute inset-0 z-0 transition-opacity duration-1000" 
-                style={{ opacity: splineReady ? 1 : 0 }}
+            {/* Spline — sits below placeholder, fades in during cross-dissolve */}
+            <div
+                className="absolute inset-0 z-0"
+                style={{
+                    opacity: splineVisible ? 1 : 0,
+                    transitionProperty: 'opacity',
+                    transitionDuration: splineVisible ? '2.5s' : '0s',
+                    transitionTimingFunction: 'ease-in-out',
+                }}
             >
-                <Spline 
-                    scene="https://prod.spline.design/KtfPeH8BYpGVHFCB/scene.splinecode" 
+                <Spline
+                    scene="https://prod.spline.design/KtfPeH8BYpGVHFCB/scene.splinecode"
                     onLoad={handleSplineLoad}
                 />
             </div>
@@ -115,7 +138,7 @@ const LandingPage = ({ onTabChange }) => {
                     DongAnh Capital
                 </div>
 
-                <div 
+                <div
                     onMouseMove={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         e.currentTarget.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);

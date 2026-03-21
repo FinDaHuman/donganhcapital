@@ -123,7 +123,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                 {/* ==================== SIGNALS SECTION ==================== */}
                 {activeSection === 'signals' && (
                     <div className="animate-fade-in">
-                        <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-4">
+                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 justify-between items-start sm:items-center mb-6 border-b border-gray-800 pb-4">
                             <h2 className="text-2xl font-bold text-white">AI Breakout Signals</h2>
                             <div className="flex items-center gap-3">
                                 <label className="text-gray-400 font-medium">Select Date:</label>
@@ -280,7 +280,10 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                         }`}
                                     >
                                         <div className={`text-lg font-bold text-${color}-400`}>{count}</div>
-                                        <div className="text-xs text-gray-500 uppercase tracking-wider mt-0.5">{STATUS_COLORS[key].label}</div>
+                                        <div className="text-xs text-gray-500 uppercase tracking-wider mt-0.5">
+                                            <span className="hidden sm:inline">{STATUS_COLORS[key].label}</span>
+                                            <span className="sm:hidden">{key}</span>
+                                        </div>
                                     </button>
                                 ))}
                             </div>
@@ -297,58 +300,97 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                 <p className="text-gray-500">No trade history is available{statusFilter ? ` for status "${statusFilter}"` : ''}.</p>
                             </div>
                         ) : (
-                            <div className="bg-[#111213] border border-gray-800 rounded-xl overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className="border-b border-gray-800 bg-[#0a0a0c]">
-                                                <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Stock</th>
-                                                <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Entry Date</th>
-                                                <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Entry</th>
-                                                <th className="text-right px-5 py-3.5 text-xs text-green-500/50 uppercase tracking-wider font-semibold">TP</th>
-                                                <th className="text-right px-5 py-3.5 text-xs text-red-500/50 uppercase tracking-wider font-semibold">SL</th>
-                                                <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Exit Date</th>
-                                                <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Exit Price</th>
-                                                <th className="text-center px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Status</th>
-                                                <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Return</th>
-                                                <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Days</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {trades.map((trade, idx) => (
-                                                <tr 
-                                                    key={idx}
-                                                    onClick={() => onSelectStock(trade.stock_id)}
-                                                    className="border-b border-gray-800/50 hover:bg-[#1a1c1e] cursor-pointer transition-colors group"
-                                                >
-                                                    <td className="px-5 py-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">
-                                                                {trade.stock_id.charAt(0)}
-                                                            </div>
-                                                            <span className="font-bold text-white group-hover:text-blue-400 transition-colors">{trade.stock_id}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-5 py-4 text-gray-400 text-xs">{trade.entry_date}</td>
-                                                    <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.entry_price?.toFixed(2)}</td>
-                                                    <td className="px-5 py-4 text-right text-green-400/80 font-medium">{trade.tp_price?.toFixed(2)}</td>
-                                                    <td className="px-5 py-4 text-right text-red-400/80 font-medium">{trade.sl_price?.toFixed(2)}</td>
-                                                    <td className="px-5 py-4 text-gray-400 text-xs">{trade.exit_date || '—'}</td>
-                                                    <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.exit_price?.toFixed(2) || '—'}</td>
-                                                    <td className="px-5 py-4 text-center"><StatusBadge status={trade.status} /></td>
-                                                    <td className={`px-5 py-4 text-right font-bold ${
+                            <>
+                                {/* Mobile Cards (Hidden on MD+) */}
+                                <div className="md:hidden flex flex-col gap-4">
+                                    {trades.map((trade, idx) => (
+                                        <div 
+                                            key={idx}
+                                            onClick={() => onSelectStock(trade.stock_id)}
+                                            className="bg-[#111213] border border-gray-800 rounded-xl p-4 cursor-pointer hover:border-blue-500/30 transition-colors"
+                                        >
+                                            <div className="flex justify-between items-center mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">
+                                                        {trade.stock_id.charAt(0)}
+                                                    </div>
+                                                    <span className="font-bold text-white text-lg">{trade.stock_id}</span>
+                                                </div>
+                                                <StatusBadge status={trade.status} />
+                                            </div>
+                                            <div className="flex justify-between items-end border-t border-gray-800/50 pt-3">
+                                                <div className="text-sm">
+                                                    <div className="text-gray-500 text-xs mb-1 uppercase tracking-wider">Entry Date</div>
+                                                    <div className="text-gray-300 font-medium">{trade.entry_date}</div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-gray-500 text-xs mb-1 uppercase tracking-wider">Return</div>
+                                                    <div className={`font-bold text-lg ${
                                                         trade.return_pct == null ? 'text-gray-500' :
                                                         trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'
                                                     }`}>
                                                         {trade.return_pct != null ? `${(trade.return_pct * 100).toFixed(2)}%` : '—'}
-                                                    </td>
-                                                    <td className="px-5 py-4 text-right text-gray-400">{trade.holding_days ?? '—'}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            </div>
+
+                                {/* Desktop Table (Hidden on smaller screens) */}
+                                <div className="hidden md:block bg-[#111213] border border-gray-800 rounded-xl overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead>
+                                                <tr className="border-b border-gray-800 bg-[#0a0a0c]">
+                                                    <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Stock</th>
+                                                    <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Entry Date</th>
+                                                    <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Entry</th>
+                                                    <th className="text-right px-5 py-3.5 text-xs text-green-500/50 uppercase tracking-wider font-semibold">TP</th>
+                                                    <th className="text-right px-5 py-3.5 text-xs text-red-500/50 uppercase tracking-wider font-semibold">SL</th>
+                                                    <th className="text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Exit Date</th>
+                                                    <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Exit Price</th>
+                                                    <th className="text-center px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Status</th>
+                                                    <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Return</th>
+                                                    <th className="text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold">Days</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {trades.map((trade, idx) => (
+                                                    <tr 
+                                                        key={idx}
+                                                        onClick={() => onSelectStock(trade.stock_id)}
+                                                        className="border-b border-gray-800/50 hover:bg-[#1a1c1e] cursor-pointer transition-colors group"
+                                                    >
+                                                        <td className="px-5 py-4">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">
+                                                                    {trade.stock_id.charAt(0)}
+                                                                </div>
+                                                                <span className="font-bold text-white group-hover:text-blue-400 transition-colors">{trade.stock_id}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-5 py-4 text-gray-400 text-xs">{trade.entry_date}</td>
+                                                        <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.entry_price?.toFixed(2)}</td>
+                                                        <td className="px-5 py-4 text-right text-green-400/80 font-medium">{trade.tp_price?.toFixed(2)}</td>
+                                                        <td className="px-5 py-4 text-right text-red-400/80 font-medium">{trade.sl_price?.toFixed(2)}</td>
+                                                        <td className="px-5 py-4 text-gray-400 text-xs">{trade.exit_date || '—'}</td>
+                                                        <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.exit_price?.toFixed(2) || '—'}</td>
+                                                        <td className="px-5 py-4 text-center"><StatusBadge status={trade.status} /></td>
+                                                        <td className={`px-5 py-4 text-right font-bold ${
+                                                            trade.return_pct == null ? 'text-gray-500' :
+                                                            trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'
+                                                        }`}>
+                                                            {trade.return_pct != null ? `${(trade.return_pct * 100).toFixed(2)}%` : '—'}
+                                                        </td>
+                                                        <td className="px-5 py-4 text-right text-gray-400">{trade.holding_days ?? '—'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </>
                         )}
                     </div>
                 )}

@@ -264,7 +264,7 @@ const Dashboard = ({ onSelectStock }) => {
     // --- Normal Dashboard ---
     return (
         <div className="flex-1 w-full flex flex-col bg-[#111213] overflow-hidden p-2 gap-2">
-            <div className="flex w-full shrink-0 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 w-full shrink-0 gap-2">
                 {indices.map(idx => (
                     <div key={idx.name} className="flex-1 bg-[#1a1c1e] border border-[#2a2e39] rounded-lg p-3 hover:bg-[#25282c] transition-colors cursor-pointer flex flex-col justify-center">
                         <div className="flex justify-between items-center mb-1">
@@ -276,7 +276,7 @@ const Dashboard = ({ onSelectStock }) => {
                 ))}
             </div>
 
-            <div className="flex-1 bg-[#1a1c1e] rounded-sm relative shadow-lg min-h-[400px] overflow-hidden">
+            <div className="flex-1 bg-[#1a1c1e] rounded-sm relative shadow-lg min-h-[300px] sm:min-h-[400px] overflow-hidden">
                 <div className="absolute inset-0">
                     {!loading && marketStocks.length > 0 ? (
                         <Plot
