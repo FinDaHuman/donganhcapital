@@ -13,6 +13,7 @@ import gc
 from fastapi import Depends
 from typing import Any, Optional
 import time
+from uuid import uuid4
 
 from db.queries import (
     get_stocks_from_db, get_stock_ohlc, 
@@ -71,16 +72,19 @@ def run_vn30f1m_sync():
         from db.connection import get_engine
         from sqlalchemy import text
         engine = get_engine()
+        temp_table = f"vn30f1m_temp_{uuid4().hex}"
         with engine.begin() as conn:
-            df.to_sql("vn30f1m_temp", conn, if_exists="replace", index=False, chunksize=500)
-            conn.execute(text("""
-                INSERT INTO vn30f1m_intraday (time, open, high, low, close, volume)
-                SELECT time, open, high, low, close, volume FROM vn30f1m_temp
-                ON CONFLICT (time) DO UPDATE SET
-                    open = EXCLUDED.open, high = EXCLUDED.high, 
-                    low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume
-            """))
-            conn.execute(text("DROP TABLE vn30f1m_temp"))
+            try:
+                df.to_sql(temp_table, conn, if_exists="replace", index=False, chunksize=500)
+                conn.execute(text(f"""
+                    INSERT INTO vn30f1m_intraday (time, open, high, low, close, volume)
+                    SELECT time, open, high, low, close, volume FROM {temp_table}
+                    ON CONFLICT (time) DO UPDATE SET
+                        open = EXCLUDED.open, high = EXCLUDED.high, 
+                        low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume
+                """))
+            finally:
+                conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
         print(f"Live VN30F1M update fetched {len(df)} candles.")
     except Exception as e:
         print(f"Error live updating VN30F1M: {e}")
@@ -299,10 +303,6 @@ async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any 
 async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurrency)):
     global predictor
     
-    # 1. Check Model & Data
-    if predictor is None:
-        raise HTTPException(status_code=503, detail="Prediction model is not loaded.")
-    
     stock_id = stock_id.upper()
         
     try:
@@ -333,6 +333,10 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
             # Cache for a very short time (20s) because it's realtime
             _cache[cache_key] = (result, time.time() + 20)
             return result
+        
+        # 1. Check Model & Data
+        if predictor is None:
+            raise HTTPException(status_code=503, detail="Prediction model is not loaded.")
 
         cached = _cache.get(cache_key)
         if cached and time.time() < cached[1]:

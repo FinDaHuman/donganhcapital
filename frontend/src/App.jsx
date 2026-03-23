@@ -57,18 +57,22 @@ function App() {
 
     // Realtime Polling for VN30F1M
     useEffect(() => {
+        let isActive = true;
         let intervalId;
         if (activeTab === 'chart' && selectedTicker === 'VN30F1M') {
             intervalId = setInterval(async () => {
                 try {
                     const data = await getPrediction('VN30F1M');
-                    setPredictionData(data);
+                    if (isActive && data != null) {
+                        setPredictionData(data);
+                    }
                 } catch (e) {
                     console.error("Fetch error during VN30F1M polling:", e);
                 }
             }, 60000); // every 60s
         }
         return () => {
+            isActive = false;
             if (intervalId) clearInterval(intervalId);
         };
     }, [activeTab, selectedTicker]);

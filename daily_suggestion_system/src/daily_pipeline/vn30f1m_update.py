@@ -5,10 +5,9 @@ from sqlalchemy import text
 from vnstock import Vnstock
 import sys
 import os
+from uuid import uuid4
 
-# Add parent directory to path to allow importing data_access
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from src.data_access.db_connection import get_engine
+from data_access.db_connection import get_engine
 
 def update_vn30f1m_intraday():
     vn = Vnstock()
@@ -43,27 +42,30 @@ def update_vn30f1m_intraday():
     df = df.drop_duplicates(subset=["time"])
     df = df.replace([np.inf, -np.inf], np.nan)
 
+    temp_table = f"vn30f1m_temp_{uuid4().hex}"
+    
     with engine.begin() as conn:
-        df.to_sql("vn30f1m_temp", conn,
-                  if_exists="replace",
-                  index=False,
-                  chunksize=500)
+        try:
+            df.to_sql(temp_table, conn,
+                      if_exists="replace",
+                      index=False,
+                      chunksize=500)
 
-        conn.execute(text("""
-            INSERT INTO vn30f1m_intraday 
-                (time, open, high, low, close, volume)
-            SELECT 
-                time, open, high, low, close, volume
-            FROM vn30f1m_temp
-            ON CONFLICT (time) DO UPDATE SET
-                open = EXCLUDED.open,
-                high = EXCLUDED.high,
-                low = EXCLUDED.low,
-                close = EXCLUDED.close,
-                volume = EXCLUDED.volume
-        """))
-
-        conn.execute(text("DROP TABLE vn30f1m_temp"))
+            conn.execute(text(f"""
+                INSERT INTO vn30f1m_intraday 
+                    (time, open, high, low, close, volume)
+                SELECT 
+                    time, open, high, low, close, volume
+                FROM {temp_table}
+                ON CONFLICT (time) DO UPDATE SET
+                    open = EXCLUDED.open,
+                    high = EXCLUDED.high,
+                    low = EXCLUDED.low,
+                    close = EXCLUDED.close,
+                    volume = EXCLUDED.volume
+            """))
+        finally:
+            conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
 
     print(f"Saved {len(df)} candles for {today}")
 

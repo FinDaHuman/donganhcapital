@@ -107,6 +107,7 @@ DongAnhCapital/
 │   ├── src/
 │   │   ├── daily_pipeline/
 │   │   │   ├── run_daily_pipeline.py  # Main pipeline orchestrator
+│   │   │   ├── vn30f1m_update.py      # Dedicated VN30F1M intraday update step
 │   │   │   ├── daily_predict.py       # Signal generation logic
 │   │   │   └── database_update.py     # Data refresh scripts
 │   │   ├── data_access/               # Database abstraction layer
@@ -287,10 +288,11 @@ python run_daily_pipeline.py
 
 **Pipeline Steps:**
 
-1. **Data Update**: Fetch latest OHLC data from Vnstock
-2. **Feature Engineering**: Calculate technical indicators
-3. **Signal Generation**: Apply ML models to generate buy/sell signals
-4. **Database Update**: Store signals in NeonDB
+1. **Intraday Update**: Fetch Real-time VN30F1M data via vn30f1m_update.py
+2. **Data Update**: Fetch latest OHLC data from Vnstock (database_update.py)
+3. **Feature Engineering**: Calculate technical indicators
+4. **Signal Generation**: Apply ML models to generate buy/sell signals (daily_predict.py)
+5. **Database Update**: Store signals in NeonDB
 
 ### Signal Types
 
