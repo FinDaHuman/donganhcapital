@@ -154,7 +154,7 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         const yMax = Math.ceil(rawMax / tickStep) * tickStep;
 
         // ===== 4. MAP Y =====
-        const bottomPadding = 20; // Reserve space for X-axis labels
+        const bottomPadding = 30; // Reserve space for X-axis labels
         const mapY = (value) => {
             // Inverted for Canvas (0 is top)
             const ratio = (value - yMin) / (yMax - yMin);
@@ -190,38 +190,45 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
             const x = mapX(i);
             const dateStr = visibleData[i].time;
 
-            // Format Date based on Zoom (Simple logic from previous step, or standard)
-            // User script: `drawXTick(x, visibleData[i].time)`
-            // We'll parse it for better looking label
             const dateObj = new Date(dateStr);
-            let label = "TEST LBL";
+            let label = "";
 
-            if (count < 60) {
-                // DD/MM
-                label = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`;
-            } else if (count < 300) {
-                // MM/YYYY
-                label = `${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
-            } else {
-                // YYYY
-                label = dateObj.getFullYear().toString();
-            }
+            const isIntraday = ticker === 'VN30F1M' || (fullData.length > 1 && (new Date(fullData[1].time).getTime() - new Date(fullData[0].time).getTime() < 86400000));
 
-            // Fallback if invalid date
             if (isNaN(dateObj.getTime())) {
                 label = dateStr ? String(dateStr).split('T')[0] : `Idx ${i}`;
+            } else {
+                const dayStr = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`;
+                if (isIntraday) {
+                    const timeStr = `${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+                    label = [dayStr, timeStr];
+                } else {
+                    if (count < 90) {
+                        label = dayStr;
+                    } else if (count < 300) {
+                        label = `${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
+                    } else {
+                        label = dateObj.getFullYear().toString();
+                    }
+                }
             }
 
             ctx.fillStyle = "white";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(label || "DATE", x + candleWidth / 2, height - 10);
+            
+            if (Array.isArray(label)) {
+                ctx.fillText(label[0], x + candleWidth / 2, height - 20);
+                ctx.fillText(label[1], x + candleWidth / 2, height - 8);
+            } else {
+                ctx.fillText(label || "DATE", x + candleWidth / 2, height - 14);
+            }
 
             // Grid line for X
             ctx.strokeStyle = gridColor;
             ctx.beginPath();
             ctx.moveTo(x + candleWidth / 2, 0);
-            ctx.lineTo(x + candleWidth / 2, height - 20);
+            ctx.lineTo(x + candleWidth / 2, height - bottomPadding);
             ctx.stroke();
         }
 
