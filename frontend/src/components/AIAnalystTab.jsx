@@ -314,9 +314,9 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                     className="bg-[#111213] border border-gray-800 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 transition-colors"
                                 >
                                     <option value={0}>Any</option>
-                                    <option value={0.6}>&ge; 60%</option>
-                                    <option value={0.7}>&ge; 70%</option>
-                                    <option value={0.8}>&ge; 80%</option>
+                                    <option value={0.65}>&ge; 65%</option>
+                                    <option value={0.75}>&ge; 75%</option>
+                                    <option value={0.85}>&ge; 85%</option>
                                     <option value={0.9}>&ge; 90%</option>
                                 </select>
                             </div>
