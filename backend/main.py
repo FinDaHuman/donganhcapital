@@ -84,7 +84,6 @@ def run_vn30f1m_sync():
         print(f"Live VN30F1M update fetched {len(df)} candles.")
     except Exception as e:
         print(f"Error live updating VN30F1M: {e}")
-
 def is_vn30f1m_open():
     import pytz
     from datetime import datetime, time as dt_time
@@ -109,7 +108,9 @@ def is_vn30f1m_open():
        (afternoon_start <= current_time <= afternoon_end):
         return True
         
-    return Falseasync def realtime_vn30f1m():
+    return False
+
+async def realtime_vn30f1m():
     while True:
         try:
             if is_vn30f1m_open():
@@ -309,6 +310,10 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
         
         # Fast path for VN30F1M -> No prediction
         if stock_id == "VN30F1M":
+            cached = _cache.get(cache_key)
+            if cached and time.time() < cached[1]:
+                return cached[0]
+
             df = get_stock_ohlc(stock_id, limit=2000)
             if df is None or df.empty:
                 raise HTTPException(status_code=400, detail="Could not fetch data for prediction.")

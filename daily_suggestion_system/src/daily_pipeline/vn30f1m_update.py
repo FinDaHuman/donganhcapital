@@ -16,7 +16,7 @@ def update_vn30f1m_intraday():
     
     if not engine:
         print("No database engine available")
-        return
+        raise RuntimeError("No database engine available")
 
     today = datetime.today().strftime("%Y-%m-%d")
 
@@ -31,11 +31,11 @@ def update_vn30f1m_intraday():
         )
     except Exception as e:
         print(f"VN30F1M fetch failed: {e}")
-        return
+        raise RuntimeError(f"VN30F1M fetch failed: {e}")
 
     if df is None or len(df) == 0:
         print("No intraday data returned")
-        return
+        raise RuntimeError("No intraday data returned")
 
     df = df.rename(columns={"time": "time"})
     df["time"] = pd.to_datetime(df["time"])
