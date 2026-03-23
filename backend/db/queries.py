@@ -61,7 +61,10 @@ def get_stocks_from_db():
     query = "SELECT DISTINCT stock_id FROM stocks"
     try:
         df = pd.read_sql(query, engine)
-        return df['stock_id'].tolist()
+        stocks_list = df['stock_id'].tolist()
+        if "VN30F1M" not in stocks_list:
+            stocks_list.append("VN30F1M")
+        return stocks_list
     except Exception as e:
         print(f"Error fetching stocks from DB: {e}")
         return []
@@ -71,25 +74,44 @@ def get_stock_ohlc(stock_id: str, limit: int = None):
     if not engine:
         return pd.DataFrame()
     
-    if limit:
-        query = text("""
-        SELECT * FROM (
+    if stock_id.upper() == "VN30F1M":
+        if limit:
+            query = text("""
+            SELECT * FROM (
+                SELECT time as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", 'VN30F1M' as "Ticker" 
+                FROM vn30f1m_intraday
+                ORDER BY time DESC 
+                LIMIT :limit
+            ) sub ORDER BY "Date" ASC
+            """)
+            params = {"limit": limit}
+        else:
+            query = text("""
+            SELECT time as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", 'VN30F1M' as "Ticker" 
+            FROM vn30f1m_intraday
+            ORDER BY time ASC
+            """)
+            params = None
+    else:
+        if limit:
+            query = text("""
+            SELECT * FROM (
+                SELECT "Ngay" as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
+                FROM stock_ohlc 
+                WHERE stock_id = :stock_id 
+                ORDER BY "Ngay" DESC 
+                LIMIT :limit
+            ) sub ORDER BY "Date" ASC
+            """)
+            params = {"stock_id": stock_id, "limit": limit}
+        else:
+            query = text("""
             SELECT "Ngay" as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
             FROM stock_ohlc 
             WHERE stock_id = :stock_id 
-            ORDER BY "Ngay" DESC 
-            LIMIT :limit
-        ) sub ORDER BY "Date" ASC
-        """)
-        params = {"stock_id": stock_id, "limit": limit}
-    else:
-        query = text("""
-        SELECT "Ngay" as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
-        FROM stock_ohlc 
-        WHERE stock_id = :stock_id 
-        ORDER BY "Ngay" ASC
-        """)
-        params = {"stock_id": stock_id}
+            ORDER BY "Ngay" ASC
+            """)
+            params = {"stock_id": stock_id}
         
     try:
         df = pd.read_sql(query, engine, params=params)

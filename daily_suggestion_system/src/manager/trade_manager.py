@@ -106,7 +106,7 @@ class TradeManager:
 
                 holding = (today_dt - entry_date).days
 
-                if holding >= 20:
+                if holding >= 30:
 
                     trade["status"] = "TIMEOUT"
                     trade["exit_price"] = df.iloc[-1]["close"]

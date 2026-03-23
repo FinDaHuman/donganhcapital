@@ -55,6 +55,24 @@ function App() {
         }
     };
 
+    // Realtime Polling for VN30F1M
+    useEffect(() => {
+        let intervalId;
+        if (activeTab === 'chart' && selectedTicker === 'VN30F1M') {
+            intervalId = setInterval(async () => {
+                try {
+                    const data = await getPrediction('VN30F1M');
+                    setPredictionData(data);
+                } catch (e) {
+                    console.error("Fetch error during VN30F1M polling:", e);
+                }
+            }, 60000); // every 60s
+        }
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [activeTab, selectedTicker]);
+
     // Filter stocks
     const filteredStocks = stockList.filter(s => s.includes(searchTerm.toUpperCase()));
 
