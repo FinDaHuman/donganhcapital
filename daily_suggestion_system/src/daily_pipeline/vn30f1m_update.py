@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import pytz
 from sqlalchemy import text
 from vnstock import Vnstock
 import sys
@@ -17,7 +18,8 @@ def update_vn30f1m_intraday():
         print("No database engine available")
         raise RuntimeError("No database engine available")
 
-    today = datetime.today().strftime("%Y-%m-%d")
+    vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+    today = datetime.now(vn_tz).strftime("%Y-%m-%d")
 
     print(f"Fetching VN30F1M intraday for {today}...")
 

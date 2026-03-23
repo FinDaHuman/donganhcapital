@@ -58,8 +58,10 @@ def run_vn30f1m_sync():
     try:
         from vnstock import Vnstock
         from uuid import uuid4
+        import pytz
         vn = Vnstock()
-        today = datetime.today().strftime("%Y-%m-%d")
+        vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+        today = datetime.now(vn_tz).strftime("%Y-%m-%d")
         stock = vn.stock(symbol="VN30F1M", source="VCI")
         df = stock.quote.history(start=today, end=today, interval="1m")
         if df is None or len(df) == 0:
