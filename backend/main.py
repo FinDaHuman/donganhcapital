@@ -13,7 +13,6 @@ import gc
 from fastapi import Depends
 from typing import Any, Optional
 import time
-from uuid import uuid4
 
 from db.queries import (
     get_stocks_from_db, get_stock_ohlc, 
@@ -58,13 +57,14 @@ def get_cached(key: str, ttl: int, compute):
 def run_vn30f1m_sync():
     try:
         from vnstock import Vnstock
+        from uuid import uuid4
         vn = Vnstock()
         today = datetime.today().strftime("%Y-%m-%d")
         stock = vn.stock(symbol="VN30F1M", source="VCI")
         df = stock.quote.history(start=today, end=today, interval="1m")
         if df is None or len(df) == 0:
             return
-         df["time"] = pd.to_datetime(df["time"])
+        df = df.rename(columns={"time": "time"})
         df["time"] = pd.to_datetime(df["time"])
         df = df[["time", "open", "high", "low", "close", "volume"]]
         df = df.drop_duplicates(subset=["time"])
@@ -84,7 +84,10 @@ def run_vn30f1m_sync():
                         low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume
                 """))
             finally:
-                conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
+                try:
+                    conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
+                except Exception as cleanup_err:
+                    print(f"Cleanup ignored due to prior errors: {cleanup_err}")
         print(f"Live VN30F1M update fetched {len(df)} candles.")
     except Exception as e:
         print(f"Error live updating VN30F1M: {e}")

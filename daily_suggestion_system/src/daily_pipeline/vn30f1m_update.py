@@ -44,8 +44,8 @@ def update_vn30f1m_intraday():
 
     temp_table = f"vn30f1m_temp_{uuid4().hex}"
     
-    with engine.begin() as conn:
-        try:
+    try:
+        with engine.begin() as conn:
             df.to_sql(temp_table, conn,
                       if_exists="replace",
                       index=False,
@@ -64,7 +64,8 @@ def update_vn30f1m_intraday():
                     close = EXCLUDED.close,
                     volume = EXCLUDED.volume
             """))
-        finally:
+    finally:
+        with engine.begin() as conn:
             conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
 
     print(f"Saved {len(df)} candles for {today}")
