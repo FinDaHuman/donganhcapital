@@ -226,6 +226,7 @@ Switch models by setting `USE_XGB` in the backend environment.
 ### Prediction Endpoints
 
 - `GET /api/predict/{stock_id}` - AI price prediction with forecast
+  - **Note**: VN30F1M returns empty forecast (predictions bypassed for this symbol)
 - `GET /api/ohlc/{stock_id}` - Historical OHLC data
 - `GET /api/ai-signals` - AI-generated trading signals
 - `GET /api/ai-signals/dates` - Available signal dates

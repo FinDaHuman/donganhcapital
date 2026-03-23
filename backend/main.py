@@ -87,7 +87,7 @@ def run_vn30f1m_sync():
 
 def is_vn30f1m_open():
     import pytz
-    from datetime import datetime, time
+    from datetime import datetime, time as dt_time
     vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
     now = datetime.now(vn_tz)
     
@@ -98,20 +98,18 @@ def is_vn30f1m_open():
     
     # Poll slightly before open and after close
     # Morning: 8:50 - 11:45
-    morning_start = time(8, 50)
-    morning_end = time(11, 45)
+    morning_start = dt_time(8, 50)
+    morning_end = dt_time(11, 45)
     
     # Afternoon: 12:45 - 15:15 (to cover until daily pipeline triggers at 15:02)
-    afternoon_start = time(12, 45)
-    afternoon_end = time(16, 00)
+    afternoon_start = dt_time(12, 45)
+    afternoon_end = dt_time(16, 00)
     
     if (morning_start <= current_time <= morning_end) or \
        (afternoon_start <= current_time <= afternoon_end):
         return True
         
-    return False
-
-async def realtime_vn30f1m():
+    return Falseasync def realtime_vn30f1m():
     while True:
         try:
             if is_vn30f1m_open():

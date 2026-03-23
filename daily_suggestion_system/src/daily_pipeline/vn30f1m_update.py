@@ -13,6 +13,10 @@ from src.data_access.db_connection import get_engine
 def update_vn30f1m_intraday():
     vn = Vnstock()
     engine = get_engine()
+    
+    if not engine:
+        print("No database engine available")
+        return
 
     today = datetime.today().strftime("%Y-%m-%d")
 
