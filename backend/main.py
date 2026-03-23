@@ -54,10 +54,85 @@ def get_cached(key: str, ttl: int, compute):
     _cache[key] = (value, now + ttl)
     return value
 
+def run_vn30f1m_sync():
+    try:
+        from vnstock import Vnstock
+        from uuid import uuid4
+        import pytz
+        vn = Vnstock()
+        vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+        today = datetime.now(vn_tz).strftime("%Y-%m-%d")
+        stock = vn.stock(symbol="VN30F1M", source="VCI")
+        df = stock.quote.history(start=today, end=today, interval="1m")
+        if df is None or len(df) == 0:
+            return
+        df = df.rename(columns={"time": "time"})
+        df["time"] = pd.to_datetime(df["time"])
+        df = df[["time", "open", "high", "low", "close", "volume"]]
+        df = df.drop_duplicates(subset=["time"])
+        df = df.replace([np.inf, -np.inf], np.nan)
+        from db.connection import get_engine
+        from sqlalchemy import text
+        engine = get_engine()
+        temp_table = f"vn30f1m_temp_{uuid4().hex}"
+        with engine.begin() as conn:
+            try:
+                df.to_sql(temp_table, conn, if_exists="replace", index=False, chunksize=500)
+                conn.execute(text(f"""
+                    INSERT INTO vn30f1m_intraday (time, open, high, low, close, volume)
+                    SELECT time, open, high, low, close, volume FROM {temp_table}
+                    ON CONFLICT (time) DO UPDATE SET
+                        open = EXCLUDED.open, high = EXCLUDED.high, 
+                        low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume
+                """))
+            finally:
+                try:
+                    conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
+                except Exception as cleanup_err:
+                    print(f"Cleanup ignored due to prior errors: {cleanup_err}")
+        print(f"Live VN30F1M update fetched {len(df)} candles.")
+    except Exception as e:
+        print(f"Error live updating VN30F1M: {e}")
+def is_vn30f1m_open():
+    import pytz
+    from datetime import datetime, time as dt_time
+    vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+    now = datetime.now(vn_tz)
+    
+    if now.weekday() > 4:
+        return False
+        
+    current_time = now.time()
+    
+    # Poll slightly before open and after close
+    # Morning: 8:50 - 11:45
+    morning_start = dt_time(8, 50)
+    morning_end = dt_time(11, 45)
+    
+    # Afternoon: 12:45 - 16:00 (extended past market close to cover daily pipeline at 15:02)
+    afternoon_start = dt_time(12, 45)
+    afternoon_end = dt_time(16, 00)
+    
+    if (morning_start <= current_time <= morning_end) or \
+       (afternoon_start <= current_time <= afternoon_end):
+        return True
+        
+    return False
+
+async def realtime_vn30f1m():
+    while True:
+        try:
+            if is_vn30f1m_open():
+                await asyncio.to_thread(run_vn30f1m_sync)
+        except Exception as e:
+            print(f"Background task error: {e}")
+        await asyncio.sleep(60)
+
 # --- Lifespan for Model Loading ---
+poll_task = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global predictor
+    global predictor, poll_task
     
     try:
         if USE_XGB:
@@ -72,7 +147,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Prediction model load error: {e}")
     
+    poll_task = asyncio.create_task(realtime_vn30f1m())
+    
     yield
+    if poll_task:
+        poll_task.cancel()
     print("Shutting down...")
 
 app = FastAPI(title="DongAnh Capital AI API", lifespan=lifespan)
@@ -229,14 +308,41 @@ async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any 
 async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurrency)):
     global predictor
     
-    # 1. Check Model & Data
-    if predictor is None:
-        raise HTTPException(status_code=503, detail="Prediction model is not loaded.")
-    
     stock_id = stock_id.upper()
         
     try:
         cache_key = f"predict_{stock_id}"
+        
+        # Fast path for VN30F1M -> No prediction
+        if stock_id == "VN30F1M":
+            cached = _cache.get(cache_key)
+            if cached and time.time() < cached[1]:
+                return cached[0]
+
+            df = get_stock_ohlc(stock_id, limit=2000)
+            if df is None or df.empty:
+                raise HTTPException(status_code=400, detail="Could not fetch data for prediction.")
+            formatted_history = df.apply(lambda row: {
+                "Date": row['Date'].isoformat() if pd.notnull(row['Date']) else None,
+                "Close": row['Close'],
+                "Open": row['Open'],
+                "High": row['High'],
+                "Low": row['Low'],
+                "Volume": row['Volume']
+            }, axis=1).tolist()
+            result = {
+                "stock_id": stock_id,
+                "history": formatted_history,
+                "forecast": []
+            }
+            # Cache for a very short time (20s) because it's realtime
+            _cache[cache_key] = (result, time.time() + 20)
+            return result
+        
+        # 1. Check Model & Data
+        if predictor is None:
+            raise HTTPException(status_code=503, detail="Prediction model is not loaded.")
+
         cached = _cache.get(cache_key)
         if cached and time.time() < cached[1]:
             return cached[0]

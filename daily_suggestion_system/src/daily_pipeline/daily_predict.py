@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # CONFIG
 # ===============================
 
-LOOKBACK_DAYS = 400
+LOOKBACK_DAYS = 1500
 
 TRADE_END = datetime.today()
 TRADE_START = (TRADE_END - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")

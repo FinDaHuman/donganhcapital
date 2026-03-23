@@ -60,6 +60,21 @@ def run():
         exit_code = 1
 
     # ==============================
+    # STEP 3: VN30F1M INTRADAY UPDATE
+    # ==============================
+
+    logger.info("=" * 50)
+    logger.info("STEP 3: VN30F1M INTRADAY UPDATE")
+    logger.info("=" * 50)
+
+    try:
+        from vn30f1m_update import update_vn30f1m_intraday
+        update_vn30f1m_intraday()
+    except Exception as e:
+        logger.error(f"VN30F1M update failed: {e}")
+        exit_code = 1
+
+    # ==============================
     # DONE
     # ==============================
 
