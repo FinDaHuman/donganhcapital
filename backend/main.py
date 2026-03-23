@@ -64,7 +64,7 @@ def run_vn30f1m_sync():
         df = stock.quote.history(start=today, end=today, interval="1m")
         if df is None or len(df) == 0:
             return
-        df = df.rename(columns={"time": "time"})
+         df["time"] = pd.to_datetime(df["time"])
         df["time"] = pd.to_datetime(df["time"])
         df = df[["time", "open", "high", "low", "close", "volume"]]
         df = df.drop_duplicates(subset=["time"])
