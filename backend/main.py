@@ -109,9 +109,9 @@ def is_vn30f1m_open():
     morning_start = dt_time(8, 50)
     morning_end = dt_time(11, 45)
     
-    # Afternoon: 12:45 - 16:00 (extended past market close to cover daily pipeline at 15:02)
+    # Afternoon: 12:45 - 16:30 (extended past market close to cover daily pipeline at 15:02)
     afternoon_start = dt_time(12, 45)
-    afternoon_end = dt_time(16, 00)
+    afternoon_end = dt_time(16, 30)
     
     if (morning_start <= current_time <= morning_end) or \
        (afternoon_start <= current_time <= afternoon_end):
