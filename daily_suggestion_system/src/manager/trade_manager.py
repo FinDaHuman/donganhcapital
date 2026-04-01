@@ -1,10 +1,26 @@
 import logging
+import numpy as np
 import pandas as pd
 from datetime import datetime
 from sqlalchemy import text
 
 
 logger = logging.getLogger(__name__)
+
+
+def _to_native(val):
+    """Convert numpy/pandas scalars to native Python types for DB safety."""
+    if val is None:
+        return None
+    if isinstance(val, (np.integer,)):
+        return int(val)
+    if isinstance(val, (np.floating,)):
+        return float(val)
+    if isinstance(val, np.bool_):
+        return bool(val)
+    if isinstance(val, (np.str_,)):
+        return str(val)
+    return val
 
 
 class TradeManager:
@@ -111,9 +127,9 @@ class TradeManager:
                     trade["status"] = "TIMEOUT"
                     trade["exit_date"] = str(today).split(" ")[0]
                     if not df.empty and len(df) > 0:
-                        trade["exit_price"] = df.iloc[-1]["close"]
+                        trade["exit_price"] = _to_native(df.iloc[-1]["close"])
                     else:
-                        trade["exit_price"] = trade.get("entry_price")
+                        trade["exit_price"] = _to_native(trade.get("entry_price"))
 
         return
 
@@ -177,12 +193,12 @@ class TradeManager:
             entry = trade["entry_price"]
             exit_p = trade["exit_price"]
 
-            trade["return_pct"] = (exit_p - entry) / entry
+            trade["return_pct"] = _to_native((exit_p - entry) / entry)
 
             entry_date = datetime.strptime(trade["entry_date"], "%Y-%m-%d")
             exit_date = datetime.strptime(trade["exit_date"], "%Y-%m-%d")
 
-            trade["holding_days"] = (exit_date - entry_date).days
+            trade["holding_days"] = int((exit_date - entry_date).days)
 
 
     # ==================================
@@ -218,16 +234,16 @@ class TradeManager:
                     """)
 
                     conn.execute(query, {
-                        "stock_id": trade["stock_id"],
+                        "stock_id": str(trade["stock_id"]),
                         "entry_date": entry_date,
-                        "entry_price": trade.get("entry_price"),
-                        "tp_price": trade.get("tp_price"),
-                        "sl_price": trade.get("sl_price"),
+                        "entry_price": _to_native(trade.get("entry_price")),
+                        "tp_price": _to_native(trade.get("tp_price")),
+                        "sl_price": _to_native(trade.get("sl_price")),
                         "exit_date": exit_date,
-                        "exit_price": trade.get("exit_price"),
-                        "status": trade["status"],
-                        "return_pct": trade.get("return_pct"),
-                        "holding_days": trade.get("holding_days"),
+                        "exit_price": _to_native(trade.get("exit_price")),
+                        "status": str(trade["status"]),
+                        "return_pct": _to_native(trade.get("return_pct")),
+                        "holding_days": _to_native(trade.get("holding_days")),
                     })
 
             logger.info(f"{len(self.data['trades'])} trades synced to NeonDB")

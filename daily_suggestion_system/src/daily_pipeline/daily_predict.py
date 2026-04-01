@@ -186,12 +186,12 @@ def save_db_signal(df):
                     prob = EXCLUDED.prob;
                 """)
                 conn.execute(query, {
-                    "date": row["date"],
-                    "stock_id": row["stock_id"],
-                    "entry_price": row["entry_price"],
-                    "tp_price": row["tp_price"],
-                    "sl_price": row["sl_price"],
-                    "prob": row["prob"]
+                    "date": str(row["date"]),
+                    "stock_id": str(row["stock_id"]),
+                    "entry_price": float(row["entry_price"]) if pd.notnull(row["entry_price"]) else None,
+                    "tp_price": float(row["tp_price"]) if pd.notnull(row["tp_price"]) else None,
+                    "sl_price": float(row["sl_price"]) if pd.notnull(row["sl_price"]) else None,
+                    "prob": float(row["prob"]) if pd.notnull(row["prob"]) else None
                 })
         logger.info(f"{len(signals)} signals saved to NeonDB")
     except Exception as e:
