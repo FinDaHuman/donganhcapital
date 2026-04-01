@@ -16,6 +16,7 @@ from data_access.market_data_loader import load_market_data
 from data_access.stock_data_loader import load_stock_data
 
 from features.market_features import MarketRegimeFeatureBuilder
+from labels.market_label import add_market_label
 from events.breakout import BreakoutEventEngine
 from features.breakout_features import build_features_sepa
 from filters.sepa_hard_filter import apply_sepa_hard_filter
@@ -70,6 +71,7 @@ def build_market_features():
     )
 
     market_features = MarketRegimeFeatureBuilder.build(market_df)
+    market_features = add_market_label(market_features)
 
     market_features["Ngay"] = pd.to_datetime(market_features["Ngay"])
 
