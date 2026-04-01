@@ -38,11 +38,11 @@ class TradeManager:
             for _, row in df.iterrows():
                 trade = {
                     "stock_id": row["stock_id"],
-                    "entry_date": str(row["entry_date"]),
+                    "entry_date": str(row["entry_date"]).split(" ")[0],
                     "entry_price": float(row["entry_price"]) if pd.notnull(row["entry_price"]) else None,
                     "tp_price": float(row["tp_price"]) if pd.notnull(row["tp_price"]) else None,
                     "sl_price": float(row["sl_price"]) if pd.notnull(row["sl_price"]) else None,
-                    "exit_date": str(row["exit_date"]) if pd.notnull(row["exit_date"]) else None,
+                    "exit_date": str(row["exit_date"]).split(" ")[0] if pd.notnull(row["exit_date"]) else None,
                     "exit_price": float(row["exit_price"]) if pd.notnull(row["exit_price"]) else None,
                     "status": row["status"],
                     "return_pct": float(row["return_pct"]) if pd.notnull(row["return_pct"]) else None,
@@ -83,7 +83,7 @@ class TradeManager:
 
                 high = row["high"]
                 low = row["low"]
-                date = str(row["Ngay"])
+                date = str(row["Ngay"]).split(" ")[0]
 
                 if high >= trade["tp_price"]:
 
@@ -102,14 +102,14 @@ class TradeManager:
             if trade["status"] == "HOLD":
 
                 entry_date = datetime.strptime(trade["entry_date"], "%Y-%m-%d")
-                today_dt = datetime.strptime(str(today), "%Y-%m-%d")
+                today_dt = datetime.strptime(str(today).split(" ")[0], "%Y-%m-%d")
 
                 holding = (today_dt - entry_date).days
 
                 if holding >= 30:
 
                     trade["status"] = "TIMEOUT"
-                    trade["exit_date"] = str(today)
+                    trade["exit_date"] = str(today).split(" ")[0]
                     if not df.empty and len(df) > 0:
                         trade["exit_price"] = df.iloc[-1]["close"]
                     else:
@@ -143,7 +143,7 @@ class TradeManager:
             trade = {
 
                 "stock_id": stock,
-                "entry_date": str(row["Ngay"]),
+                "entry_date": str(row["Ngay"]).split(" ")[0],
                 "entry_price": float(row["entry_price"]),
                 "tp_price": float(row["tp_price"]),
                 "sl_price": float(row["sl_price"]),
