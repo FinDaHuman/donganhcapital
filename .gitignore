@@ -33,3 +33,11 @@ GEMINI.md
 
 #Reference model
 xgb_model.ipynb
+
+# Everything Claude Code (ECC) / Gemini CLI
+.gemini/
+.claude/
+.codex/
+.opencode/
+.mcp.json
+GEMINI-TUTORIAL.md
