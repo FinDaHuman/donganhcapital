@@ -14,6 +14,7 @@
         "axios": "^1.6.0",
         "framer-motion": "^12.35.1",
         "hls.js": "^1.6.15",
+        "lightweight-charts": "^5.1.0",
         "lucide-react": "^0.563.0",
         "plotly.js": "^2.27.0",
         "react": "^18.2.0",

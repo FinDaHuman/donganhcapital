@@ -1,586 +1,285 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 
 const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }) => {
-    const canvasRef = useRef(null);
     const containerRef = useRef(null);
+    const chartRef = useRef(null);
+    const seriesRef = useRef({});
 
-    // Merge Data
-    const fullData = useMemo(() => {
-        // history: {Date, Open, High, Low, Close, Volume}
-        // forecast: {Date, Open, High, Low, Close, lower_bound, upper_bound...}
-
-        const safeHistory = Array.isArray(history) ? history : [];
-        const safeForecast = Array.isArray(forecast) ? forecast : [];
-
-        const histData = safeHistory.map(d => ({ ...d, type: 'history' }));
-        const foreData = safeForecast.map(d => ({ ...d, type: 'forecast' }));
-
-        // Merge: Use History, append unique Forecast
-        const combined = [...histData];
-        if (foreData.length > 0) {
-            foreData.forEach(f => {
-                // If date not in history, add it
-                if (!combined.find(h => h.Date === f.Date)) {
-                    combined.push(f);
-                }
-            });
-        }
-
-        return combined.map(d => ({
-            time: d.Date || d.date || d.time,
-            open: Number(d.Open),
-            high: Number(d.High),
-            low: Number(d.Low),
-            close: Number(d.Close),
-            volume: Number(d.Volume || 0),
-            isForecast: d.type === 'forecast',
-            upper: d.upper_bound !== undefined && d.upper_bound !== null ? Number(d.upper_bound) : null,
-            lower: d.lower_bound !== undefined && d.lower_bound !== null ? Number(d.lower_bound) : null
-        })).filter(d => !isNaN(d.close) && d.close > 0 && !isNaN(d.open) && d.open > 0);
-    }, [history, forecast]);
-
-    // Viewport State (Indices)
-    // Default: Show last 100 candles or full if less
-    const [viewport, setViewport] = useState({ start: 0, end: 0 });
-    const [isDragging, setIsDragging] = useState(false);
-    const [lastMouseX, setLastMouseX] = useState(0);
-
-    // Search State
+    // Search & Display State
     const [showSearch, setShowSearch] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [showPrediction, setShowPrediction] = useState(false);
 
     const filteredStocks = useMemo(() => {
         return stockList.filter(s => s.toLowerCase().includes(searchTerm.toLowerCase()));
     }, [stockList, searchTerm]);
 
-    // Initialize Viewport once data loads
+    // Initialize chart ONCE
     useEffect(() => {
-        if (fullData.length > 0) {
-            const count = fullData.length;
-            // Default show last 60 candles roughly
-            const initialView = 60;
-            setViewport({
-                start: Math.max(0, count - initialView),
-                end: count
-            });
-        }
-    }, [fullData]);
+        if (!containerRef.current) return;
 
-
-    // ==================== CORE LOGIC ====================
-    // 3. NICE SCALE ALGORITHM
-    const niceNumber = (value) => {
-        const exponent = Math.floor(Math.log10(value));
-        const fraction = value / Math.pow(10, exponent);
-        let nice = 1;
-
-        if (fraction < 1.5) nice = 1;
-        else if (fraction < 3) nice = 2;
-        else if (fraction < 7) nice = 5;
-        else nice = 10;
-
-        return nice * Math.pow(10, exponent);
-    };
-
-    const drawChart = () => {
-        const canvas = canvasRef.current;
-        const container = containerRef.current;
-        if (!canvas || !container || fullData.length === 0) return;
-
-        const ctx = canvas.getContext('2d');
-        const width = container.clientWidth;
-        const height = container.clientHeight;
-
-        if (width === 0 || height === 0) return;
-
-        // Handle High DPI
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        ctx.scale(dpr, dpr);
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
-
-        // Clear
-        ctx.fillStyle = "#111213";
-        ctx.fillRect(0, 0, width, height);
-
-        // ===== 1. VIEWPORT =====
-        // Clamp viewport
-        let start = Math.max(0, Math.min(viewport.start, fullData.length - 2));
-        let end = Math.min(fullData.length, Math.max(viewport.end, start + 2));
-
-        // Slice Data
-        const visibleData = fullData.slice(Math.floor(start), Math.ceil(end));
-        const count = visibleData.length;
-
-        window.debugVisibleData = visibleData;
-
-        if (count === 0) return;
-
-        const candleWidth = width / count;
-
-        const mapX = (i) => {
-            return i * candleWidth;
-        };
-
-        // ===== 2. CALCULATE Y RANGE =====
-        let minY = Infinity;
-        let maxY = -Infinity;
-
-        visibleData.forEach(p => {
-            const validLow = !isNaN(p.low) && p.low !== null ? p.low : Math.min(p.open, p.close);
-            const validHigh = !isNaN(p.high) && p.high !== null ? p.high : Math.max(p.open, p.close);
-            if (validLow < minY) minY = validLow;
-            if (validHigh > maxY) maxY = validHigh;
+        const chart = createChart(containerRef.current, {
+            layout: {
+                background: { type: 'solid', color: '#111213' },
+                textColor: '#757575',
+            },
+            grid: {
+                vertLines: { color: '#1f1f1f' },
+                horzLines: { color: '#1f1f1f' },
+            },
+            crosshair: {
+                mode: CrosshairMode.Normal,
+                vertLine: {
+                    labelBackgroundColor: '#2a2e39',
+                },
+                horzLine: {
+                    labelBackgroundColor: '#2a2e39',
+                },
+            },
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: false,
+                borderColor: '#1f1f1f',
+            },
+            rightPriceScale: {
+                borderColor: '#1f1f1f',
+            },
+            autoSize: true, 
+            localization: {
+                timeFormatter: (time) => {
+                    const d = new Date(time * 1000);
+                    const year = d.getUTCFullYear();
+                    const month = (d.getUTCMonth() + 1).toString().padStart(2, '0');
+                    const day = d.getUTCDate().toString().padStart(2, '0');
+                    const hours = d.getUTCHours();
+                    const minutes = d.getUTCMinutes().toString().padStart(2, '0');
+                    
+                    if (hours === 0 && minutes === '00') {
+                        return `${year}-${month}-${day}`;
+                    }
+                    return `${year}-${month}-${day} ${hours.toString().padStart(2, '0')}:${minutes}`;
+                }
+            }
         });
 
-        if (minY === Infinity || maxY === -Infinity) return;
+        const mainSeries = chart.addSeries(CandlestickSeries, {
+            upColor: '#00c853',
+            downColor: '#d50000',
+            borderVisible: false,
+            wickUpColor: '#00c853',
+            wickDownColor: '#d50000',
+        });
 
-        // Add padding
-        let range = maxY - minY;
-        if (range === 0) range = 1; // Fallback if flat
-        const padding = range * 0.05;
-        const rawMin = minY - padding;
-        const rawMax = maxY + padding;
+        const forecastLineSeries = chart.addSeries(LineSeries, {
+            color: '#ff9800',
+            lineWidth: 2,
+            crosshairMarkerVisible: true,
+        });
 
-        // ===== 3. NICE SCALE =====
-        const tickCount = 6; // User said 5, let's try 6 for better grid
-        let tickStep = niceNumber((rawMax - rawMin) / tickCount);
-        if (tickStep <= 0 || isNaN(tickStep) || !isFinite(tickStep)) tickStep = 1;
+        const upperSeries = chart.addSeries(LineSeries, {
+            color: 'rgba(255, 152, 0, 0.5)',
+            lineWidth: 1,
+            lineStyle: 1, // Dotted
+            crosshairMarkerVisible: false,
+        });
 
-        const yMin = Math.floor(rawMin / tickStep) * tickStep;
-        const yMax = Math.ceil(rawMax / tickStep) * tickStep;
+        const lowerSeries = chart.addSeries(LineSeries, {
+            color: 'rgba(255, 152, 0, 0.5)',
+            lineWidth: 1,
+            lineStyle: 1, // Dotted
+            crosshairMarkerVisible: false,
+        });
 
-        // ===== 4. MAP Y =====
-        const bottomPadding = 30; // Reserve space for X-axis labels
-        const mapY = (value) => {
-            // Inverted for Canvas (0 is top)
-            const ratio = (value - yMin) / (yMax - yMin);
-            return (height - bottomPadding) * (1 - ratio);
+        const volumeSeries = chart.addSeries(HistogramSeries, {
+            color: '#26a69a',
+            priceFormat: {
+                type: 'volume',
+            },
+            priceScaleId: '', // Overlay over everything but fixed to bottom
+            lastValueVisible: false,
+        });
+
+        // Apply margins to the overlay price scale
+        chart.priceScale('').applyOptions({
+            scaleMargins: {
+                top: 0.8, // leave top 80% for price
+                bottom: 0,
+            },
+        });
+
+        chartRef.current = chart;
+        seriesRef.current = {
+            mainSeries,
+            forecastLineSeries,
+            upperSeries,
+            lowerSeries,
+            volumeSeries
         };
 
-        // ===== 5. DRAW AXES =====
-        ctx.lineWidth = 1;
-        ctx.font = "11px Inter, sans-serif";
-        const gridColor = "#1f1f1f";
-        const textColor = "#757575";
+        return () => {
+            chart.remove();
+            chartRef.current = null;
+        };
+    }, []);
 
-        // Y Ticks & Grid
-        for (let y = yMin; y <= yMax; y += tickStep) {
-            const py = mapY(y);
+    // Update data when props change
+    useEffect(() => {
+        if (!chartRef.current || !seriesRef.current.mainSeries) return;
 
-            // Grid
-            ctx.strokeStyle = gridColor;
-            ctx.beginPath();
-            ctx.moveTo(0, py);
-            ctx.lineTo(width, py);
-            ctx.stroke();
+        const safeHistory = Array.isArray(history) ? history : [];
+        const safeForecast = Array.isArray(forecast) ? forecast : [];
 
-            // Text
-            ctx.fillStyle = textColor;
-            ctx.textAlign = "right";
-            ctx.fillText(y.toFixed(2), width - 10, py - 4);
-        }
+        const timeMap = new Map();
 
-        // X Ticks
-        const xStep = Math.max(1, Math.floor(count / 5));
-        for (let i = 0; i < count; i += xStep) {
-            const x = mapX(i);
-            const dateStr = visibleData[i].time;
+        const addPoint = (d, type) => {
+            const dateStr = d.Date || d.date || d.time;
+            if (!dateStr) return;
 
-            const dateObj = new Date(dateStr);
-            let label = "";
+            let time;
+            if (typeof dateStr === 'string') {
+                const cleanStr = dateStr.replace('Z', '').replace(/\+\d{2}:\d{2}$/, '');
+                const parts = cleanStr.split(/[-T: ]/);
+                if (parts.length >= 3) {
+                    const year = parseInt(parts[0], 10);
+                    const month = parseInt(parts[1], 10) - 1;
+                    const day = parseInt(parts[2], 10);
+                    const hours = parts.length > 3 ? parseInt(parts[3], 10) : 0;
+                    const minutes = parts.length > 4 ? parseInt(parts[4], 10) : 0;
+                    const seconds = parts.length > 5 ? parseInt(parts[5], 10) : 0;
+                    time = Math.floor(Date.UTC(year, month, day, hours, minutes, seconds) / 1000);
+                }
+            }
+            if (time === undefined) {
+                const dateObj = new Date(dateStr);
+                if (isNaN(dateObj.getTime())) return;
+                time = Math.floor(dateObj.getTime() / 1000) - (dateObj.getTimezoneOffset() * 60);
+            }
+            
+            if (!timeMap.has(time)) {
+                timeMap.set(time, { time });
+            }
+            const pt = timeMap.get(time);
+            
+            if (type === 'history') {
+                pt.isHistory = true;
+                pt.open = Number(d.Open);
+                pt.high = Number(d.High);
+                pt.low = Number(d.Low);
+                pt.close = Number(d.Close);
+                pt.volume = Number(d.Volume || 0);
+                pt.isGreen = pt.close >= pt.open;
+            } else if (type === 'forecast') {
+                pt.forecastClose = Number(d.Close);
+                
+                pt.open = pt.open ?? Number(d.Open);
+                pt.high = pt.high ?? Number(d.High);
+                pt.low = pt.low ?? Number(d.Low);
+                pt.close = pt.close ?? Number(d.Close);
+                pt.isGreen = pt.close >= pt.open;
 
-            const isIntraday = ticker === 'VN30F1M' || (fullData.length > 1 && (new Date(fullData[1].time).getTime() - new Date(fullData[0].time).getTime() < 86400000));
+                if (d.upper_bound !== undefined && d.upper_bound !== null) {
+                    pt.upper = Number(d.upper_bound);
+                }
+                if (d.lower_bound !== undefined && d.lower_bound !== null) {
+                    pt.lower = Number(d.lower_bound);
+                }
+            }
+        };
 
-            if (isNaN(dateObj.getTime())) {
-                label = dateStr ? String(dateStr).split('T')[0] : `Idx ${i}`;
-            } else {
-                const dayStr = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`;
-                if (isIntraday) {
-                    const timeStr = `${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
-                    label = [dayStr, timeStr];
-                } else {
-                    if (count < 90) {
-                        label = dayStr;
-                    } else if (count < 300) {
-                        label = `${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
-                    } else {
-                        label = dateObj.getFullYear().toString();
-                    }
+        safeHistory.forEach(d => addPoint(d, 'history'));
+        safeForecast.forEach(d => addPoint(d, 'forecast'));
+
+        // Sort Map strictly chronologically
+        const sortedTimes = Array.from(timeMap.keys()).sort((a, b) => a - b);
+
+        const candleData = [];
+        const volumeData = [];
+        const forecastLineData = [];
+        const upperData = [];
+        const lowerData = [];
+
+        let previousHistoryPt = null;
+
+        for (const t of sortedTimes) {
+            const pt = timeMap.get(t);
+            
+            // Track if it's purely a forecast point
+            const isPureForecast = !pt.isHistory && pt.forecastClose !== undefined;
+
+            // Build Candles
+            if (!isNaN(pt.open) && !isNaN(pt.high) && !isNaN(pt.low) && !isNaN(pt.close)) {
+                // Only push if it's history OR we are showing predictions
+                if (pt.isHistory || (isPureForecast && showPrediction)) {
+                    candleData.push({
+                        time: pt.time,
+                        open: pt.open,
+                        high: pt.high,
+                        low: pt.low,
+                        close: pt.close,
+                    });
+                }
+                
+                // Volume typically only matters for history, but let's leave it attached to all rendering
+                if (pt.volume > 0 && (pt.isHistory || showPrediction)) {
+                    volumeData.push({
+                        time: pt.time,
+                        value: pt.volume,
+                        color: pt.isGreen ? 'rgba(0, 200, 83, 0.3)' : 'rgba(213, 0, 0, 0.3)'
+                    });
                 }
             }
 
-            ctx.fillStyle = "white";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            
-            if (Array.isArray(label)) {
-                ctx.fillText(label[0], x + candleWidth / 2, height - 20);
-                ctx.fillText(label[1], x + candleWidth / 2, height - 8);
-            } else {
-                ctx.fillText(label || "DATE", x + candleWidth / 2, height - 14);
+            if (pt.isHistory) {
+                previousHistoryPt = pt;
             }
 
-            // Grid line for X
-            ctx.strokeStyle = gridColor;
-            ctx.beginPath();
-            ctx.moveTo(x + candleWidth / 2, 0);
-            ctx.lineTo(x + candleWidth / 2, height - bottomPadding);
-            ctx.stroke();
-        }
-
-        // ===== 8. DRAW CONFIDENCE RANGE (BAND) =====
-        // Draw as a single polygon for smooth rendering
-        const forecastPoints = visibleData.map((p, i) => ({ ...p, i })).filter(p => p.isForecast);
-
-        if (forecastPoints.length > 0) {
-            ctx.fillStyle = "rgba(255, 152, 0, 0.2)";
-            ctx.beginPath();
-
-            // Upper Line
-            let first = true;
-            forecastPoints.forEach(p => {
-                const x = mapX(p.i) + candleWidth / 2;
-                const y = mapY(p.upper);
-                if (first) { ctx.moveTo(x, y); first = false; }
-                else ctx.lineTo(x, y);
-            });
-
-            // Lower Line (Reverse)
-            for (let j = forecastPoints.length - 1; j >= 0; j--) {
-                const p = forecastPoints[j];
-                const x = mapX(p.i) + candleWidth / 2;
-                const y = mapY(p.lower);
-                ctx.lineTo(x, y);
-            }
-
-            ctx.closePath();
-            ctx.fill();
-        }
-
-
-        // ===== 7. DRAW FORECAST LINE =====
-        if (forecastPoints.length > 0) {
-            ctx.strokeStyle = "#ff9800"; // Forecast Orange
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-
-            // Connect from the last history point if possible?
-            // User pseudocode iterates only visibleForecast.
-            // But visually better to connect to previous candle Close.
-            // Let's find the point BEFORE the first forecast point if it exists in visibleData.
-            const firstF = forecastPoints[0];
-            if (firstF.i > 0) {
-                const prev = visibleData[firstF.i - 1];
-                const xPrev = mapX(firstF.i - 1) + candleWidth / 2;
-                const yPrev = mapY(prev.close);
-                ctx.moveTo(xPrev, yPrev);
-                ctx.lineTo(mapX(firstF.i) + candleWidth / 2, mapY(firstF.close));
-            } else {
-                const x = mapX(firstF.i) + candleWidth / 2;
-                const y = mapY(firstF.close);
-                ctx.moveTo(x, y);
-            }
-
-            // Continue path
-            for (let k = 1; k < forecastPoints.length; k++) {
-                const p = forecastPoints[k];
-                const x = mapX(p.i) + candleWidth / 2;
-                const y = mapY(p.close);
-                ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-
-            // Draw Points (Dots)
-            ctx.fillStyle = "#ff9800";
-            forecastPoints.forEach(p => {
-                const x = mapX(p.i) + candleWidth / 2;
-                const y = mapY(p.close);
-                ctx.beginPath();
-                ctx.arc(x, y, 3, 0, Math.PI * 2);
-                ctx.fill();
-            });
-        }
-
-        // ===== 6. DRAW CANDLES =====
-        visibleData.forEach((p, i) => {
-            const xCenter = mapX(i) + candleWidth / 2;
-            const xLeft = mapX(i) + (candleWidth * 0.1); // Gap
-            const bodyWidth = Math.max(1, candleWidth * 0.8);
-
-            const yOpen = mapY(p.open);
-            const yClose = mapY(p.close);
-            const yHigh = mapY(p.high);
-            const yLow = mapY(p.low);
-
-            ctx.lineWidth = 1;
-
-            // Color
-            const isGreen = p.close >= p.open;
-            ctx.strokeStyle = isGreen ? "#00c853" : "#d50000";
-            ctx.fillStyle = isGreen ? "#00c853" : "#d50000";
-
-            // Wick
-            ctx.beginPath();
-            ctx.moveTo(xCenter, yHigh);
-            ctx.lineTo(xCenter, yLow);
-            ctx.stroke();
-
-            // Body
-            // Rect(x, y, w, h)
-            // Note: Canvas rect height must be positive, so we calculate carefully
-            const bodyTop = Math.min(yOpen, yClose);
-            const bodyHeight = Math.abs(yClose - yOpen);
-            // Ensure at least 1px height
-            const finalHeight = Math.max(1, bodyHeight);
-
-            ctx.fillRect(xCenter - bodyWidth / 2, bodyTop, bodyWidth, finalHeight);
-        });
-    };
-
-    // Re-draw on resizing/viewport change
-    useEffect(() => {
-        let rafId;
-        const doDraw = () => { rafId = window.requestAnimationFrame(drawChart); };
-
-        const container = containerRef.current;
-        if (container) {
-            let lastWidth = -1;
-            let lastHeight = -1;
-            const ro = new ResizeObserver((entries) => {
-                for (let entry of entries) {
-                    const { width, height } = entry.contentRect;
-                    if (Math.abs(width - lastWidth) > 1 || Math.abs(height - lastHeight) > 1) {
-                        lastWidth = width;
-                        lastHeight = height;
-                        doDraw();
+            // Build Forecast Lines
+            if (showPrediction) {
+                if (pt.forecastClose !== undefined) {
+                    if (forecastLineData.length === 0 && previousHistoryPt && previousHistoryPt.close !== undefined) {
+                        forecastLineData.push({ time: previousHistoryPt.time, value: previousHistoryPt.close });
                     }
+                    forecastLineData.push({ time: pt.time, value: pt.forecastClose });
                 }
-            });
-            ro.observe(container);
-            doDraw();
-            return () => { ro.disconnect(); cancelAnimationFrame(rafId); };
+                
+                // Build Band Lines
+                if (pt.upper !== undefined && !isNaN(pt.upper)) upperData.push({ time: pt.time, value: pt.upper });
+                if (pt.lower !== undefined && !isNaN(pt.lower)) lowerData.push({ time: pt.time, value: pt.lower });
+            }
         }
-    }, [fullData, viewport]);
 
+        // Apply to series
+        const { mainSeries, forecastLineSeries, upperSeries, lowerSeries, volumeSeries } = seriesRef.current;
+        
+        mainSeries.setData(candleData);
+        forecastLineSeries.setData(forecastLineData);
+        upperSeries.setData(upperData);
+        lowerSeries.setData(lowerData);
+        volumeSeries.setData(volumeData);
 
-    // ==================== EVENT HANDLERS ====================
-
-    // Zoom (Wheel)
-    const handleWheel = (e) => {
-        e.preventDefault();
-        const factor = 1.1; // Zoom Speed
-
-        const width = viewport.end - viewport.start;
-        // Determine Zoom In or Out
-        const isZoomIn = e.deltaY < 0;
-        const newWidth = isZoomIn ? width / factor : width * factor;
-
-        // Apply
-        // Needs centerIndex?
-        // User Logic: viewportStart = centerIndex - newWidth / 2
-        // We calculate center based on mouseX if possible, or just center of screen.
-        // For simplicity: Center of current viewport.
-        const center = (viewport.start + viewport.end) / 2;
-
-        let newStart = center - newWidth / 2;
-        let newEnd = center + newWidth / 2;
-
-        setViewport({ start: newStart, end: newEnd });
-    };
-
-    // Pan (Drag)
-    const handleMouseDown = (e) => {
-        setIsDragging(true);
-        setLastMouseX(e.clientX);
-    };
-
-    const handleMouseMove = (e) => {
-        if (!isDragging) return;
-        const dx = e.clientX - lastMouseX;
-        setLastMouseX(e.clientX);
-
-        // Convert px to candles
-        const container = containerRef.current;
-        if (!container) return;
-
-        const chartWidth = container.clientWidth;
-        const candlesVisible = viewport.end - viewport.start;
-        const pixelsPerCandle = chartWidth / candlesVisible;
-
-        const deltaCandles = -dx / pixelsPerCandle; 
-
-        setViewport(prev => {
-            let newStart = prev.start + deltaCandles;
-            let newEnd = prev.end + deltaCandles;
-
-            // Prevent panning out of bounds
-            if (newStart < -10) {
-                const diff = newStart - (-10);
-                newStart -= diff;
-                newEnd -= diff;
+        // Auto-fit bounds ONLY the VERY FIRST time data loads
+        if (candleData.length > 0 && !chartRef.current.hasFittedOnce) {
+            const timeScale = chartRef.current.timeScale();
+            const totalItems = candleData.length;
+            if (totalItems > 200) {
+                timeScale.setVisibleLogicalRange({
+                    from: totalItems - 200,
+                    to: totalItems - 1,
+                });
+            } else {
+                timeScale.fitContent();
             }
-            if (newEnd > fullData.length + 10) {
-                const diff = newEnd - (fullData.length + 10);
-                newStart -= diff;
-                newEnd -= diff;
-            }
-
-            return { start: newStart, end: newEnd };
-        });
-    };
-
-    const handleMouseUp = () => {
-        setIsDragging(false);
-    };
-
-    // Touch pan/zoom State
-    const [touchDistance, setTouchDistance] = useState(null);
-
-    const handleTouchStart = (e) => {
-        if (e.touches.length === 1) {
-            setIsDragging(true);
-            setLastMouseX(e.touches[0].clientX);
-            setTouchDistance(null);
-        } else if (e.touches.length === 2) {
-            setIsDragging(false);
-            const dist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            setTouchDistance(dist);
+            chartRef.current.hasFittedOnce = true;
         }
-    };
 
-    const handleTouchMove = (e) => {
-        if (e.touches.length === 1 && isDragging) {
-            const dx = e.touches[0].clientX - lastMouseX;
-            setLastMouseX(e.touches[0].clientX);
-
-            const container = containerRef.current;
-            if (!container) return;
-
-            const chartWidth = container.clientWidth;
-            const candlesVisible = viewport.end - viewport.start;
-            const pixelsPerCandle = chartWidth / candlesVisible;
-
-            const deltaCandles = -dx / pixelsPerCandle; 
-
-            setViewport(prev => {
-                let newStart = prev.start + deltaCandles;
-                let newEnd = prev.end + deltaCandles;
-
-                if (newStart < -10) { const diff = newStart - (-10); newStart -= diff; newEnd -= diff; }
-                if (newEnd > fullData.length + 10) { const diff = newEnd - (fullData.length + 10); newStart -= diff; newEnd -= diff; }
-
-                return { start: newStart, end: newEnd };
-            });
-        } else if (e.touches.length === 2 && touchDistance !== null) {
-            const dist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            
-            const factor = touchDistance / dist;
-            const vp = viewportRef.current || viewport; 
-            const width = vp.end - vp.start;
-            const newWidth = width * factor;
-
-            const center = (vp.start + vp.end) / 2;
-            let newStart = center - newWidth / 2;
-            let newEnd = center + newWidth / 2;
-
-            const minItems = 10;
-            const maxItems = fullData.length + 20;
-
-            if (newEnd - newStart < minItems) { newEnd = center + minItems / 2; newStart = center - minItems / 2; }
-            if (newEnd - newStart > maxItems) { newEnd = center + maxItems / 2; newStart = center - maxItems / 2; }
-            if (newStart < -10) { newEnd += (-10 - newStart); newStart = -10; }
-            if (newEnd > fullData.length + 10) { newStart -= (newEnd - (fullData.length + 10)); newEnd = fullData.length + 10; }
-
-            setViewport({ start: newStart, end: newEnd });
-            setTouchDistance(dist);
-        }
-    };
-
-    const handleTouchEnd = () => {
-        setIsDragging(false);
-        setTouchDistance(null);
-    };
-
-    // Prevent scrolling page when zooming chart
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-
-        const onWheel = (e) => handleWheel(e);
-        canvas.addEventListener('wheel', onWheel, { passive: false });
-
-        return () => canvas.removeEventListener('wheel', onWheel);
-    }, [viewport]); // Re-bind with latest viewport state? Or use ref for viewport.
-    // Actually, to avoid stale layout in event listener:
-    // Better to use a ref for viewport if we attach listener manually.
-    // But since we setState, we can use the React Synthetic event if simpler, 
-    // but React wheel event is passive by default in some versions? 
-    // Let's stick to ref for viewport to be safe or reliance on React re-render.
-    // For specific "non-passive" event, manual attach is required.
-
-    // Ref for Viewport access in listener
-    const viewportRef = useRef(viewport);
-    useEffect(() => { viewportRef.current = viewport; }, [viewport]);
-
-    // Ref-based implementation for Event Listener to avoid re-attaching
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        const onWheel = (e) => {
-            e.preventDefault();
-            const vp = viewportRef.current;
-            const factor = 1.1;
-            const width = vp.end - vp.start;
-            const isZoomIn = e.deltaY < 0;
-            const newWidth = isZoomIn ? width / factor : width * factor;
-
-            const center = (vp.start + vp.end) / 2;
-            let newStart = center - newWidth / 2;
-            let newEnd = center + newWidth / 2;
-
-            // Clamping limits
-            const minItems = 10;
-            const maxItems = fullData.length + 20;
-
-            if (newEnd - newStart < minItems) {
-                newEnd = center + minItems / 2;
-                newStart = center - minItems / 2;
-            }
-            if (newEnd - newStart > maxItems) {
-                newEnd = center + maxItems / 2;
-                newStart = center - maxItems / 2;
-            }
-
-            // Prevent panning way out of bounds during zoom
-            if (newStart < -10) {
-                newEnd += (-10 - newStart);
-                newStart = -10;
-            }
-            if (newEnd > fullData.length + 10) {
-                newStart -= (newEnd - (fullData.length + 10));
-                newEnd = fullData.length + 10;
-            }
-
-            setViewport({ start: newStart, end: newEnd });
-        };
-        canvas.addEventListener('wheel', onWheel, { passive: false });
-        return () => canvas.removeEventListener('wheel', onWheel);
-    }, [fullData.length]);
-
+    }, [history, forecast, showPrediction]); 
 
     return (
         <div className="flex h-full w-full bg-[#111213] flex-col relative overflow-hidden">
             {/* Ticker & Search Overlay */}
-            <div className="absolute top-4 left-4 z-20 flex items-center gap-3 bg-[#111213]/80 p-2 rounded backdrop-blur-sm border border-[#2a2e39]/50">
+            <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 sm:gap-3 bg-[#111213]/80 p-2 rounded backdrop-blur-sm border border-[#2a2e39]/50 max-w-[calc(100vw-2rem)]">
                 <h1
                     className="text-2xl font-black text-white tracking-wider max-w-[150px] truncate drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]"
                     style={{ WebkitTextStroke: '1px rgba(0,0,0,0.8)' }}
@@ -592,6 +291,17 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
                     className="p-1.5 text-gray-400 hover:text-white hover:bg-[#25282c] rounded transition-colors"
                 >
                     <Search size={20} />
+                </button>
+                <div className="w-[1px] h-6 bg-[#2a2e39] mx-1 hidden sm:block" />
+                <button
+                    onClick={() => setShowPrediction(!showPrediction)}
+                    className={`px-3 py-1 text-xs font-semibold rounded border transition-colors ${
+                        showPrediction 
+                        ? 'bg-orange-500/10 text-orange-400 border-orange-500/30 hover:bg-orange-500/20' 
+                        : 'bg-transparent text-gray-500 border-gray-700 hover:text-gray-300'
+                    }`}
+                >
+                    {showPrediction ? 'Hide Pred' : 'Show Pred'}
                 </button>
             </div>
 
@@ -633,19 +343,11 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
                 </div>
             )}
 
+            {/* TradingView Chart Container */}
             <div
                 ref={containerRef}
-                className="flex-1 w-full min-h-0 relative cursor-crosshair active:cursor-grabbing overflow-hidden"
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-            >
-                <canvas ref={canvasRef} className="absolute inset-0 block" style={{ touchAction: 'none' }} />
-            </div>
+                className="flex-1 w-full min-h-0 relative"
+            />
         </div>
     );
 };

@@ -347,9 +347,8 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
         if cached and time.time() < cached[1]:
             return cached[0]
         
-        # Fetch enough data for the model (sequence_length + buffer)
-        needed_days = max(int(predictor.sequence_length) * 3, 120)  # ~120 trading days
-        df = get_stock_ohlc(stock_id, limit=needed_days)
+        # Fetch all available data for charting and model
+        df = get_stock_ohlc(stock_id, limit=None)
         
         if df is None or df.empty:
             raise HTTPException(status_code=400, detail="Could not fetch data for prediction.")
@@ -357,9 +356,8 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
         if len(df) < predictor.sequence_length + 1:
              raise HTTPException(status_code=400, detail="Not enough history for this stock.")
              
-        # Take last N entries for context visualization
-        history_window = min(len(df), 250)
-        history_df = df.tail(history_window).copy()
+        # Take all available entries for context visualization
+        history_df = df.copy()
         
         # 3. Preprocess for Prediction (Compute Log Returns)
         input_prices = df.iloc[-(predictor.sequence_length + 1):].copy()
