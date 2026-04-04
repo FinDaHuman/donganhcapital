@@ -92,8 +92,8 @@ const Dashboard = ({ onSelectStock }) => {
             code: item.ticker,
             volume: item.size,
             change_pct: item.value,
-            close: 0,
-            open: 0
+            close: item.price || 0,
+            trading_value: item.trading_value || 0
         })).sort((a, b) => b.volume - a.volume);
 
         // Calculate whole market stats before filtering for UI
@@ -134,6 +134,13 @@ const Dashboard = ({ onSelectStock }) => {
         return '#d500f9';                  // Ceiling (Purple)
     };
 
+    const formatVolume = (vol) => {
+        if (vol >= 1000000000) return (vol / 1000000000).toFixed(2) + 'B';
+        if (vol >= 1000000) return (val = vol / 1000000).toFixed(2) + 'M';
+        if (vol >= 1000) return (vol / 1000).toFixed(2) + 'K';
+        return vol.toString();
+    };
+
     const treemapData = () => {
         if (!marketStocks.length) return null;
 
@@ -143,6 +150,7 @@ const Dashboard = ({ onSelectStock }) => {
         const values = [];
         const exactColors = [];
         const text = [];
+        const customdata = [];
 
         const presentSectors = new Set(marketStocks.map(s => getSector(s.code)));
 
@@ -161,6 +169,7 @@ const Dashboard = ({ onSelectStock }) => {
         values.push(totalVolume);
         exactColors.push('#111213');
         text.push("<b>Thị Trường</b>");
+        customdata.push({ hoverText: "<b>Thị Trường</b>" });
 
         presentSectors.forEach(sector => {
             ids.push(sector);
@@ -169,6 +178,7 @@ const Dashboard = ({ onSelectStock }) => {
             values.push(sectorVolumes[sector]);
             exactColors.push('#1a1c1e');
             text.push(`<b>${sector}</b>`);
+            customdata.push({ hoverText: `<b>Ngành: ${sector}</b>` });
         });
 
         presentSectors.forEach(sector => {
@@ -178,6 +188,7 @@ const Dashboard = ({ onSelectStock }) => {
             let othersVol = 0;
             let othersCount = 0;
             const visibleStocks = [];
+            const otherStocks = [];
 
             sectorStocks.forEach(s => {
                 const vol = s.volume || 1;
@@ -185,6 +196,7 @@ const Dashboard = ({ onSelectStock }) => {
                 if (vol / secVol < MIN_VOL_PCT_SECTOR) {
                     othersVol += vol;
                     othersCount++;
+                    otherStocks.push(s);
                 } else {
                     visibleStocks.push(s);
                 }
@@ -202,9 +214,12 @@ const Dashboard = ({ onSelectStock }) => {
                 exactColors.push(color);
                 const sign = pct > 0 ? '+' : '';
                 text.push(`<b>${s.code}</b><br>${sign}${pct.toFixed(2)}%`);
+                
+                const hoverText = `<b>${s.code}</b><br>Giá: ${s.close ? s.close.toFixed(2) : "N/A"}<br>Thay đổi: ${sign}${pct.toFixed(2)}%<br>KLGD: ${formatVolume(s.volume || 0)}<br>GTGD: ${s.trading_value ? formatVolume(s.trading_value) : "N/A"}`;
+                customdata.push({ hoverText });
             });
 
-            // Roll up small stocks into an "Others" category per sector
+            // Roll up small stocks into an "Others" category per sector, as a parent node
             if (othersCount > 0) {
                 const otherId = `Khác (${sector})`;
                 ids.push(otherId);
@@ -213,6 +228,24 @@ const Dashboard = ({ onSelectStock }) => {
                 values.push(othersVol);
                 exactColors.push('#25282c'); // Dark gray color for 'others' group
                 text.push(`<b>Các mã tỷ trọng nhỏ (${othersCount} mã)</b>`);
+                customdata.push({ hoverText: `<b>Nhóm Khác (${sector})</b><br>${othersCount} mã cổ phiếu` });
+
+                // Add the actual other stocks as children of this 'otherId'
+                otherStocks.forEach(s => {
+                    ids.push(s.code);
+                    labels.push(s.code);
+                    parents.push(otherId);
+                    values.push(s.volume || 1);
+
+                    const pct = s.change_pct || 0;
+                    let color = calculateColor(pct);
+                    exactColors.push(color);
+                    const sign = pct > 0 ? '+' : '';
+                    text.push(`<b>${s.code}</b><br>${sign}${pct.toFixed(2)}%`);
+                    
+                    const hoverText = `<b>${s.code}</b><br>Giá: ${s.close ? s.close.toFixed(2) : "N/A"}<br>Thay đổi: ${sign}${pct.toFixed(2)}%<br>KLGD: ${formatVolume(s.volume || 0)}<br>GTGD: ${s.trading_value ? formatVolume(s.trading_value) : "N/A"}`;
+                    customdata.push({ hoverText });
+                });
             }
         });
 
@@ -223,8 +256,11 @@ const Dashboard = ({ onSelectStock }) => {
             parents: parents,
             values: values,
             text: text,
+            customdata: customdata,
             textinfo: "label+text",
-            hoverinfo: "text",
+            hovertemplate: "%{customdata.hoverText}<extra></extra>",
+            textposition: "middle center",
+            insidetextanchor: "middle",
             branchvalues: "total",
             pathbar: { visible: false },
             tiling: { pad: 3 },
@@ -285,8 +321,7 @@ const Dashboard = ({ onSelectStock }) => {
                                 autosize: true,
                                 margin: { l: 0, r: 0, b: 0, t: 0, pad: 0 },
                                 paper_bgcolor: '#1a1c1e',
-                                font: { color: '#ffffff', family: 'sans-serif', size: 13 },
-                                uniformtext: { minsize: 10, mode: 'hide' }
+                                font: { color: '#ffffff', family: 'sans-serif' }
                             }}
                             config={{ displayModeBar: false, responsive: true }}
                             style={{ width: '100%', height: '100%', display: 'block' }}
@@ -296,8 +331,10 @@ const Dashboard = ({ onSelectStock }) => {
                                 const point = data.points[0];
                                 if (!point || !point.label) return;
                                 const code = point.label;
-                                // Ignore clicks on sectors or "Others" containers
-                                if (!sectors || !sectors[code] && !code.startsWith("+") && !code.startsWith("Khác") && code !== "Thị Trường") {
+                                
+                                // Only trigger selection if the clicked label is an actual stock ticker
+                                const isStock = marketStocks.some(s => s.code === code);
+                                if (isStock) {
                                     onSelectStock(code);
                                 }
                             }}

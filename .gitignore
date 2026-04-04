@@ -30,6 +30,7 @@ ToDoList.txt
 AGENTS.md
 .cursor/
 GEMINI.md
+plan.md
 
 #Reference model
 xgb_model.ipynb
