@@ -136,7 +136,7 @@ const Dashboard = ({ onSelectStock }) => {
 
     const formatVolume = (vol) => {
         if (vol >= 1000000000) return (vol / 1000000000).toFixed(2) + 'B';
-        if (vol >= 1000000) return (val = vol / 1000000).toFixed(2) + 'M';
+        if (vol >= 1000000) return (vol / 1000000).toFixed(2) + 'M';
         if (vol >= 1000) return (vol / 1000).toFixed(2) + 'K';
         return vol.toString();
     };
