@@ -163,6 +163,7 @@ def get_market_status_from_db():
         SELECT stock_id, close, volume, "Ngay",
                ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY "Ngay" DESC) as rn
         FROM stock_ohlc
+        WHERE "Ngay" >= CURRENT_DATE - INTERVAL '15 days'
     )
     SELECT stock_id, close, volume, rn
     FROM RankedRows
@@ -181,10 +182,13 @@ def get_market_status_from_db():
                 prev_row = stock_data[stock_data['rn'] == 2].iloc[0]
                 
                 change = (last_row['close'] - prev_row['close']) / prev_row['close'] * 100
+                trading_value = float(last_row['close'] * last_row['volume'])
                 results.append({
                     "ticker": stock,
                     "value": float(change),
-                    "size": int(last_row['volume'])
+                    "size": int(last_row['volume']),
+                    "price": float(last_row['close']),
+                    "trading_value": trading_value
                 })
         return results
     except Exception as e:
