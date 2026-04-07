@@ -7,14 +7,12 @@ This guide provides technical instructions for configuring, running, and deployi
 ## 🛠️ 1. Local Configuration
 
 ### NeonDB Connection
-The platform uses **NeonDB (PostgreSQL)** for all persistent storage. To connect your local backend:
+The platform uses **NeonDB (PostgreSQL)** for all persistent storage.
 1.  Obtain your connection string from the Neon Console.
-2.  Set the `DATABASE_URL` environment variable:
+2.  Set the `DATABASE_URL` environment variable in `backend/.env` and `daily_suggestion_system/.env` (if applicable).
     ```bash
-    # Example format
-    export DATABASE_URL="postgresql://user:pass@ep-hostname.region.aws.neon.tech/neondb?sslmode=require"
+    DATABASE_URL="postgresql://user:pass@ep-hostname.region.aws.neon.tech/neondb?sslmode=require"
     ```
-3.  The backend uses SQLAlchemy with `psycopg2-binary` to interact with the database.
 
 ### Environment Variables
 - **Backend (`backend/.env`)**:
@@ -22,54 +20,64 @@ The platform uses **NeonDB (PostgreSQL)** for all persistent storage. To connect
   - `USE_XGB`: Set to `true` (default) for XGBoost, `false` for LSTM.
   - `PORT`: API port (default: 8000).
 - **Frontend (`frontend/.env`)**:
-  - `VITE_API_URL`: Backend API URL (local: `http://localhost:8000`).
+  - `VITE_API_URL`: Backend API URL (local: `http://localhost:8000/api`).
 
 ---
 
-## 🚀 2. AI Signal Pipeline
+## 🚀 2. AI Signal & Trade Pipeline
 
-The **Daily Suggestion System** generates AI-driven buy/sell signals.
+The **Daily Suggestion System** handles data ingestion, signal generation, and portfolio tracking.
 
-### Running the Pipeline
-To manually trigger a signal update:
-1.  Navigate to `daily_suggestion_system/`.
-2.  Install requirements: `pip install -r requirements.txt`.
-3.  Run the main pipeline: `python -m daily_pipeline.run` (or similar entry point).
-4.  This script will:
-    -   Fetch latest OHLC from NeonDB.
-    -   Run signals logic.
-    -   Write results back to `ai_signals` and `daily_signal_summary` tables.
+### Running the Unified Pipeline
+To trigger a full update (Data -> Signals -> Positions):
+1.  Navigate to `daily_suggestion_system/src/daily_pipeline/`.
+2.  Run the orchestrator: 
+    ```bash
+    python run_daily_pipeline.py
+    ```
+3.  This script executes:
+    -   `database_update.py`: Fetches latest OHLC from Vnstock.
+    -   `daily_predict.py`: Runs ML models, generates new signals, and updates `TradeManager`.
+    -   `vn30f1m_update.py`: Performs a one-time intraday sync for the VN30 derivative.
+
+### Portfolio Management
+The `TradeManager` (inside `daily_predict.py`) automatically:
+-   Checks if existing "HOLD" positions hit **TP** (Target Price) or **SL** (Stop Loss).
+-   Moves completed trades to the `trade_history` table.
+-   Calculates realized returns and holding periods.
 
 ---
 
 ## ☁️ 3. Deployment
 
-### A. Backend (Render.com)
+### A. Backend (FastAPI)
 - **Root Directory**: `backend`
 - **Build Command**: `pip install -r requirements.txt`
 - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-- **Model Files**: Ensure `backend/models/xgb_model` or `vn_stock_predictor` is committed. If using Git LFS, ensure Render supports it or train as part of the build step.
+- **Real-time Polling**: The backend includes an `asyncio` task that polls VN30F1M every 60s when the market is open.
 
-### B. Frontend (Vercel)
+### B. Frontend (Vite)
 - **Framework Preset**: Vite
 - **Root Directory**: `frontend`
-- **Output Directory**: `dist`
-- **Environment Variable**: Set `VITE_API_URL` to your Render backend URL.
+- **Environment Variable**: `VITE_API_URL` should point to your backend (e.g., `https://api.donganhcapital.com/api`).
 
 ---
 
 ## 📊 4. Database Schema Reference
 
-The platform relies on the following key tables in NeonDB:
-- **`stocks`**: List of all available tickers.
-- **`stock_ohlc`**: Historical price data (Open, High, Low, Close, Volume).
-- **`vnindex_ohlc`**: Historical data for the VNINDEX.
-- **`ai_signals`**: Generated AI Buy/Sell recommendations.
-- **`daily_signal_summary`**: Aggregate counts of signals per day.
+Key tables in NeonDB:
+- **`stocks`**: Registry of tickers.
+- **`stock_ohlc`**: Daily historical data (columns: `Ngay`, `open`, `high`, `low`, `close`, `volume`, `stock_id`).
+- **`vnindex_ohlc`**: VNINDEX historical data.
+- **`vn30f1m_intraday`**: 1-minute interval data for the derivative.
+- **`ai_signals`**: Daily recommendations (`date`, `stock_id`, `entry_price`, `tp_price`, `sl_price`, `prob`).
+- **`daily_signal_summary`**: History of signal counts per day.
+- **`trade_history`**: Record of all simulated trades and their outcomes.
 
 ---
 
 ## 🧪 5. Troubleshooting
-- **Missing Predicton**: If the API returns a 503 error, the model files are likely missing from `backend/models/`. Run `python backend/train_and_save.py` locally first.
-- **Connection Refused**: Ensure the backend is running and `VITE_API_URL` in the frontend exactly matches the backend host (including port).
-- **Data Gaps**: The background poller requires a stable internet connection to reach Vnstock APIs. Check backend logs for rate-limiting errors.
+- **Model Loading**: If `predictor is None`, ensure the `backend/models/xgb_model` folder (or LSTM `.h5` file) exists.
+- **VN30F1M Missing**: If the chart is empty, check `vn30f1m_intraday` table. The background poller requires the market to be open (GMT+7).
+- **CORS Issues**: The backend allows all origins by default, but ensure `VITE_API_URL` in the frontend ends with `/api` or matches the backend's expected path.
+- **NeonDB Limits**: If you hit connection limits, ensure `NullPool` is used in `backend/db/connection.py` to avoid persistent idle connections.
