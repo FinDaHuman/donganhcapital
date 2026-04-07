@@ -3,6 +3,7 @@ import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import StockChart from './components/StockChart';
 import AIAnalystTab from './components/AIAnalystTab';
+import MarketIntelligenceTab from './components/MarketIntelligenceTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import { Search } from 'lucide-react';
@@ -188,6 +189,12 @@ function App() {
                     {activeTab === 'analyst' && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <AIAnalystTab onSelectStock={handleSelectStock} />
+                        </div>
+                    )}
+
+                    {activeTab === 'market-intelligence' && (
+                        <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
+                            <MarketIntelligenceTab onSelectStock={handleSelectStock} stockList={stockList} />
                         </div>
                     )}
 

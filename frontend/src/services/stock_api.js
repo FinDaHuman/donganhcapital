@@ -164,3 +164,61 @@ export const getTradeHistoryStats = async () => {
     }
 };
 
+const buildAnalyticsParams = (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '' && value !== 'ALL') {
+            params.append(key, value);
+        }
+    });
+    const query = params.toString();
+    return query ? `?${query}` : '';
+};
+
+const fetchAnalytics = async (path, filters = {}, fallback = {}) => {
+    try {
+        const response = await axios.get(`${API_Base_URL}${path}${buildAnalyticsParams(filters)}`);
+        return response.data;
+    } catch (error) {
+        console.error(`Error fetching analytics from ${path}:`, error);
+        return fallback;
+    }
+};
+
+export const getMarketIntelligenceOverview = async (filters = {}) =>
+    fetchAnalytics('/analytics/overview', filters, {
+        summary: {},
+        daily_activity: {},
+        series: { signal_trend_30d: [], trade_close_trend_30d: [], equity_curve: [] },
+        freshness: [],
+        alerts: [],
+    });
+
+export const getMarketIntelligenceSignals = async (filters = {}) =>
+    fetchAnalytics('/analytics/signals', filters, {
+        summary: {},
+        series: { signal_trend: [], probability_buckets: [], sector_distribution: [], top_tickers: [] },
+        tables: { recent_signals: [] },
+    });
+
+export const getMarketIntelligenceTrades = async (filters = {}) =>
+    fetchAnalytics('/analytics/trades', filters, {
+        summary: {},
+        series: { outcome_breakdown: [], return_distribution: [], equity_curve: [] },
+        tables: { ticker_leaderboard: [], sector_leaderboard: [], open_trades: [], recent_trades: [] },
+    });
+
+export const getMarketIntelligenceMarket = async (filters = {}) =>
+    fetchAnalytics('/analytics/market', filters, {
+        summary: { breadth: {} },
+        series: { sector_performance: [], liquidity_leaders: [], return_distribution: [], vnindex: [] },
+    });
+
+export const getMarketIntelligencePipelineHealth = async () =>
+    fetchAnalytics('/analytics/pipeline-health', {}, {
+        summary: {},
+        freshness: [],
+        coverage: { unmapped_tickers: [] },
+        anomalies: [],
+    });
+

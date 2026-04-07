@@ -21,6 +21,13 @@ from db.queries import (
     get_daily_signal_summary,
     get_trade_history, get_trade_history_stats
 )
+from db.analytics import (
+    get_market_intelligence_overview,
+    get_market_intelligence_market,
+    get_market_intelligence_signals,
+    get_market_intelligence_trades,
+    get_market_intelligence_pipeline_health,
+)
 
 # Disable GPU for lighter inference if needed
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -255,6 +262,68 @@ async def get_trade_history_stats_endpoint(concurrency: Any = Depends(limit_conc
     def compute():
         return get_trade_history_stats()
     return get_cached("trade_history_stats", 120, compute)
+
+
+@app.get("/api/analytics/overview")
+async def get_market_intelligence_overview_endpoint(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    sector: Optional[str] = None,
+    ticker: Optional[str] = None,
+    status: Optional[str] = None,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    def compute():
+        return get_market_intelligence_overview(start_date, end_date, sector, ticker, status)
+    return get_cached(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", 120, compute)
+
+
+@app.get("/api/analytics/market")
+async def get_market_intelligence_market_endpoint(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    sector: Optional[str] = None,
+    ticker: Optional[str] = None,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    def compute():
+        return get_market_intelligence_market(start_date, end_date, sector, ticker)
+    return get_cached(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", 120, compute)
+
+
+@app.get("/api/analytics/signals")
+async def get_market_intelligence_signals_endpoint(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    sector: Optional[str] = None,
+    ticker: Optional[str] = None,
+    probability_bucket: Optional[str] = None,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    def compute():
+        return get_market_intelligence_signals(start_date, end_date, sector, ticker, probability_bucket)
+    return get_cached(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", 120, compute)
+
+
+@app.get("/api/analytics/trades")
+async def get_market_intelligence_trades_endpoint(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    sector: Optional[str] = None,
+    ticker: Optional[str] = None,
+    status: Optional[str] = None,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    def compute():
+        return get_market_intelligence_trades(start_date, end_date, sector, ticker, status)
+    return get_cached(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", 120, compute)
+
+
+@app.get("/api/analytics/pipeline-health")
+async def get_market_intelligence_pipeline_health_endpoint(concurrency: Any = Depends(limit_concurrency)):
+    def compute():
+        return get_market_intelligence_pipeline_health()
+    return get_cached("analytics_pipeline_health", 120, compute)
 
 @app.get("/api/sectors")
 async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):

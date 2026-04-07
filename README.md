@@ -13,26 +13,26 @@ DongAnh Capital is a professional stock analysis and AI prediction platform tail
 
 ### 📊 Market Visualization
 
-- **Interactive Dashboard**: Real-time market heatmap using Plotly treemap visualization by sector
-- **Pro Charting Workstation**: High-performance Canvas-based candlestick charts with real-time zoom/pan
-- **VNINDEX Analytics**: Real-time integration and historical tracking of the Vietnam index
-- **Market Statistics**: Volume, value, and breadth indicators with live updates
+- **Interactive Dashboard**: Real-time market heatmap using Plotly treemap visualization by sector, with automatic small-cap grouping.
+- **Pro Charting Workstation**: High-performance Canvas-based candlestick charts with real-time zoom/pan and 10-day AI forecasts.
+- **VNINDEX Analytics**: Historical tracking and real-time visualization of the Vietnam index.
+- **Market Statistics**: Volume, value, and breadth indicators with live updates.
 
 ### 🤖 AI Prediction & Signals
 
 - **Hybrid AI Models**:
-  - **Quantile LSTM**: Probabilistic forecasting with P5/P50/P95 confidence bands (TensorFlow)
-  - **XGBoost**: Momentum-based predictions with quantile regression
-- **10-Day Forecast Horizon**: Both models predict 10 trading days ahead using 60-day historical sequences
-- **Daily AI Signals**: Automated pipeline generating Buy/Sell suggestions with Entry, Target (TP), and Stop Loss (SL) levels
-- **Confidence Intervals**: Visual uncertainty quantification for all predictions
+  - **Quantile LSTM**: Probabilistic forecasting with P5/P50/P95 confidence bands (TensorFlow).
+  - **XGBoost**: Momentum-based predictions with quantile regression (Default).
+- **10-Day Forecast Horizon**: Both models predict 10 trading days ahead using 60-day historical sequences.
+- **Daily AI Signals**: Automated pipeline generating Buy/Sell suggestions with Entry, Target (TP), and Stop Loss (SL) levels.
+- **Portfolio Tracking**: Automated trade execution simulation and history tracking (TP/SL/Timeout/Hold).
 
 ### 🏛️ Data & Architecture
 
-- **Real-time Data**: Integrated with **Vnstock/VCI** for latest Vietnam market data
-- **NeonDB Scaling**: Cloud-native PostgreSQL (NeonDB) for reliable and scalable data storage
-- **FastAPI Backend**: Asynchronous, high-performance API with concurrency limiting (max 5 simultaneous users)
-- **Daily Automation**: Scheduled pipeline for signal generation and data updates
+- **Real-time Data**: Integrated with **Vnstock/VCI** for latest Vietnam market data and intraday VN30F1M updates.
+- **NeonDB Scaling**: Cloud-native PostgreSQL (NeonDB) for reliable and scalable data storage.
+- **FastAPI Backend**: Asynchronous, high-performance API with concurrency limiting and in-memory caching.
+- **Daily Automation**: Scheduled pipeline for data updates, signal generation, and position management.
 
 ---
 
@@ -42,11 +42,10 @@ DongAnh Capital is a professional stock analysis and AI prediction platform tail
 
 - **Framework**: React 18.2.0 with Vite
 - **Styling**: Tailwind CSS with custom dark theme (#111213, #1a1c1e)
-- **Charts**: Plotly.js 2.27.0 for interactive visualizations
+- **Charts**: Plotly.js 2.27.0 (Heatmap) and Custom Canvas (Stock Charts)
 - **Animations**: Framer Motion 12.35.1
 - **HTTP Client**: Axios 1.6.0
 - **Icons**: Lucide React 0.563.0
-- **3D Elements**: Spline (React Spline 4.1.0)
 
 ### Backend
 
@@ -59,16 +58,11 @@ DongAnh Capital is a professional stock analysis and AI prediction platform tail
   - Scikit-learn, Joblib
 - **Environment**: Python 3.10+
 
-### AI Models
-
-- **QuantileLSTM**: Bidirectional LSTM with custom quantile loss (sequence_length=60, n_steps=10, quantiles=[0.05, 0.5, 0.95])
-- **XGBPredictor**: Ensemble of quantile regressors per prediction step (sequence_length=10, n_steps=10)
-
 ### Data Pipeline
 
-- **Source**: Vnstock library for Vietnam market data
-- **Storage**: PostgreSQL with tables for stocks, OHLC data, AI signals, trade history
-- **Automation**: Daily pipeline scripts for data updates and signal generation
+- **Source**: Vnstock library for Vietnam market data (VCI/TCBS sources)
+- **Storage**: PostgreSQL with tables for stocks, OHLC data, AI signals, trade history, and daily summaries.
+- **Automation**: Daily pipeline scripts for data updates, signal generation, and trade management.
 
 ---
 
@@ -78,88 +72,48 @@ DongAnh Capital is a professional stock analysis and AI prediction platform tail
 DongAnhCapital/
 ├── frontend/                          # React SPA Application
 │   ├── src/
-│   │   ├── components/                # UI Components
-│   │   │   ├── Dashboard.jsx          # Market heatmap dashboard
-│   │   │   ├── StockChart.jsx         # Interactive candlestick charts
-│   │   │   ├── AIAnalystTab.jsx       # AI signals interface
-│   │   │   ├── LandingPage.jsx        # Marketing landing page
-│   │   │   └── Header.jsx             # Navigation header
-│   │   ├── services/
-│   │   │   └── stock_api.js           # API integration layer
+│   │   ├── components/                # UI Components (Dashboard, StockChart, AIAnalystTab)
+│   │   ├── services/                  # API integration layer (stock_api.js)
 │   │   └── App.jsx                    # Main SPA router
 │   ├── package.json                   # Frontend dependencies
 │   └── vite.config.js                 # Vite configuration
 │
 ├── backend/                           # FastAPI Backend & AI Models
-│   ├── main.py                        # API entry point with endpoints
+│   ├── main.py                        # API entry point & Real-time pollers
 │   ├── db/
-│   │   ├── connection.py              # NeonDB connection
-│   │   └── queries.py                 # Database operations
+│   │   ├── connection.py              # NeonDB connection pool
+│   │   └── queries.py                 # Database abstraction layer
 │   ├── models/
 │   │   ├── quantile_lstm.py           # TensorFlow LSTM model
 │   │   ├── xgb_predictor.py           # XGBoost predictor
-│   │   └── vn_stock_predictor_model.h5 # Trained LSTM weights
-│   ├── xgb_model/                     # XGBoost model files
-│   ├── train_and_save.py              # Model training script
+│   │   └── xgb_model/                 # Trained XGBoost model files
 │   └── requirements.txt               # Python dependencies
 │
-├── daily_suggestion_system/           # AI Signal Generation Pipeline
-│   ├── src/
-│   │   ├── daily_pipeline/
-│   │   │   ├── run_daily_pipeline.py  # Main pipeline orchestrator
-│   │   │   ├── vn30f1m_update.py      # Dedicated VN30F1M intraday update step
-│   │   │   ├── daily_predict.py       # Signal generation logic
-│   │   │   └── database_update.py     # Data refresh scripts
-│   │   ├── data_access/               # Database abstraction layer
-│   │   ├── features/                  # Feature engineering
-│   │   ├── labels/                    # Label generation
-│   │   ├── filters/                   # Signal filtering
-│   │   └── models/                    # ML model training
-│   ├── categories.txt                 # Sector classifications
-│   └── requirements.txt               # Pipeline dependencies
-│
-├── Documentations/                    # Comprehensive SRS & Project Docs
-│   ├── 00_SRS_COMPLETE_SUMMARY.md     # Documentation overview
-│   ├── Part1_Introduction_and_Core_Features.md
-│   ├── Part2_Advanced_Features.md
-│   ├── Part3_Non_Functional_Requirements.md
-│   ├── Part4_User_Stories_and_Acceptance_Criteria.md
-│   └── Part5_Test_Cases_and_Data_Requirements.md
-│
-├── Procfile                          # Heroku deployment
-├── run_api.bat                       # Windows API runner
-└── ToDoList.txt                      # Development tasks
+└── daily_suggestion_system/           # AI Signal Generation Pipeline
+    ├── src/
+    │   ├── daily_pipeline/
+    │   │   ├── run_daily_pipeline.py  # Main pipeline orchestrator
+    │   │   ├── vn30f1m_update.py      # VN30F1M intraday update
+    │   │   ├── daily_predict.py       # Signal generation & Trade management
+    │   │   └── database_update.py     # Data refresh scripts
+    │   ├── manager/
+    │   │   └── trade_manager.py       # Portfolio & Position management
+    │   └── data_access/               # Pipeline database layer
+    └── categories.txt                 # Sector classifications
 ```
 
 ---
 
 ## ⚡ Quick Start
 
-### Prerequisites
-
-- Python 3.10+
-- Node.js 16+
-- PostgreSQL database (NeonDB recommended)
-
 ### 1. Backend Setup
 
 ```bash
 cd backend
-
-# Create virtual environment
 python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # macOS/Linux
-
-# Install dependencies
+source venv/bin/activate  # venv\Scripts\activate on Windows
 pip install -r requirements.txt
-
-# Configure environment variables
-# Create .env file with:
-# DATABASE_URL=postgresql://user:pass@host:port/database
-# USE_XGB=true  # or false for LSTM
-
-# Start development server
+# Create .env with DATABASE_URL and USE_XGB=true
 uvicorn main:app --reload --port 8000
 ```
 
@@ -167,260 +121,44 @@ uvicorn main:app --reload --port 8000
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start development server
 npm run dev
 ```
-
-The application will be available at:
-
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
-
----
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Create `.env` files in the respective directories:
-
-**Backend (.env)**
-
-```env
-DATABASE_URL=postgresql://user:password@ep-hostname.region.aws.neon.tech/neondb
-USE_XGB=true  # true for XGBoost, false for LSTM
-CUDA_VISIBLE_DEVICES=-1  # Disable GPU for inference
-```
-
-**Frontend (.env)**
-
-```env
-VITE_API_URL=http://localhost:8000/api
-# For production: https://your-api-domain.com/api
-```
-
-### Model Selection
-
-The platform supports two AI models:
-
-- **XGBoost** (default): Faster inference, momentum-based predictions
-- **Quantile LSTM**: More sophisticated probabilistic forecasting
-
-Switch models by setting `USE_XGB` in the backend environment.
 
 ---
 
 ## 📊 API Endpoints
 
-### Core Endpoints
-
-- `GET /api` - Health check and stock count
-- `GET /api/health` - Simple health status
-- `GET /api/stocks` - List all available stock tickers
-- `GET /api/market-status` - Current market data for heatmap
-
-### Prediction Endpoints
-
-- `GET /api/predict/{stock_id}` - AI price prediction with forecast
-  - **Note**: VN30F1M returns empty forecast (predictions bypassed for this symbol)
-- `GET /api/ohlc/{stock_id}` - Historical OHLC data
-- `GET /api/ai-signals` - AI-generated trading signals
-- `GET /api/ai-signals/dates` - Available signal dates
-
-### Market Data
-
+### Core & Market Data
+- `GET /api/stocks` - List all tickers
+- `GET /api/market-status` - Snapshot for heatmap
 - `GET /api/vnindex` - VNINDEX historical data
-- `GET /api/sectors` - Sector classification mapping
-- `GET /api/trade-history` - Signal execution history
+- `GET /api/sectors` - Sector mappings
+- `GET /api/ohlc/{stock_id}` - Historical OHLC
 
-Full API documentation available at `/docs` when running the backend.
+### AI & Predictions
+- `GET /api/predict/{stock_id}` - 10-day AI forecast
+- `GET /api/ai-signals` - Trading signals (Buy/Sell)
+- `GET /api/ai-signals/summary` - Daily signal counts
 
----
-
-## 🤖 AI Model Training
-
-### Training Scripts
-
-**LSTM Model:**
-
-```bash
-cd backend
-python train_and_save.py
-```
-
-**XGBoost Model:**
-
-```bash
-cd daily_suggestion_system/src/training
-python train_breakout_model.py
-```
-
-### Model Architecture
-
-**Quantile LSTM:**
-
-- Input: 60-day log return sequences
-- Architecture: Bidirectional LSTM (128→64 units) + Dense output
-- Output: 10-day forecast with 3 quantiles (P5/P50/P95)
-- Loss: Custom quantile loss function
-
-**XGBoost:**
-
-- Input: 10-day feature sequences
-- Architecture: Ensemble of quantile regressors per step
-- Output: Point predictions with confidence bounds
+### Portfolio & History
+- `GET /api/trade-history` - Closed and open trade records
+- `GET /api/trade-history/stats` - Portfolio performance metrics (Win Rate, Avg Return)
 
 ---
 
 ## 🔄 Daily Pipeline
 
-The daily suggestion system automates signal generation:
+The pipeline automates the entire system:
+1. **Database Update**: Fetches latest OHLC for all stocks.
+2. **Signal Generation**: Runs the ML model to find breakout opportunities.
+3. **Trade Management**: Updates existing positions (checks TP/SL) and records history.
+4. **Intraday Updates**: Continuously polls VN30F1M during market hours.
 
+Run it manually:
 ```bash
-cd daily_suggestion_system/src/daily_pipeline
-python run_daily_pipeline.py
+python daily_suggestion_system/src/daily_pipeline/run_daily_pipeline.py
 ```
-
-**Pipeline Steps:**
-
-1. **Intraday Update**: Fetch Real-time VN30F1M data via vn30f1m_update.py
-2. **Data Update**: Fetch latest OHLC data from Vnstock (database_update.py)
-3. **Feature Engineering**: Calculate technical indicators
-4. **Signal Generation**: Apply ML models to generate buy/sell signals (daily_predict.py)
-5. **Database Update**: Store signals in NeonDB
-
-### Signal Types
-
-- **BUY**: Entry price, Target price, Stop loss
-- **SELL**: Similar structure for short positions
-- **HOLD**: No action recommended
-
----
-
-## 🚀 Deployment
-
-### Backend (FastAPI)
-
-```bash
-# Using Uvicorn
-uvicorn main:app --host 0.0.0.0 --port 8000
-
-# Using Procfile (Heroku)
-web: uvicorn main:app --host 0.0.0.0 --port $PORT
-```
-
-### Frontend (Vite)
-
-```bash
-# Build for production
-npm run build
-
-# Preview build
-npm run preview
-
-# Deploy to Vercel/Netlify
-npm run build  # Output in dist/
-```
-
-### Docker Support
-
-```dockerfile
-# Backend Dockerfile available in backend/
-FROM python:3.10-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
----
-
-## 🧪 Testing & Development
-
-### Running Tests
-
-```bash
-# Backend tests
-cd backend
-python -m pytest
-
-# Frontend tests
-cd frontend
-npm test
-```
-
-### Development Scripts
-
-- `run_api.bat` - Windows batch file to start backend
-- `frontend/package.json` scripts for dev/build/preview
-
-### Data Requirements
-
-- Minimum 60 trading days of historical data per stock
-- OHLC data with volume information
-- Real-time market status updates
-
----
-
-## 📈 Performance & Scaling
-
-### Backend Optimizations
-
-- **Concurrency Limiting**: Max 5 simultaneous prediction requests
-- **Caching**: 2-10 minute TTL for API responses
-- **Memory Management**: Automatic garbage collection after predictions
-- **Async Operations**: Non-blocking I/O with FastAPI
-
-### Frontend Optimizations
-
-- **Lazy Loading**: Components loaded on demand
-- **Caching**: API responses cached in localStorage
-- **Debouncing**: Search and API calls debounced
-- **Progressive Loading**: Show cached data while fetching fresh data
-
----
-
-## 👥 Contributors
-
-- **[Fullstack Developer]** - Trần Huy Tuấn
-- **[Data Analyst]** - Hoàng Hiếu Trung
-- **[Data Engineer]** - Nguyễn Nhật Minh
-- **[AI Engineer]** - Đoàn Duy Long
-- **[AI Engineer]** - Đoàn Minh Hiếu
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 📚 Documentation
-
-Comprehensive project documentation is available in the `Documentations/` folder:
-
-- **SRS Complete Summary**: Overview of all requirements and specifications
-- **Part 1-5**: Detailed functional/non-functional requirements, user stories, and test cases
-- **Architecture**: System design and data flow diagrams
-- **API Reference**: Complete endpoint documentation
-
-For detailed technical specifications, refer to the `Documentations/` directory.
-
----
-
-## 🆘 Support & Issues
-
-- **Issues**: Report bugs and request features via GitHub Issues
-- **Discussions**: Join community discussions for questions and feedback
-- **Documentation**: Check `Documentations/` for detailed specifications
 
 ---
 
