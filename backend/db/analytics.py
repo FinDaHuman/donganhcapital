@@ -50,6 +50,30 @@ def _to_native(value):
     return value
 
 
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {key: _json_safe(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating, float)):
+        as_float = float(value)
+        return as_float if math.isfinite(as_float) else None
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
 def _records(df: pd.DataFrame, round_map: Optional[dict[str, int]] = None):
     if df is None or df.empty:
         return []
@@ -439,7 +463,7 @@ def get_market_intelligence_overview(start_date=None, end_date=None, sector=None
     latest_entries = trades_df[trades_df["entry_date"] == trades_df["entry_date"].max()] if not trades_df.empty else pd.DataFrame()
     latest_closures = closed[closed["exit_date"] == latest_trade_exit] if latest_trade_exit is not None and not closed.empty else pd.DataFrame()
 
-    return {
+    return _json_safe({
         "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL", "status": status or "ALL"},
         "summary": {
             "total_tickers": int(stocks_df["stock_id"].nunique()) if not stocks_df.empty else 0,
@@ -464,7 +488,7 @@ def get_market_intelligence_overview(start_date=None, end_date=None, sector=None
         "freshness": freshness,
         "alerts": alerts,
         "metadata": {"unmapped_tickers": unmapped_tickers[:25]},
-    }
+    })
 
 
 def get_market_intelligence_signals(start_date=None, end_date=None, sector=None, ticker=None, probability_bucket=None):
@@ -472,12 +496,12 @@ def get_market_intelligence_signals(start_date=None, end_date=None, sector=None,
     trades_df = _apply_common_filters(_load_trade_frame(start_date, end_date), "entry_date", start_date, end_date, sector, ticker)
     summary_df = _load_signal_summary_frame(start_date, end_date)
     if signals_df.empty:
-        return {
+        return _json_safe({
             "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL", "probability_bucket": probability_bucket or "ALL"},
             "summary": {"total_signals": 0, "avg_probability": 0, "avg_reward_risk": 0},
             "series": {"signal_trend": [], "probability_buckets": [], "sector_distribution": [], "top_tickers": []},
             "tables": {"recent_signals": []},
-        }
+        })
     signals_df = signals_df.copy()
     signals_df["probability_bucket"] = signals_df["prob"].apply(_prob_bucket)
     signals_df["reward_risk"] = (signals_df["tp_price"] - signals_df["entry_price"]) / (signals_df["entry_price"] - signals_df["sl_price"])
@@ -520,7 +544,7 @@ def get_market_intelligence_signals(start_date=None, end_date=None, sector=None,
     )
     recent_signals = signals_df.sort_values(["signal_date", "prob"], ascending=[False, False]).head(30).copy()
     recent_signals["date"] = recent_signals["signal_date"]
-    return {
+    return _json_safe({
         "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL", "probability_bucket": probability_bucket or "ALL"},
         "summary": {
             "total_signals": int(len(signals_df)),
@@ -539,18 +563,18 @@ def get_market_intelligence_signals(start_date=None, end_date=None, sector=None,
                 {"entry_price": 2, "tp_price": 2, "sl_price": 2, "prob": 4, "reward_risk": 2},
             )
         },
-    }
+    })
 
 
 def get_market_intelligence_trades(start_date=None, end_date=None, sector=None, ticker=None, status=None):
     trades_df = _apply_common_filters(_load_trade_frame(start_date, end_date, status), "entry_date", start_date, end_date, sector, ticker)
     if trades_df.empty:
-        return {
+        return _json_safe({
             "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL", "status": status or "ALL"},
             "summary": _trade_kpis(pd.DataFrame()),
             "series": {"outcome_breakdown": [], "return_distribution": [], "equity_curve": []},
             "tables": {"ticker_leaderboard": [], "sector_leaderboard": [], "open_trades": [], "recent_trades": []},
-        }
+        })
     kpis = _trade_kpis(trades_df)
     outcome_breakdown = (
         trades_df.groupby("status").agg(trade_count=("stock_id", "count")).reset_index().sort_values("trade_count", ascending=False)
@@ -585,7 +609,7 @@ def get_market_intelligence_trades(start_date=None, end_date=None, sector=None, 
         today = pd.Timestamp.today().normalize()
         open_trades["age_days"] = (today - open_trades["entry_date"].dt.normalize()).dt.days
     recent_trades = trades_df.sort_values("entry_date", ascending=False).head(25)
-    return {
+    return _json_safe({
         "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL", "status": status or "ALL"},
         "summary": kpis,
         "series": {
@@ -599,18 +623,18 @@ def get_market_intelligence_trades(start_date=None, end_date=None, sector=None, 
             "open_trades": _records(open_trades[["stock_id", "sector", "entry_date", "entry_price", "tp_price", "sl_price", "prob", "age_days"]], {"entry_price": 2, "tp_price": 2, "sl_price": 2, "prob": 4}),
             "recent_trades": _records(recent_trades[["stock_id", "sector", "entry_date", "exit_date", "status", "return_pct", "holding_days", "prob"]], {"return_pct": 4, "prob": 4}),
         },
-    }
+    })
 
 
 def get_market_intelligence_market(start_date=None, end_date=None, sector=None, ticker=None):
     stocks_df = _apply_common_filters(_load_stock_frame(start_date, end_date), "trade_date", start_date, end_date, sector, ticker)
     vnindex_df = _load_vnindex_frame(start_date, end_date)
     if stocks_df.empty:
-        return {
+        return _json_safe({
             "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL"},
             "summary": {"latest_trading_date": None, "breadth": {}},
             "series": {"sector_performance": [], "liquidity_leaders": [], "return_distribution": [], "vnindex": []},
-        }
+        })
     market = stocks_df.sort_values(["stock_id", "trade_date"]).copy()
     market["daily_return"] = market.groupby("stock_id")["close"].pct_change()
     market["traded_value"] = market["close"] * market["volume"]
@@ -652,7 +676,7 @@ def get_market_intelligence_market(start_date=None, end_date=None, sector=None, 
         vn["running_peak"] = vn["close"].cummax()
         vn["drawdown_pct"] = (vn["close"] - vn["running_peak"]) / vn["running_peak"] * 100
         vn_series = _records(vn.tail(90), {"rolling_volatility_20d": 2, "drawdown_pct": 2})
-    return {
+    return _json_safe({
         "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL"},
         "summary": {"latest_trading_date": latest_date.isoformat() if latest_date is not None else None, "breadth": breadth},
         "series": {
@@ -661,7 +685,7 @@ def get_market_intelligence_market(start_date=None, end_date=None, sector=None, 
             "return_distribution": return_distribution,
             "vnindex": vn_series,
         },
-    }
+    })
 
 
 def get_market_intelligence_pipeline_health():
@@ -683,7 +707,7 @@ def get_market_intelligence_pipeline_health():
         zero_days = signal_summary[signal_summary["signal_count"] == 0].tail(10)
         if not zero_days.empty:
             anomalies.append({"level": "info", "message": f"{len(zero_days)} recent signal-summary rows show zero signals."})
-    return {
+    return _json_safe({
         "summary": {
             "total_tickers": total_tickers,
             "latest_trading_date": latest_date.isoformat() if latest_date is not None else None,
@@ -694,4 +718,4 @@ def get_market_intelligence_pipeline_health():
         "freshness": freshness,
         "coverage": {"mapped_tickers": total_tickers - len(unmapped), "unmapped_tickers": unmapped[:50]},
         "anomalies": anomalies,
-    }
+    })
