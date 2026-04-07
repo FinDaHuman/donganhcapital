@@ -51,6 +51,11 @@ const formatNumber = (value, digits = 2, suffix = '') => {
 
 const formatPercent = (value, digits = 1) => formatNumber(value, digits, '%');
 
+const getIsMobileViewport = () => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 640;
+};
+
 const KpiCard = ({ label, value, tone = 'text-white', subtitle }) => (
     <div className={`${CARD_CLASS} min-h-[126px]`}>
         <div className="text-[11px] uppercase tracking-[0.24em] text-gray-500 mb-3">{label}</div>
@@ -101,6 +106,7 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
     const [data, setData] = useState(defaultSectionState);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [isMobile, setIsMobile] = useState(getIsMobileViewport);
 
     useEffect(() => {
         const loadFilters = async () => {
@@ -108,6 +114,12 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
             setSectors(Object.keys(sectorMap).sort());
         };
         loadFilters();
+    }, []);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(getIsMobileViewport());
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
     const loadDashboard = async (isRefresh = false) => {
@@ -157,14 +169,45 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
         );
     };
 
+    const basePlotLayout = (overrides = {}) => ({
+        paper_bgcolor: 'transparent',
+        plot_bgcolor: 'transparent',
+        font: { color: '#cbd5e1', size: isMobile ? 10 : 12 },
+        autosize: true,
+        margin: {
+            l: isMobile ? 22 : 30,
+            r: isMobile ? 8 : 12,
+            t: 10,
+            b: isMobile ? 72 : 52,
+        },
+        legend: isMobile
+            ? { orientation: 'h', y: -0.38, x: 0, font: { size: 10 } }
+            : { orientation: 'h', y: -0.24, x: 0 },
+        xaxis: {
+            automargin: true,
+            tickfont: { size: isMobile ? 9 : 11 },
+            tickangle: isMobile ? -35 : 0,
+        },
+        yaxis: {
+            automargin: true,
+            tickfont: { size: isMobile ? 9 : 11 },
+        },
+        ...overrides,
+    });
+
+    const plotStyle = {
+        width: '100%',
+        height: isMobile ? 220 : 260,
+    };
+
     return (
         <div className="flex-1 overflow-y-auto bg-[#050607]">
-            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
-                <div className={`${CARD_CLASS} sticky top-0 z-20 backdrop-blur-xl bg-[#0b0d10]/95`}>
+            <div className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 overflow-x-hidden">
+                <div className={`${CARD_CLASS} sticky top-0 z-20 backdrop-blur-xl bg-[#0b0d10]/95 overflow-x-hidden`}>
                     <div className="flex flex-col xl:flex-row xl:items-end gap-4">
                         <div className="min-w-0 xl:min-w-[240px]">
                             <div className="text-xs uppercase tracking-[0.28em] text-blue-400 mb-2">Market Intelligence</div>
-                            <div className="text-2xl sm:text-3xl font-semibold text-white">Research and operations dashboard</div>
+                            <div className="text-xl sm:text-3xl font-semibold text-white leading-tight">Research and operations dashboard</div>
                             <div className="text-sm text-gray-400 mt-2">Separate from AI Analyst. Built from live backend analytics payloads.</div>
                         </div>
                         <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -204,10 +247,25 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                             </label>
                         </div>
                     </div>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-5">
-                        <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                            {SECTION_TABS.map(sectionButton)}
-                        </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-5 min-w-0">
+                        {isMobile ? (
+                            <label className="text-xs text-gray-500 min-w-0">
+                                Section
+                                <select
+                                    value={activeSection}
+                                    onChange={(e) => setActiveSection(e.target.value)}
+                                    className="mt-1 w-full bg-[#15191f] border border-[#2a2e39] rounded-xl px-3 py-2 text-gray-200"
+                                >
+                                    {SECTION_TABS.map((section) => (
+                                        <option key={section.id} value={section.id}>{section.label}</option>
+                                    ))}
+                                </select>
+                            </label>
+                        ) : (
+                            <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-w-0">
+                                {SECTION_TABS.map(sectionButton)}
+                            </div>
+                        )}
                         <button onClick={() => loadDashboard(true)} className="sm:ml-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-[#2a2e39] text-gray-300 hover:text-white hover:border-blue-500">
                             <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
                             Refresh
@@ -216,10 +274,15 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                 </div>
 
                 {loading ? (
-                    <div className={`${CARD_CLASS} flex items-center justify-center min-h-[320px] text-gray-400`}>
-                        <div className="flex items-center gap-3">
-                            <RefreshCw size={18} className="animate-spin text-blue-400" />
-                            Loading Market Intelligence...
+                    <div className={`${CARD_CLASS} flex items-center justify-center min-h-[320px] text-gray-400 text-center`}>
+                        <div className="flex flex-col items-center gap-3 max-w-md">
+                            <div className="flex items-center gap-3">
+                                <RefreshCw size={18} className="animate-spin text-blue-400" />
+                                <span>Loading Market Intelligence...</span>
+                            </div>
+                            <div className="text-sm text-gray-500">
+                                First load may take a few seconds because this dashboard pulls multiple analytics datasets from the backend.
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -235,10 +298,12 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                                 <div className={`${CARD_CLASS} xl:col-span-2`}>
                                     <div className="flex items-center gap-2 text-white font-semibold mb-4"><TrendingUp size={16} className="text-blue-400" /> Signal trend and closes</div>
+                                    <div className="w-full min-w-0 overflow-hidden">
                                     <Plot data={[
                                         { x: data.overview.series.signal_trend_30d.map((item) => item.signal_date), y: data.overview.series.signal_trend_30d.map((item) => item.signal_count), type: 'scatter', mode: 'lines+markers', name: 'Signals', line: { color: '#3b82f6' } },
                                         { x: data.overview.series.trade_close_trend_30d.map((item) => item.exit_date), y: data.overview.series.trade_close_trend_30d.map((item) => item.closed_trade_count), type: 'bar', name: 'Closed trades', marker: { color: '#10b981', opacity: 0.5 } },
-                                    ]} layout={{ paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { color: '#cbd5e1' }, margin: { l: 30, r: 10, t: 10, b: 55 }, legend: { orientation: 'h', y: -0.25 } }} config={{ displayModeBar: false, responsive: true }} style={{ width: '100%', height: 260 }} />
+                                    ]} layout={basePlotLayout()} config={{ displayModeBar: false, responsive: true }} style={plotStyle} useResizeHandler />
+                                    </div>
                                 </div>
                                 <div className={`${CARD_CLASS} space-y-4`}>
                                     <div>
@@ -271,11 +336,15 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <div className={CARD_CLASS}>
                                     <div className="text-white font-semibold mb-4">Signal count trend</div>
-                                    <Plot data={[{ x: data.signals.series.signal_trend.map((item) => item.signal_date), y: data.signals.series.signal_trend.map((item) => item.signal_count), type: 'scatter', mode: 'lines+markers', line: { color: '#38bdf8' } }]} layout={{ paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { color: '#cbd5e1' }, margin: { l: 30, r: 10, t: 10, b: 45 } }} config={{ displayModeBar: false, responsive: true }} style={{ width: '100%', height: 250 }} />
+                                    <div className="w-full min-w-0 overflow-hidden">
+                                        <Plot data={[{ x: data.signals.series.signal_trend.map((item) => item.signal_date), y: data.signals.series.signal_trend.map((item) => item.signal_count), type: 'scatter', mode: 'lines+markers', line: { color: '#38bdf8' } }]} layout={basePlotLayout()} config={{ displayModeBar: false, responsive: true }} style={plotStyle} useResizeHandler />
+                                    </div>
                                 </div>
                                 <div className={CARD_CLASS}>
                                     <div className="text-white font-semibold mb-4">Probability buckets</div>
-                                    <Plot data={[{ x: data.signals.series.probability_buckets.map((item) => item.probability_bucket), y: data.signals.series.probability_buckets.map((item) => item.signal_count), type: 'bar', marker: { color: '#22c55e' } }]} layout={{ paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { color: '#cbd5e1' }, margin: { l: 30, r: 10, t: 10, b: 65 } }} config={{ displayModeBar: false, responsive: true }} style={{ width: '100%', height: 250 }} />
+                                    <div className="w-full min-w-0 overflow-hidden">
+                                        <Plot data={[{ x: data.signals.series.probability_buckets.map((item) => item.probability_bucket), y: data.signals.series.probability_buckets.map((item) => item.signal_count), type: 'bar', marker: { color: '#22c55e' } }]} layout={basePlotLayout()} config={{ displayModeBar: false, responsive: true }} style={plotStyle} useResizeHandler />
+                                    </div>
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -319,11 +388,15 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                                 <div className={CARD_CLASS}>
                                     <div className="text-white font-semibold mb-4">Equity curve</div>
-                                    <Plot data={[{ x: data.trades.series.equity_curve.map((item) => item.date), y: data.trades.series.equity_curve.map((item) => item.cumulative_return_pct), type: 'scatter', mode: 'lines', line: { color: '#22c55e' } }]} layout={{ paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { color: '#cbd5e1' }, margin: { l: 30, r: 10, t: 10, b: 45 } }} config={{ displayModeBar: false, responsive: true }} style={{ width: '100%', height: 250 }} />
+                                    <div className="w-full min-w-0 overflow-hidden">
+                                        <Plot data={[{ x: data.trades.series.equity_curve.map((item) => item.date), y: data.trades.series.equity_curve.map((item) => item.cumulative_return_pct), type: 'scatter', mode: 'lines', line: { color: '#22c55e' } }]} layout={basePlotLayout()} config={{ displayModeBar: false, responsive: true }} style={plotStyle} useResizeHandler />
+                                    </div>
                                 </div>
                                 <div className={CARD_CLASS}>
                                     <div className="text-white font-semibold mb-4">Outcome breakdown</div>
-                                    <Plot data={[{ x: data.trades.series.outcome_breakdown.map((item) => item.status), y: data.trades.series.outcome_breakdown.map((item) => item.trade_count), type: 'bar', marker: { color: ['#22c55e', '#ef4444', '#f59e0b', '#3b82f6'] } }]} layout={{ paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { color: '#cbd5e1' }, margin: { l: 30, r: 10, t: 10, b: 45 } }} config={{ displayModeBar: false, responsive: true }} style={{ width: '100%', height: 250 }} />
+                                    <div className="w-full min-w-0 overflow-hidden">
+                                        <Plot data={[{ x: data.trades.series.outcome_breakdown.map((item) => item.status), y: data.trades.series.outcome_breakdown.map((item) => item.trade_count), type: 'bar', marker: { color: ['#22c55e', '#ef4444', '#f59e0b', '#3b82f6'] } }]} layout={basePlotLayout()} config={{ displayModeBar: false, responsive: true }} style={plotStyle} useResizeHandler />
+                                    </div>
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -350,11 +423,15 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                                 <div className={CARD_CLASS}>
                                     <div className="text-white font-semibold mb-4">Sector performance</div>
-                                    <Plot data={[{ x: data.market.series.sector_performance.map((item) => item.sector), y: data.market.series.sector_performance.map((item) => item.avg_return), type: 'bar', marker: { color: data.market.series.sector_performance.map((item) => (item.avg_return || 0) >= 0 ? '#22c55e' : '#ef4444') } }]} layout={{ paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { color: '#cbd5e1' }, margin: { l: 30, r: 10, t: 10, b: 120 } }} config={{ displayModeBar: false, responsive: true }} style={{ width: '100%', height: 260 }} />
+                                    <div className="w-full min-w-0 overflow-hidden">
+                                        <Plot data={[{ x: data.market.series.sector_performance.map((item) => item.sector), y: data.market.series.sector_performance.map((item) => item.avg_return), type: 'bar', marker: { color: data.market.series.sector_performance.map((item) => (item.avg_return || 0) >= 0 ? '#22c55e' : '#ef4444') } }]} layout={basePlotLayout()} config={{ displayModeBar: false, responsive: true }} style={{ width: '100%', height: isMobile ? 240 : 260 }} useResizeHandler />
+                                    </div>
                                 </div>
                                 <div className={CARD_CLASS}>
                                     <div className="text-white font-semibold mb-4">VNINDEX diagnostics</div>
-                                    <Plot data={[{ x: data.market.series.vnindex.map((item) => item.trade_date), y: data.market.series.vnindex.map((item) => item.close), type: 'scatter', mode: 'lines', line: { color: '#f59e0b' }, name: 'Close' }, { x: data.market.series.vnindex.map((item) => item.trade_date), y: data.market.series.vnindex.map((item) => item.drawdown_pct), type: 'scatter', mode: 'lines', yaxis: 'y2', line: { color: '#ef4444' }, name: 'Drawdown %' }]} layout={{ paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: { color: '#cbd5e1' }, margin: { l: 30, r: 40, t: 10, b: 55 }, yaxis2: { overlaying: 'y', side: 'right' }, legend: { orientation: 'h', y: -0.25 } }} config={{ displayModeBar: false, responsive: true }} style={{ width: '100%', height: 260 }} />
+                                    <div className="w-full min-w-0 overflow-hidden">
+                                        <Plot data={[{ x: data.market.series.vnindex.map((item) => item.trade_date), y: data.market.series.vnindex.map((item) => item.close), type: 'scatter', mode: 'lines', line: { color: '#f59e0b' }, name: 'Close' }, { x: data.market.series.vnindex.map((item) => item.trade_date), y: data.market.series.vnindex.map((item) => item.drawdown_pct), type: 'scatter', mode: 'lines', yaxis: 'y2', line: { color: '#ef4444' }, name: 'Drawdown %' }]} layout={basePlotLayout({ margin: { l: isMobile ? 22 : 30, r: isMobile ? 26 : 40, t: 10, b: isMobile ? 78 : 55 }, yaxis2: { overlaying: 'y', side: 'right', automargin: true, tickfont: { size: isMobile ? 9 : 11 } } })} config={{ displayModeBar: false, responsive: true }} style={{ width: '100%', height: isMobile ? 240 : 260 }} useResizeHandler />
+                                    </div>
                                 </div>
                             </div>
                             <div className={CARD_CLASS}>
