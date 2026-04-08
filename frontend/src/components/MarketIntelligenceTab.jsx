@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Plot from 'react-plotly.js';
 import {
     Activity,
@@ -12,12 +12,14 @@ import {
     TrendingUp,
 } from 'lucide-react';
 import {
+    getMarketIntelligenceBootstrap,
     getMarketIntelligenceMarket,
     getMarketIntelligenceOverview,
     getMarketIntelligencePipelineHealth,
     getMarketIntelligenceSignals,
     getMarketIntelligenceTrades,
     getSectors,
+    readCachedAnalytics,
 } from '../services/stock_api';
 
 const SECTION_TABS = [
@@ -55,6 +57,30 @@ const getIsMobileViewport = () => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth < 640;
 };
+
+const sectionDefaults = {
+    overview: defaultSectionState.overview,
+    signals: defaultSectionState.signals,
+    trades: defaultSectionState.trades,
+    market: defaultSectionState.market,
+    health: defaultSectionState.health,
+};
+
+const createLoadedSectionsState = () => ({
+    overview: false,
+    signals: false,
+    trades: false,
+    market: false,
+    health: false,
+});
+
+const createSectionLoadingState = () => ({
+    overview: false,
+    signals: false,
+    trades: false,
+    market: false,
+    health: false,
+});
 
 const KpiCard = ({ label, value, tone = 'text-white', subtitle }) => (
     <div className={`${CARD_CLASS} min-h-[126px]`}>
@@ -103,14 +129,20 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
         probability_bucket: 'ALL',
     });
     const [sectors, setSectors] = useState([]);
+    const [sectorMap, setSectorMap] = useState({});
     const [data, setData] = useState(defaultSectionState);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [isMobile, setIsMobile] = useState(getIsMobileViewport);
+    const [sectionLoading, setSectionLoading] = useState(createSectionLoadingState);
+    const [loadedSections, setLoadedSections] = useState(createLoadedSectionsState);
+    const [debouncedFilters, setDebouncedFilters] = useState(filters);
+    const requestSequenceRef = useRef(0);
 
     useEffect(() => {
         const loadFilters = async () => {
             const sectorMap = await getSectors();
+            setSectorMap(sectorMap);
             setSectors(Object.keys(sectorMap).sort());
         };
         loadFilters();
@@ -122,34 +154,125 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    const loadDashboard = async (isRefresh = false) => {
-        isRefresh ? setRefreshing(true) : setLoading(true);
-        const common = {
-            start_date: filters.start_date,
-            end_date: filters.end_date,
-            sector: filters.sector,
-            ticker: filters.ticker,
-        };
-        const [overview, signals, trades, market, health] = await Promise.all([
-            getMarketIntelligenceOverview({ ...common, status: filters.status }),
-            getMarketIntelligenceSignals({ ...common, probability_bucket: filters.probability_bucket }),
-            getMarketIntelligenceTrades({ ...common, status: filters.status }),
-            getMarketIntelligenceMarket(common),
-            getMarketIntelligencePipelineHealth(),
-        ]);
-        setData({ overview, signals, trades, market, health });
+    useEffect(() => {
+        const timeoutId = window.setTimeout(() => {
+            setDebouncedFilters(filters);
+        }, 350);
+        return () => window.clearTimeout(timeoutId);
+    }, [filters]);
+
+    const commonFilters = useMemo(() => ({
+        start_date: debouncedFilters.start_date,
+        end_date: debouncedFilters.end_date,
+        sector: debouncedFilters.sector,
+        ticker: debouncedFilters.ticker,
+    }), [debouncedFilters.end_date, debouncedFilters.sector, debouncedFilters.start_date, debouncedFilters.ticker]);
+
+    const bootstrapFilters = useMemo(() => ({
+        ...commonFilters,
+        status: debouncedFilters.status,
+    }), [commonFilters, debouncedFilters.status]);
+
+    const sectionFilters = useMemo(() => ({
+        overview: bootstrapFilters,
+        signals: { ...commonFilters, probability_bucket: debouncedFilters.probability_bucket },
+        trades: { ...commonFilters, status: debouncedFilters.status },
+        market: commonFilters,
+        health: {},
+    }), [bootstrapFilters, commonFilters, debouncedFilters.probability_bucket, debouncedFilters.status]);
+    const filtersSignature = useMemo(() => JSON.stringify(debouncedFilters), [debouncedFilters]);
+
+    const updateSectionData = (section, payload) => {
+        setData((prev) => ({ ...prev, [section]: payload }));
+    };
+
+    const markSectionLoading = (section, value) => {
+        setSectionLoading((prev) => ({ ...prev, [section]: value }));
+    };
+
+    const markSectionLoaded = (section, value) => {
+        setLoadedSections((prev) => ({ ...prev, [section]: value }));
+    };
+
+    const loadBootstrap = async ({ isRefresh = false } = {}) => {
+        const requestId = requestSequenceRef.current;
+        if (isRefresh) setRefreshing(true);
+
+        const cachedBootstrap = !isRefresh ? readCachedAnalytics('/analytics/bootstrap', bootstrapFilters) : null;
+        if (cachedBootstrap) {
+            updateSectionData('overview', cachedBootstrap.overview || defaultSectionState.overview);
+            updateSectionData('health', cachedBootstrap.health || defaultSectionState.health);
+            markSectionLoaded('overview', true);
+            markSectionLoaded('health', true);
+            setLoading(false);
+        } else if (!isRefresh) {
+            setLoading(true);
+        }
+
+        markSectionLoading('overview', true);
+        markSectionLoading('health', true);
+
+        const payload = await getMarketIntelligenceBootstrap(bootstrapFilters);
+        if (requestId !== requestSequenceRef.current) return;
+
+        updateSectionData('overview', payload.overview || defaultSectionState.overview);
+        updateSectionData('health', payload.health || defaultSectionState.health);
+        markSectionLoaded('overview', true);
+        markSectionLoaded('health', true);
+        markSectionLoading('overview', false);
+        markSectionLoading('health', false);
         setLoading(false);
         setRefreshing(false);
     };
 
+    const loadSection = async (section, { isRefresh = false } = {}) => {
+        const requestId = requestSequenceRef.current;
+        const sectionFilter = sectionFilters[section] || {};
+        const cachedPayload = !isRefresh ? readCachedAnalytics(`/analytics/${section === 'health' ? 'pipeline-health' : section}`, sectionFilter) : null;
+
+        if (cachedPayload) {
+            updateSectionData(section, cachedPayload);
+            markSectionLoaded(section, true);
+        }
+
+        markSectionLoading(section, true);
+
+        let payload = sectionDefaults[section];
+        if (section === 'signals') payload = await getMarketIntelligenceSignals(sectionFilter);
+        if (section === 'trades') payload = await getMarketIntelligenceTrades(sectionFilter);
+        if (section === 'market') payload = await getMarketIntelligenceMarket(sectionFilter);
+        if (section === 'overview') payload = await getMarketIntelligenceOverview(sectionFilter);
+        if (section === 'health') payload = await getMarketIntelligencePipelineHealth();
+
+        if (requestId !== requestSequenceRef.current) return;
+
+        updateSectionData(section, payload || sectionDefaults[section]);
+        markSectionLoaded(section, true);
+        markSectionLoading(section, false);
+        if (section === 'overview' || section === 'health') {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
+
     useEffect(() => {
-        loadDashboard();
-    }, [filters.start_date, filters.end_date, filters.sector, filters.ticker, filters.status, filters.probability_bucket]);
+        requestSequenceRef.current += 1;
+        setLoadedSections(createLoadedSectionsState());
+        setSectionLoading(createSectionLoadingState());
+        setData(defaultSectionState);
+        loadBootstrap();
+    }, [filtersSignature]);
+
+    useEffect(() => {
+        if (activeSection === 'overview' || activeSection === 'health') return;
+        if (loadedSections[activeSection] || sectionLoading[activeSection]) return;
+        loadSection(activeSection);
+    }, [activeSection, loadedSections, sectionLoading, sectionFilters]);
 
     const availableTickers = useMemo(() => {
         if (filters.sector === 'ALL') return stockList;
-        return stockList;
-    }, [stockList, filters.sector]);
+        return sectorMap[filters.sector] || stockList;
+    }, [filters.sector, sectorMap, stockList]);
 
     const sectionButton = (section) => {
         const Icon = section.icon;
@@ -266,7 +389,19 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                                 {SECTION_TABS.map(sectionButton)}
                             </div>
                         )}
-                        <button onClick={() => loadDashboard(true)} className="sm:ml-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-[#2a2e39] text-gray-300 hover:text-white hover:border-blue-500">
+                        <button
+                            onClick={() => {
+                                requestSequenceRef.current += 1;
+                                setLoadedSections(createLoadedSectionsState());
+                                setSectionLoading(createSectionLoadingState());
+                                setData(defaultSectionState);
+                                loadBootstrap({ isRefresh: true });
+                                if (!['overview', 'health'].includes(activeSection)) {
+                                    loadSection(activeSection, { isRefresh: true });
+                                }
+                            }}
+                            className="sm:ml-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-[#2a2e39] text-gray-300 hover:text-white hover:border-blue-500"
+                        >
                             <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
                             Refresh
                         </button>
@@ -287,6 +422,16 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                     </div>
                 ) : (
                     <>
+                        {!loading && sectionLoading[activeSection] && !loadedSections[activeSection] && (
+                            <div className={`${CARD_CLASS} flex items-center justify-center min-h-[180px] text-gray-400 text-center`}>
+                                <div className="flex flex-col items-center gap-3 max-w-md">
+                                    <div className="flex items-center gap-3">
+                                        <RefreshCw size={18} className="animate-spin text-blue-400" />
+                                        <span>Loading {SECTION_TABS.find((item) => item.id === activeSection)?.label}...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <section className={`space-y-4 ${activeSection !== 'overview' ? 'hidden' : ''}`}>
                             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
                                 <KpiCard label="Tracked Tickers" value={formatNumber(data.overview.summary.total_tickers || 0, 0)} />

@@ -719,3 +719,10 @@ def get_market_intelligence_pipeline_health():
         "coverage": {"mapped_tickers": total_tickers - len(unmapped), "unmapped_tickers": unmapped[:50]},
         "anomalies": anomalies,
     })
+
+
+def get_market_intelligence_bootstrap(start_date=None, end_date=None, sector=None, ticker=None, status=None):
+    return _json_safe({
+        "overview": get_market_intelligence_overview(start_date, end_date, sector, ticker, status),
+        "health": get_market_intelligence_pipeline_health(),
+    })

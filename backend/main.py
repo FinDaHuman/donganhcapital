@@ -22,6 +22,7 @@ from db.queries import (
     get_trade_history, get_trade_history_stats
 )
 from db.analytics import (
+    get_market_intelligence_bootstrap,
     get_market_intelligence_overview,
     get_market_intelligence_market,
     get_market_intelligence_signals,
@@ -42,6 +43,8 @@ MAX_ROWS_PER_TICKER = 60  # Keep only ~60 trading days to save memory
 concurrency_limiter = asyncio.Semaphore(5)
 # Simple in‑memory cache with TTL
 _cache: dict[str, tuple[Any, float]] = {}
+ANALYTICS_TTL_SHORT = 300
+ANALYTICS_TTL_LONG = 900
 
 async def limit_concurrency():
     """FastAPI dependency to limit concurrent requests."""
@@ -275,7 +278,21 @@ async def get_market_intelligence_overview_endpoint(
 ):
     def compute():
         return get_market_intelligence_overview(start_date, end_date, sector, ticker, status)
-    return get_cached(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", 120, compute)
+    return get_cached(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute)
+
+
+@app.get("/api/analytics/bootstrap")
+async def get_market_intelligence_bootstrap_endpoint(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    sector: Optional[str] = None,
+    ticker: Optional[str] = None,
+    status: Optional[str] = None,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    def compute():
+        return get_market_intelligence_bootstrap(start_date, end_date, sector, ticker, status)
+    return get_cached(f"analytics_bootstrap_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute)
 
 
 @app.get("/api/analytics/market")
@@ -288,7 +305,7 @@ async def get_market_intelligence_market_endpoint(
 ):
     def compute():
         return get_market_intelligence_market(start_date, end_date, sector, ticker)
-    return get_cached(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", 120, compute)
+    return get_cached(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", ANALYTICS_TTL_SHORT, compute)
 
 
 @app.get("/api/analytics/signals")
@@ -302,7 +319,7 @@ async def get_market_intelligence_signals_endpoint(
 ):
     def compute():
         return get_market_intelligence_signals(start_date, end_date, sector, ticker, probability_bucket)
-    return get_cached(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", 120, compute)
+    return get_cached(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", ANALYTICS_TTL_SHORT, compute)
 
 
 @app.get("/api/analytics/trades")
@@ -316,14 +333,14 @@ async def get_market_intelligence_trades_endpoint(
 ):
     def compute():
         return get_market_intelligence_trades(start_date, end_date, sector, ticker, status)
-    return get_cached(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", 120, compute)
+    return get_cached(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute)
 
 
 @app.get("/api/analytics/pipeline-health")
 async def get_market_intelligence_pipeline_health_endpoint(concurrency: Any = Depends(limit_concurrency)):
     def compute():
         return get_market_intelligence_pipeline_health()
-    return get_cached("analytics_pipeline_health", 120, compute)
+    return get_cached("analytics_pipeline_health", ANALYTICS_TTL_LONG, compute)
 
 @app.get("/api/sectors")
 async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):

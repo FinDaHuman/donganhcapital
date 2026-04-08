@@ -12,6 +12,7 @@ if (!API_Base_URL.endsWith('/api')) {
 
 // --- localStorage Cache Helpers ---
 const CACHE_PREFIX = 'dac_cache_';
+const ANALYTICS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 function getCached(key, maxAgeMs) {
     try {
@@ -32,6 +33,23 @@ function setCache(key, data) {
     } catch {
         // localStorage full or unavailable, silently ignore
     }
+}
+
+function getAnalyticsCacheKey(path, filters = {}) {
+    const normalized = Object.keys(filters)
+        .sort()
+        .reduce((acc, key) => {
+            acc[key] = filters[key];
+            return acc;
+        }, {});
+    return `analytics_${path}_${JSON.stringify(normalized)}`;
+}
+
+export function readCachedAnalytics(path, filters = {}, maxAgeMs = ANALYTICS_CACHE_TTL_MS) {
+    const cached = getCached(getAnalyticsCacheKey(path, filters), maxAgeMs);
+    if (cached && !cached.stale) return cached;
+    if (cached?.data) return cached.data;
+    return null;
 }
 
 // --- API Functions ---
@@ -178,12 +196,33 @@ const buildAnalyticsParams = (filters = {}) => {
 const fetchAnalytics = async (path, filters = {}, fallback = {}) => {
     try {
         const response = await axios.get(`${API_Base_URL}${path}${buildAnalyticsParams(filters)}`);
-        return response.data;
+        const data = response.data;
+        setCache(getAnalyticsCacheKey(path, filters), data);
+        return data;
     } catch (error) {
         console.error(`Error fetching analytics from ${path}:`, error);
+        const cached = readCachedAnalytics(path, filters);
+        if (cached) return cached;
         return fallback;
     }
 };
+
+export const getMarketIntelligenceBootstrap = async (filters = {}) =>
+    fetchAnalytics('/analytics/bootstrap', filters, {
+        overview: {
+            summary: {},
+            daily_activity: {},
+            series: { signal_trend_30d: [], trade_close_trend_30d: [], equity_curve: [] },
+            freshness: [],
+            alerts: [],
+        },
+        health: {
+            summary: {},
+            freshness: [],
+            coverage: { unmapped_tickers: [] },
+            anomalies: [],
+        },
+    });
 
 export const getMarketIntelligenceOverview = async (filters = {}) =>
     fetchAnalytics('/analytics/overview', filters, {
