@@ -24,10 +24,10 @@ import {
 
 const SECTION_TABS = [
     { id: 'overview', label: 'Overview', icon: Activity },
-    { id: 'signals', label: 'Signals', icon: TrendingUp },
-    { id: 'trades', label: 'Trades', icon: BarChart3 },
-    { id: 'market', label: 'Market', icon: LineChart },
-    { id: 'health', label: 'Health', icon: ShieldAlert },
+    { id: 'signals', label: 'Model Activity', icon: TrendingUp },
+    { id: 'trades', label: 'Performance Analyst', icon: BarChart3 },
+    { id: 'market', label: 'Market Analyst', icon: LineChart },
+    { id: 'health', label: 'Data Health', icon: ShieldAlert },
 ];
 
 const CARD_CLASS = 'bg-[#111213] border border-[#2a2e39] rounded-2xl p-5 shadow-[0_18px_40px_rgba(0,0,0,0.22)]';
@@ -413,7 +413,7 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                         <div className="flex flex-col items-center gap-3 max-w-md">
                             <div className="flex items-center gap-3">
                                 <RefreshCw size={18} className="animate-spin text-blue-400" />
-                                <span>Loading Market Intelligence...</span>
+                                <span>Loading Data Analyst...</span>
                             </div>
                             <div className="text-sm text-gray-500">
                                 First load may take a few seconds because this dashboard pulls multiple analytics datasets from the backend.
@@ -435,7 +435,7 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                         <section className={`space-y-4 ${activeSection !== 'overview' ? 'hidden' : ''}`}>
                             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
                                 <KpiCard label="Tracked Tickers" value={formatNumber(data.overview.summary.total_tickers || 0, 0)} />
-                                <KpiCard label="Total Signals" value={formatNumber(data.overview.summary.total_signals || 0, 0)} tone="text-blue-400" />
+                                <KpiCard label="Total Breakouts" value={formatNumber(data.overview.summary.total_signals || 0, 0)} tone="text-blue-400" />
                                 <KpiCard label="Win Rate" value={formatPercent(data.overview.summary.win_rate || 0)} tone="text-green-400" />
                                 <KpiCard label="Avg Return" value={formatPercent(data.overview.summary.avg_return || 0)} tone={(data.overview.summary.avg_return || 0) >= 0 ? 'text-green-400' : 'text-red-400'} />
                                 <KpiCard label="Max Drawdown" value={formatPercent(data.overview.summary.max_drawdown || 0)} tone="text-red-400" subtitle={`Avg hold ${formatNumber(data.overview.summary.avg_holding_days || 0, 1)}d`} />
@@ -557,7 +557,15 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
                         </section>
 
                         <section className={`space-y-4 ${activeSection !== 'market' ? 'hidden' : ''}`}>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-4">
+                                <KpiCard 
+                                    label="Market Regime" 
+                                    value={
+                                        (data.overview.summary.win_rate || 0) >= 55 ? 'Risk-On' : 
+                                        (data.overview.summary.win_rate || 0) <= 45 ? 'Risk-Off' : 'Neutral'
+                                    } 
+                                    tone={(data.overview.summary.win_rate || 0) >= 55 ? 'text-green-400' : (data.overview.summary.win_rate || 0) <= 45 ? 'text-red-400' : 'text-yellow-400'} 
+                                />
                                 <KpiCard label="Advancers" value={formatNumber(data.market.summary.breadth?.advancers || 0, 0)} tone="text-green-400" />
                                 <KpiCard label="Decliners" value={formatNumber(data.market.summary.breadth?.decliners || 0, 0)} tone="text-red-400" />
                                 <KpiCard label="Above MA5" value={formatPercent(data.market.summary.breadth?.above_ma5_pct || 0)} />
@@ -619,4 +627,7 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
     );
 };
 
-export default MarketIntelligenceTab;
+export default DataAnalystTab;
+
+enceTab;
+

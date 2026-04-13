@@ -71,7 +71,7 @@ const Header = ({ activeTab, onTabChange }) => {
                         : 'text-gray-400 border-transparent hover:text-gray-200'
                         }`}
                 >
-                    Market Intelligence
+                    Data Analyst
                 </button>
             </div>
 

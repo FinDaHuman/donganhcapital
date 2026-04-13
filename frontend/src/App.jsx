@@ -3,7 +3,7 @@ import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import StockChart from './components/StockChart';
 import AIAnalystTab from './components/AIAnalystTab';
-import MarketIntelligenceTab from './components/MarketIntelligenceTab';
+import DataAnalystTab from './components/DataAnalystTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import { Search } from 'lucide-react';
@@ -208,3 +208,4 @@ function App() {
 }
 
 export default App;
+ App;
