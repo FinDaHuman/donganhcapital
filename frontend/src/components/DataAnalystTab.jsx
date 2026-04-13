@@ -629,5 +629,3 @@ const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
 
 export default DataAnalystTab;
 
-enceTab;
-
