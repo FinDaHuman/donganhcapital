@@ -12,12 +12,12 @@ import {
     TrendingUp,
 } from 'lucide-react';
 import {
-    getMarketIntelligenceBootstrap,
-    getMarketIntelligenceMarket,
-    getMarketIntelligenceOverview,
-    getMarketIntelligencePipelineHealth,
-    getMarketIntelligenceSignals,
-    getMarketIntelligenceTrades,
+    getDataAnalystBootstrap,
+    getDataAnalystMarket,
+    getDataAnalystOverview,
+    getDataAnalystPipelineHealth,
+    getDataAnalystSignals,
+    getDataAnalystTrades,
     getSectors,
     readCachedAnalytics,
 } from '../services/stock_api';
@@ -212,7 +212,7 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
         markSectionLoading('overview', true);
         markSectionLoading('health', true);
 
-        const payload = await getMarketIntelligenceBootstrap(bootstrapFilters);
+        const payload = await getDataAnalystBootstrap(bootstrapFilters);
         if (requestId !== requestSequenceRef.current) return;
 
         updateSectionData('overview', payload.overview || defaultSectionState.overview);
@@ -238,11 +238,11 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
         markSectionLoading(section, true);
 
         let payload = sectionDefaults[section];
-        if (section === 'signals') payload = await getMarketIntelligenceSignals(sectionFilter);
-        if (section === 'trades') payload = await getMarketIntelligenceTrades(sectionFilter);
-        if (section === 'market') payload = await getMarketIntelligenceMarket(sectionFilter);
-        if (section === 'overview') payload = await getMarketIntelligenceOverview(sectionFilter);
-        if (section === 'health') payload = await getMarketIntelligencePipelineHealth();
+        if (section === 'signals') payload = await getDataAnalystSignals(sectionFilter);
+        if (section === 'trades') payload = await getDataAnalystTrades(sectionFilter);
+        if (section === 'market') payload = await getDataAnalystMarket(sectionFilter);
+        if (section === 'overview') payload = await getDataAnalystOverview(sectionFilter);
+        if (section === 'health') payload = await getDataAnalystPipelineHealth();
 
         if (requestId !== requestSequenceRef.current) return;
 
@@ -329,7 +329,7 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
                 <div className={`${CARD_CLASS} sticky top-0 z-20 backdrop-blur-xl bg-[#0b0d10]/95 overflow-x-hidden`}>
                     <div className="flex flex-col xl:flex-row xl:items-end gap-4">
                         <div className="min-w-0 xl:min-w-[240px]">
-                            <div className="text-xs uppercase tracking-[0.28em] text-blue-400 mb-2">Market Intelligence</div>
+                            <div className="text-xs uppercase tracking-[0.28em] text-blue-400 mb-2">Data Analyst</div>
                             <div className="text-xl sm:text-3xl font-semibold text-white leading-tight">Research and operations dashboard</div>
                             <div className="text-sm text-gray-400 mt-2">Separate from AI Analyst. Built from live backend analytics payloads.</div>
                         </div>

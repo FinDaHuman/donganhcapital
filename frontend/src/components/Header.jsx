@@ -65,8 +65,8 @@ const Header = ({ activeTab, onTabChange }) => {
                     AI Analyst
                 </button>
                 <button
-                    onClick={() => handleTabChange('market-intelligence')}
-                    className={`h-full flex items-center px-1 font-medium transition-all border-b-2 ${activeTab === 'market-intelligence'
+                    onClick={() => handleTabChange('data-analyst')}
+                    className={`h-full flex items-center px-1 font-medium transition-all border-b-2 ${activeTab === 'data-analyst'
                         ? 'text-blue-500 border-blue-500'
                         : 'text-gray-400 border-transparent hover:text-gray-200'
                         }`}
@@ -103,10 +103,10 @@ const Header = ({ activeTab, onTabChange }) => {
                         AI Analyst
                     </button>
                     <button
-                        onClick={() => handleTabChange('market-intelligence')}
-                        className={`text-left text-lg font-medium transition-colors ${activeTab === 'market-intelligence' ? 'text-blue-400' : 'text-gray-400'}`}
+                        onClick={() => handleTabChange('data-analyst')}
+                        className={`text-left text-lg font-medium transition-colors ${activeTab === 'data-analyst' ? 'text-blue-400' : 'text-gray-400'}`}
                     >
-                        Market Intelligence
+                        Data Analyst
                     </button>
                 </div>
             )}

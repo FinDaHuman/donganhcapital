@@ -207,7 +207,7 @@ const fetchAnalytics = async (path, filters = {}, fallback = {}) => {
     }
 };
 
-export const getMarketIntelligenceBootstrap = async (filters = {}) =>
+export const getDataAnalystBootstrap = async (filters = {}) =>
     fetchAnalytics('/analytics/bootstrap', filters, {
         overview: {
             summary: {},
@@ -224,7 +224,7 @@ export const getMarketIntelligenceBootstrap = async (filters = {}) =>
         },
     });
 
-export const getMarketIntelligenceOverview = async (filters = {}) =>
+export const getDataAnalystOverview = async (filters = {}) =>
     fetchAnalytics('/analytics/overview', filters, {
         summary: {},
         daily_activity: {},
@@ -233,27 +233,27 @@ export const getMarketIntelligenceOverview = async (filters = {}) =>
         alerts: [],
     });
 
-export const getMarketIntelligenceSignals = async (filters = {}) =>
+export const getDataAnalystSignals = async (filters = {}) =>
     fetchAnalytics('/analytics/signals', filters, {
         summary: {},
         series: { signal_trend: [], probability_buckets: [], sector_distribution: [], top_tickers: [] },
         tables: { recent_signals: [] },
     });
 
-export const getMarketIntelligenceTrades = async (filters = {}) =>
+export const getDataAnalystTrades = async (filters = {}) =>
     fetchAnalytics('/analytics/trades', filters, {
         summary: {},
         series: { outcome_breakdown: [], return_distribution: [], equity_curve: [] },
         tables: { ticker_leaderboard: [], sector_leaderboard: [], open_trades: [], recent_trades: [] },
     });
 
-export const getMarketIntelligenceMarket = async (filters = {}) =>
+export const getDataAnalystMarket = async (filters = {}) =>
     fetchAnalytics('/analytics/market', filters, {
         summary: { breadth: {} },
         series: { sector_performance: [], liquidity_leaders: [], return_distribution: [], vnindex: [] },
     });
 
-export const getMarketIntelligencePipelineHealth = async () =>
+export const getDataAnalystPipelineHealth = async () =>
     fetchAnalytics('/analytics/pipeline-health', {}, {
         summary: {},
         freshness: [],

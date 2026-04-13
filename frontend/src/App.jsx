@@ -192,9 +192,9 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'market-intelligence' && (
+                    {activeTab === 'data-analyst' && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
-                            <MarketIntelligenceTab onSelectStock={handleSelectStock} stockList={stockList} />
+                            <DataAnalystTab onSelectStock={handleSelectStock} stockList={stockList} />
                         </div>
                     )}
 
