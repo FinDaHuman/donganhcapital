@@ -118,7 +118,7 @@ const SimpleTable = ({ columns, rows, onTickerClick }) => (
     </div>
 );
 
-const MarketIntelligenceTab = ({ onSelectStock, stockList = [] }) => {
+const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
     const [activeSection, setActiveSection] = useState('overview');
     const [filters, setFilters] = useState({
         start_date: toIsoDate(startDefault),
