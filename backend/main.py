@@ -72,7 +72,7 @@ def run_vn30f1m_sync():
         vn = Vnstock()
         vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
         today = datetime.now(vn_tz).strftime("%Y-%m-%d")
-        stock = vn.stock(symbol="VN30F1M", source="VCI")
+        stock = vn.stock(symbol="VN30F1M", source="KBS")
         df = stock.quote.history(start=today, end=today, interval="1m")
         if df is None or len(df) == 0:
             return

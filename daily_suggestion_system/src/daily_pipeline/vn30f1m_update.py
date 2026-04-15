@@ -24,7 +24,7 @@ def update_vn30f1m_intraday():
     print(f"Fetching VN30F1M intraday for {today}...")
 
     try:
-        stock = vn.stock(symbol="VN30F1M", source="VCI")
+        stock = vn.stock(symbol="VN30F1M", source="KBS")
         df = stock.quote.history(
             start=today,
             end=today,

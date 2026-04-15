@@ -47,7 +47,7 @@ class StockDataUpdater:
 
             try:
 
-                stock = vn.stock(symbol=stock_id, source="VCI")
+                stock = vn.stock(symbol=stock_id, source="KBS")
 
                 df = stock.quote.history(
                     start=self.from_date,

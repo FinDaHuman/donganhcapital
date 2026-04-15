@@ -15,7 +15,7 @@ def update_vnindex_ohlc(start="2009-06-01", end=None):
 
     print("Downloading VNINDEX data...")
 
-    stock = vn.stock(symbol="VNINDEX", source="VCI")
+    stock = vn.stock(symbol="VNINDEX", source="KBS")
 
     market_df = stock.quote.history(
         start=start,
