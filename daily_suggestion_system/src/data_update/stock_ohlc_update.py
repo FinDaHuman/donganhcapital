@@ -1,97 +1,88 @@
 import time
+
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
-from vnstock import Vnstock
+from vnstock import Quote
+
 from data_access.db_connection import get_engine
 
-vn = Vnstock()
+REQUEST_SPACING_SECONDS = 4
+RATE_LIMIT_BACKOFF_SECONDS = 60
+RETURN_LOOKBACK_DAYS = 10
 
 
 class StockDataUpdater:
-
-    def __init__(self,
-                 stock_list_path,
-                 from_date,
-                 to_date):
-
+    def __init__(self, stock_list_path, from_date, to_date):
         self.stock_list_path = stock_list_path
-
         self.from_date = pd.to_datetime(from_date).strftime("%Y-%m-%d")
         self.to_date = pd.to_datetime(to_date).strftime("%Y-%m-%d")
+        self.fetch_from_date = (
+            pd.to_datetime(self.from_date) - pd.Timedelta(days=RETURN_LOOKBACK_DAYS)
+        ).strftime("%Y-%m-%d")
 
         self.stock_list = self._load_stock_list()
-
-    # ------------------------------------
-    # LOAD STOCK LIST
-    # ------------------------------------
+        self.failed_tickers = []
 
     def _load_stock_list(self):
-
         with open(self.stock_list_path, "r", encoding="utf-8-sig") as f:
             data = f.read().strip()
 
-        return [
+        stocks = [
             s.strip().upper().replace("\ufeff", "")
             for s in data.split(",")
+            if s.strip()
         ]
 
-    # ------------------------------------
-    # DOWNLOAD DATA WITH RETRY
-    # ------------------------------------
+        # Preserve file order while removing duplicates to avoid wasting API quota.
+        return list(dict.fromkeys(stocks))
 
     def _download_with_retry(self, stock_id, max_retry=5):
-
         for attempt in range(max_retry):
-
             try:
-
-                stock = vn.stock(symbol=stock_id, source="KBS")
-
-                df = stock.quote.history(
-                    start=self.from_date,
+                df = Quote(symbol=stock_id, source="VCI").history(
+                    start=self.fetch_from_date,
                     end=self.to_date,
-                    interval="1d"
+                    interval="1d",
                 )
 
                 if df is not None and len(df) > 0:
                     return df
 
+                return pd.DataFrame()
             except Exception as e:
+                print(f"{stock_id} retry {attempt + 1}/{max_retry} error:", e)
 
-                print(f"{stock_id} retry {attempt+1}/{max_retry} error:", e)
+                error_text = str(e).lower()
+                if "rate limit" in error_text or "giới hạn api" in error_text:
+                    time.sleep(RATE_LIMIT_BACKOFF_SECONDS)
+                    continue
 
-            time.sleep(4)
+            time.sleep(REQUEST_SPACING_SECONDS)
 
         print(f"{stock_id} FAILED after retries")
         return None
 
-    # ------------------------------------
-    # DOWNLOAD ALL
-    # ------------------------------------
-
     def fetch_all(self):
-
         all_dfs = []
 
         for stock_id in self.stock_list:
-
             print(f"Downloading {stock_id}")
 
             df = self._download_with_retry(stock_id)
+            time.sleep(REQUEST_SPACING_SECONDS)
 
-            time.sleep(2)
+            if df is None:
+                self.failed_tickers.append(stock_id)
+                continue
 
-            if df is None or len(df) == 0:
+            if len(df) == 0:
                 print(f"No data {stock_id}")
                 continue
 
             df = df.sort_values("time")
-
-            df = df.rename(columns={
-                "time": "Ngay"
-            })
+            df = df.rename(columns={"time": "Ngay"})
 
             df["stock_id"] = stock_id
             df["Ngay"] = pd.to_datetime(df["Ngay"])
@@ -104,39 +95,40 @@ class StockDataUpdater:
             df["return"] = df["adj_close"].pct_change()
             df["log_return"] = np.log(df["adj_close"] / df["adj_close"].shift(1))
             df["thaydoi"] = df["return"]
-            # drop dòng không tính được return (ngày đầu)
+            df = df[df["Ngay"] >= pd.to_datetime(self.from_date)]
             df = df.dropna(subset=["return", "log_return", "thaydoi"])
 
             keep_cols = [
-                "Ngay", "stock_id",
-                "open", "high", "low", "close",
-                "adj_open", "adj_high", "adj_low", "adj_close",
-                "volume", "return", "log_return", "thaydoi"
+                "Ngay",
+                "stock_id",
+                "open",
+                "high",
+                "low",
+                "close",
+                "adj_open",
+                "adj_high",
+                "adj_low",
+                "adj_close",
+                "volume",
+                "return",
+                "log_return",
+                "thaydoi",
             ]
 
             df = df[keep_cols]
-
             all_dfs.append(df)
 
         if len(all_dfs) == 0:
             return pd.DataFrame()
 
         final_df = pd.concat(all_dfs, ignore_index=True)
-
         final_df = final_df.sort_values(["stock_id", "Ngay"])
-
         final_df = final_df.drop_duplicates(subset=["stock_id", "Ngay"])
 
         print("Download finished")
-
         return final_df
 
-    # ------------------------------------
-    # INSERT DATABASE
-    # ------------------------------------
-
     def insert_database(self, df):
-
         if df.empty:
             print("No data to insert")
             return
@@ -147,17 +139,18 @@ class StockDataUpdater:
         df = df.replace([np.inf, -np.inf], np.nan)
 
         with engine.begin() as conn:
-
             df.to_sql(
                 "stock_ohlc_temp",
                 conn,
                 if_exists="replace",
                 index=False,
                 chunksize=500,
-                method="multi"
+                method="multi",
             )
 
-            conn.execute(text("""
+            conn.execute(
+                text(
+                    """
             INSERT INTO stock_ohlc (
                 "Ngay", stock_id,
                 open, high, low, close,
@@ -170,27 +163,44 @@ class StockDataUpdater:
                 adj_open, adj_high, adj_low, adj_close,
                 volume, return, log_return, thaydoi
             FROM stock_ohlc_temp
-            ON CONFLICT ("stock_id","Ngay") DO NOTHING
-            """))
+            ON CONFLICT ("stock_id","Ngay") DO UPDATE SET
+                open = EXCLUDED.open,
+                high = EXCLUDED.high,
+                low = EXCLUDED.low,
+                close = EXCLUDED.close,
+                adj_open = EXCLUDED.adj_open,
+                adj_high = EXCLUDED.adj_high,
+                adj_low = EXCLUDED.adj_low,
+                adj_close = EXCLUDED.adj_close,
+                volume = EXCLUDED.volume,
+                return = EXCLUDED.return,
+                log_return = EXCLUDED.log_return,
+                thaydoi = EXCLUDED.thaydoi
+            """
+                )
+            )
 
             conn.execute(text("DROP TABLE stock_ohlc_temp"))
 
-        print("Insert finished (duplicates skipped)")
-
-    # ------------------------------------
-    # FULL PIPELINE
-    # ------------------------------------
+        print("Insert finished (upserted latest data)")
 
     def run(self):
-
         print("START UPDATE")
 
         df = self.fetch_all()
 
+        if self.failed_tickers:
+            raise RuntimeError(
+                "Stock download failed for "
+                + ", ".join(self.failed_tickers[:10])
+                + (" ..." if len(self.failed_tickers) > 10 else "")
+            )
+
         if df.empty:
             print("No data downloaded")
-            return
+            return df
 
         self.insert_database(df)
 
         print("UPDATE FINISHED")
+        return df

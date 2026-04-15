@@ -38,7 +38,8 @@ def run():
         update_database_today()
     except Exception as e:
         logger.error(f"Database update failed: {e}")
-        exit_code = 1
+        logger.error("Stopping pipeline before prediction to avoid using stale market data")
+        sys.exit(1)
 
     # ==============================
     # STEP 2: Run prediction

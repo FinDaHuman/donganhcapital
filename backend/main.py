@@ -66,14 +66,12 @@ def get_cached(key: str, ttl: int, compute):
 
 def run_vn30f1m_sync():
     try:
-        from vnstock import Vnstock
+        from vnstock import Quote
         from uuid import uuid4
         import pytz
-        vn = Vnstock()
         vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
         today = datetime.now(vn_tz).strftime("%Y-%m-%d")
-        stock = vn.stock(symbol="VN30F1M", source="KBS")
-        df = stock.quote.history(start=today, end=today, interval="1m")
+        df = Quote(symbol="VN30F1M", source="VCI").history(start=today, end=today, interval="1m")
         if df is None or len(df) == 0:
             return
         df = df.rename(columns={"time": "time"})

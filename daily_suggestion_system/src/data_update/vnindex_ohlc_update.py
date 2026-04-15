@@ -1,11 +1,9 @@
 import pandas as pd
 import numpy as np
 from sqlalchemy import text
-from vnstock import Vnstock
+from vnstock import Quote
 
 from data_access.db_connection import get_engine
-
-vn = Vnstock()
 
 
 def update_vnindex_ohlc(start="2009-06-01", end=None):
@@ -14,9 +12,7 @@ def update_vnindex_ohlc(start="2009-06-01", end=None):
 
     print("Downloading VNINDEX data...")
 
-    stock = vn.stock(symbol="VNINDEX", source="KBS")
-
-    market_df = stock.quote.history(
+    market_df = Quote(symbol="VNINDEX", source="VCI").history(
         start=start,
         end=end,
         interval="1d"
@@ -68,7 +64,7 @@ def update_vnindex_ohlc(start="2009-06-01", end=None):
             method="multi"
         )
 
-        # Upsert main table
+        # Upsert main table (DO UPDATE to fix any previously corrupted rows)
         conn.execute(text("""
         INSERT INTO vnindex_ohlc (
             "Ngay",
@@ -86,7 +82,12 @@ def update_vnindex_ohlc(start="2009-06-01", end=None):
             index_close,
             index_volume
         FROM vnindex_temp
-        ON CONFLICT ("Ngay") DO NOTHING
+        ON CONFLICT ("Ngay") DO UPDATE SET
+            index_open = EXCLUDED.index_open,
+            index_high = EXCLUDED.index_high,
+            index_low = EXCLUDED.index_low,
+            index_close = EXCLUDED.index_close,
+            index_volume = EXCLUDED.index_volume
         """))
 
         # Remove temp table

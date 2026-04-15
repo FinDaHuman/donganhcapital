@@ -3,7 +3,7 @@ import numpy as np
 from datetime import datetime
 import pytz
 from sqlalchemy import text
-from vnstock import Vnstock
+from vnstock import Quote
 import sys
 import os
 from uuid import uuid4
@@ -11,7 +11,6 @@ from uuid import uuid4
 from data_access.db_connection import get_engine
 
 def update_vn30f1m_intraday():
-    vn = Vnstock()
     engine = get_engine()
     
     if not engine:
@@ -24,8 +23,7 @@ def update_vn30f1m_intraday():
     print(f"Fetching VN30F1M intraday for {today}...")
 
     try:
-        stock = vn.stock(symbol="VN30F1M", source="KBS")
-        df = stock.quote.history(
+        df = Quote(symbol="VN30F1M", source="VCI").history(
             start=today,
             end=today,
             interval="1m"

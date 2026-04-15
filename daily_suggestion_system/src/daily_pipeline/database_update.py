@@ -31,6 +31,7 @@ STOCK_LIST_PATH = str(Path(__file__).resolve().parents[1] / "stock_list.txt")
 
 
 def update_database_today():
+    errors = []
 
     today = datetime.today()
     start = today - timedelta(days=3)
@@ -55,13 +56,17 @@ def update_database_today():
             to_date=today_str
         )
 
-        updater.run()
+        stock_df = updater.run()
+
+        if stock_df is None or stock_df.empty:
+            raise RuntimeError("Stock OHLC update produced no rows")
 
         logger.info("Stock OHLC updated")
 
     except Exception as e:
 
         logger.error(f"Stock update failed: {e}")
+        errors.append(f"stock update failed: {e}")
 
     # ---------------------------------
     # UPDATE VNINDEX
@@ -69,20 +74,27 @@ def update_database_today():
 
     try:
 
-        update_vnindex_ohlc(
+        vnindex_df = update_vnindex_ohlc(
             start=start_str,
             end=today_str
         )
+
+        if vnindex_df is None or vnindex_df.empty:
+            raise RuntimeError("VNINDEX update produced no rows")
 
         logger.info("VNINDEX updated")
 
     except Exception as e:
 
         logger.error(f"VNINDEX update failed: {e}")
+        errors.append(f"vnindex update failed: {e}")
 
     logger.info("=================================")
     logger.info("DATABASE UPDATE FINISHED")
     logger.info("=================================")
+
+    if errors:
+        raise RuntimeError("; ".join(errors))
 
 
 if __name__ == "__main__":
