@@ -1,9 +1,8 @@
 import pandas as pd
 import numpy as np
 from sqlalchemy import text
-
 from vnstock import Vnstock
-from sqlalchemy import text
+
 from data_access.db_connection import get_engine
 
 vn = Vnstock()
