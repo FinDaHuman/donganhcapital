@@ -1,177 +1,168 @@
-# DongAnh Capital
+# DongAnh Capital Technical Documentation & Architecture Overview
 
-DongAnh Capital is a Vietnam-market stock analysis platform with three main parts:
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT) [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/release/python-3100/) [![React 18](https://img.shields.io/badge/react-18.2.0-blue.svg)](https://react.dev/) [![FastAPI](https://img.shields.io/badge/fastapi-0.109.0-green.svg)](https://fastapi.tiangolo.com/)
 
-- a React SPA for market visualization and signal review
-- a FastAPI backend serving market, analytics, and prediction endpoints
-- a daily Python pipeline that refreshes NeonDB and generates AI signals
+## Executive Summary
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
-[![React](https://img.shields.io/badge/react-18.2.0-blue.svg)](https://react.dev/)
-[![FastAPI](https://img.shields.io/badge/fastapi-0.109.0-green.svg)](https://fastapi.tiangolo.com/)
+DongAnh Capital is an advanced, proprietary stock analysis and algorithmic signal generation platform engineered specifically for the Vietnamese equities market. The system integrates real-time market visualization, rigorous technical analysis, and machine learning (XGBoost/LSTM) to deliver actionable trading intelligence.
 
-## What It Does
+This repository contains the entirety of the platform's source code, structured as a decoupled, micro-architecture system comprising a React-based Single Page Application (SPA), a highly concurrent FastAPI backend, and an automated ETL/ML data pipeline.
 
-- Serves a stock dashboard with sector heatmaps, market summaries, and charting.
-- Stores market data and signal history in NeonDB PostgreSQL.
-- Runs an AI signal pipeline that updates market data, generates signals, and tracks trade outcomes.
-- Exposes analytics endpoints for pipeline health, signal performance, and market intelligence.
-- Syncs VN30F1M intraday data separately from the end-of-day signal pipeline.
+---
 
-## Current Data Flow
+## 1. Core System Architecture
 
-The codebase currently uses `vnstock==3.5.1` and fetches quote history through direct `Quote(..., source="VCI")` calls.
+The platform is logically partitioned into three independent subsystems to ensure scalability, maintainability, and clear separation of concerns.
 
-- Stock OHLC refresh: [daily_suggestion_system/src/data_update/stock_ohlc_update.py](daily_suggestion_system/src/data_update/stock_ohlc_update.py)
-- VNINDEX refresh: [daily_suggestion_system/src/data_update/vnindex_ohlc_update.py](daily_suggestion_system/src/data_update/vnindex_ohlc_update.py)
-- VN30F1M intraday refresh: [daily_suggestion_system/src/daily_pipeline/vn30f1m_update.py](daily_suggestion_system/src/daily_pipeline/vn30f1m_update.py)
-- Backend intraday sync path: [backend/main.py](backend/main.py)
+### 1.1. Presentation Layer: React SPA (`/frontend`)
+The frontend is a modern, responsive Single Page Application optimized for high-density data visualization.
+*   **Frameworks:** React 18, Vite (for optimized bundling and HMR).
+*   **Styling:** Tailwind CSS for utility-first, consistent design system implementation.
+*   **Data Visualization:**
+    *   **Plotly.js:** Utilized for rendering complex, interactive sector heatmaps.
+    *   **HTML5 Canvas:** Employed for performant, high-frequency rendering of historical price charts and performance metrics, bypassing DOM overhead.
+*   **State & Navigation:** Framer Motion manages smooth UI transitions. The `Dashboard.jsx` acts as the primary data orchestrator, implementing a critical gating mechanism that suspends rendering until a minimum threshold of market data (≥ 15 assets) is successfully loaded, preventing UI thrashing.
 
-This avoids the broken `Vnstock().stock(...).quote` wrapper path for VCI and preserves VCI-level precision for stocks, VNINDEX, and VN30F1M.
+### 1.2. Application Server: FastAPI Backend (`/backend`)
+A high-performance RESTful API serving as the intermediary between the presentation layer, the database, and the inference engine.
+*   **Framework:** Python 3.10+ with FastAPI, chosen for its native async capabilities and automatic OpenAPI documentation.
+*   **Database ORM:** SQLAlchemy coupled with `psycopg2-binary` for robust interactions with the NeonDB (PostgreSQL) instance.
+*   **Inference Engine Integration:** Directly loads and serves pre-trained machine learning models (XGBoost by default, configurable via `USE_XGB=true`) to calculate real-time asset probabilities.
+*   **Performance Engineering:**
+    *   **TTL Caching:** Implements an in-memory `get_cached` utility within `main.py` to memoize expensive analytical queries (e.g., market overviews, signal summaries), drastically reducing database load during traffic spikes.
+    *   **Concurrency Management:** Utilizes `asyncio.Semaphore` to throttle concurrent database connections, protecting the NeonDB instance from connection exhaustion.
+    *   **Background Tasks:** Manages an asynchronous polling loop that synchronizes high-frequency VN30F1M derivative data every 60 seconds during active market hours.
 
-## Daily Pipeline Behavior
+### 1.3. ETL & Machine Learning Pipeline (`/daily_suggestion_system`)
+An autonomous, scheduled system responsible for data ingestion, feature engineering, and the generation of predictive signals.
+*   **Core Libraries:** Python, `vnstock` (market data adapter), XGBoost, TensorFlow, Pandas.
+*   **Operational Execution:** Triggered daily via GitHub Actions (`.github/workflows/daily-pipeline.yml`).
+*   **Fail-Safe Mechanisms:** Designed to fail closed. If upstream data acquisition (via the VCI source) fails or returns anomalous data, the pipeline halts execution immediately, preventing the generation of signals based on stale or corrupted data.
 
-The daily GitHub Actions job runs:
+---
 
-- [.github/workflows/daily-pipeline.yml](.github/workflows/daily-pipeline.yml)
-- entrypoint: [daily_suggestion_system/src/daily_pipeline/run_daily_pipeline.py](daily_suggestion_system/src/daily_pipeline/run_daily_pipeline.py)
+## 2. Data Flow & Operational Lifecycle
 
-Execution order:
+The lifeblood of the DongAnh Capital platform is its daily automated pipeline, which updates the system of record and generates trading intelligence.
 
-1. Database update
-2. Signal generation
-3. VN30F1M intraday update
+### 2.1. The Signal Generation Lifecycle
+1.  **Data Ingestion (`database_update.py`):** The orchestrator script (`run_daily_pipeline.py`) initiates the update sequence. It fetches the latest OHLC (Open, High, Low, Close) and volume data for approximately 400 tracked equities using the `vnstock` library. *Note: Requests are intentionally paced to respect upstream API rate limits.*
+2.  **Feature Engineering (`features/`):** Raw market data is transformed into predictive features. This includes calculating moving averages, identifying price/volume breakouts, and evaluating trend alignment (e.g., SEPA methodology).
+3.  **Model Inference (`daily_predict.py`):** The engineered feature set is fed into the active machine learning model (located in `backend/models/xgb_model/`). The model outputs a probability score indicating the likelihood of a positive price movement over the target horizon.
+4.  **Signal Persistence:** Assets exceeding the predefined probability threshold generate "Buy" signals, which are inserted into the `ai_signals` database table alongside calculated Take Profit (TP) and Stop Loss (SL) levels.
+5.  **Portfolio Management (`trade_manager.py`):** The system evaluates existing "HOLD" positions. If current market prices breach the associated TP or SL levels, the position is closed, and the realized Profit and Loss (PnL) is recorded in the `trade_history` table for performance auditing.
 
-Important operational details:
+---
 
-- The stock updater deduplicates tickers before downloading.
-- Requests are intentionally paced to stay under the VCI guest limit envelope.
-- Stock OHLC and VNINDEX writes use upsert behavior.
-- If database update fails, the pipeline exits before prediction to avoid using stale data.
-- The workflow sets UTF-8 environment variables to prevent vnstock console encoding issues in GitHub Actions.
+## 3. Database Schema Reference (NeonDB)
 
-## Architecture
+The platform relies on a normalized PostgreSQL database hosted on NeonDB.
 
-### Frontend
+| Table Name | Description | Key Attributes |
+| :--- | :--- | :--- |
+| `stocks` | Master registry of tracked assets. | `ticker_id`, `exchange`, `industry_classification` |
+| `stock_ohlc` | Time-series historical price data. Updated via daily upserts. | `date`, `open`, `high`, `low`, `close`, `volume`, `stock_id` |
+| `vnindex_ohlc` | Time-series historical data for the broader VN-Index. | `date`, `open`, `high`, `low`, `close`, `volume` |
+| `vn30f1m_intraday`| High-frequency (1-minute) data for the VN30 derivative. | `timestamp`, `price`, `volume` |
+| `ai_signals` | Daily generated algorithmic trading recommendations. | `date`, `stock_id`, `entry_price`, `tp_price`, `sl_price`, `probability` |
+| `trade_history` | Ledger of simulated trades and outcome analysis. | `entry_date`, `exit_date`, `stock_id`, `realized_pnl`, `duration` |
+| `daily_signal_summary`| Aggregated metrics of daily signal generation activity. | `date`, `total_signals`, `sector_breakdown` |
 
-Path: [frontend](frontend)
+---
 
-- React 18 + Vite
-- Plotly heatmap and lightweight charting
-- Axios for API calls
-- Framer Motion for motion and transitions
-
-Key files:
-
-- [frontend/src/App.jsx](frontend/src/App.jsx)
-- [frontend/src/components](frontend/src/components)
-- [frontend/src/services](frontend/src/services)
-
-### Backend API
-
-Path: [backend](backend)
-
-- FastAPI application in [backend/main.py](backend/main.py)
-- SQLAlchemy + `psycopg2-binary` for NeonDB access
-- XGBoost is the default prediction model path via `USE_XGB=true`
-- Supports cached reads for common market and analytics endpoints
-
-Selected endpoints:
-
-- `GET /api/health`
-- `GET /api/stocks`
-- `GET /api/market-status`
-- `GET /api/vnindex`
-- `GET /api/ai-signals`
-- `GET /api/ai-signals/dates`
-- `GET /api/ai-signals/summary`
-- `GET /api/trade-history`
-- `GET /api/trade-history/stats`
-- `GET /api/analytics/overview`
-- `GET /api/analytics/bootstrap`
-- `GET /api/analytics/market`
-- `GET /api/analytics/signals`
-- `GET /api/analytics/trades`
-- `GET /api/analytics/pipeline-health`
-- `GET /api/sectors`
-- `GET /api/ohlc/{stock_id}`
-- `GET /api/predict/{stock_id}`
-
-### Daily Suggestion System
-
-Path: [daily_suggestion_system](daily_suggestion_system)
-
-Main responsibilities:
-
-- refresh stock OHLC into `stock_ohlc`
-- refresh VNINDEX into `vnindex_ohlc`
-- generate AI signals into `ai_signals`
-- update `daily_signal_summary`
-- manage trade lifecycle records
-- refresh `vn30f1m_intraday`
-
-Key files:
-
-- [daily_suggestion_system/src/daily_pipeline/run_daily_pipeline.py](daily_suggestion_system/src/daily_pipeline/run_daily_pipeline.py)
-- [daily_suggestion_system/src/daily_pipeline/database_update.py](daily_suggestion_system/src/daily_pipeline/database_update.py)
-- [daily_suggestion_system/src/daily_pipeline/daily_predict.py](daily_suggestion_system/src/daily_pipeline/daily_predict.py)
-- [daily_suggestion_system/src/manager/trade_manager.py](daily_suggestion_system/src/manager/trade_manager.py)
-
-## Project Structure
+## 4. Codebase Navigation
 
 ```text
 DongAnhCapital/
-|-- frontend/                    React SPA
-|-- backend/                     FastAPI API and model-serving layer
-|-- daily_suggestion_system/     Data refresh and signal pipeline
-|-- .github/workflows/           CI/CD workflows
-|-- README.md
-`-- AGENTS.md
+├── backend/                     # Application Server (FastAPI)
+│   ├── db/                      # Database connection and query logic
+│   ├── models/                  # Serialized ML models (XGBoost .json files, LSTM .h5)
+│   ├── main.py                  # API routing and server entrypoint
+│   └── train_xgb.py             # Utility for retraining the XGBoost model
+├── daily_suggestion_system/     # ETL & ML Pipeline
+│   └── src/
+│       ├── daily_pipeline/      # Pipeline orchestration scripts
+│       ├── data_access/         # Interfaces for Vnstock and DB writes
+│       ├── features/            # Feature engineering logic
+│       ├── manager/             # Trade lifecycle management
+│       └── training/            # Model training configurations
+├── frontend/                    # Presentation Layer (React SPA)
+│   └── src/
+│       ├── components/          # React components (Dashboard, Charts, Heatmaps)
+│       └── services/            # Axios API client configurations
+└── .github/workflows/           # CI/CD and automation pipelines
 ```
 
-## Setup
+---
 
-### Backend
+## 5. Developer Guide: Extending the Platform
 
+### 5.1. Implementing a New API Endpoint
+1.  **Data Access:** Define the required SQL execution logic within `backend/db/queries.py` (for raw data) or `backend/db/analytics.py` (for aggregated metrics).
+2.  **Routing:** Expose the endpoint in `backend/main.py` using standard FastAPI decorators (e.g., `@app.get("/api/v1/new-resource")`). Ensure comprehensive type hinting for automatic documentation generation.
+3.  **Optimization:** If the endpoint performs intensive calculations or queries, encapsulate the logic within the `get_cached(key, func, ttl)` utility to enforce memoization.
+
+### 5.2. Modifying the User Interface
+1.  **Component Architecture:** All UI modifications should occur within `frontend/src/components/`. Adhere strictly to functional components and React Hooks.
+2.  **Styling Standards:** Utilize Tailwind CSS utility classes exclusively. Avoid creating custom CSS files unless fundamentally necessary for complex animations not supported by Tailwind/Framer.
+3.  **Client Integration:** Register any new backend endpoints within the Axios client located at `frontend/src/services/stock_api.js`.
+
+### 5.3. Retraining and Deploying the AI Model
+1.  **Training:** Execute the training pipeline located at `daily_suggestion_system/src/training/breakout_training.py` with an updated dataset.
+2.  **Export:** The training script will generate serialized artifacts. For XGBoost, this includes booster JSON files, `scaler.pkl`, and `types.pkl`.
+3.  **Deployment:** Replace the existing artifacts in `backend/models/xgb_model/` with the newly generated files.
+4.  **Verification:** Restart the FastAPI backend and execute a local test run of the prediction endpoint to ensure schema compatibility.
+
+---
+
+## 6. Local Development Environment Setup
+
+### 6.1. Prerequisites
+*   Python 3.10 or higher
+*   Node.js 18 or higher
+*   Access to a NeonDB PostgreSQL instance
+
+### 6.2. Backend Setup
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
+**Environment Variables (`backend/.env`):**
+*   `DATABASE_URL`: Connection string for NeonDB (Must use `sslmode=require`).
+*   `USE_XGB`: `true` (default) or `false`.
 
-Required environment variables:
-
-- `DATABASE_URL`
-- `USE_XGB` optional, defaults to `true`
-
-Run locally:
-
+**Run Server:**
 ```bash
-cd backend
 uvicorn main:app --reload --port 8000
 ```
 
-### Frontend
-
+### 6.3. Frontend Setup
 ```bash
 cd frontend
 npm install
+```
+**Environment Variables (`frontend/.env`):**
+*   `VITE_API_URL`: URL of the local backend (e.g., `http://localhost:8000/api`).
+
+**Run Development Server:**
+```bash
 npm run dev
 ```
 
-### Daily Pipeline
-
-Run manually from the same path used in CI:
-
+### 6.4. Executing the Data Pipeline Locally
 ```bash
 cd daily_suggestion_system/src/daily_pipeline
+# Ensure PYTHONPATH is correctly set if running outside an IDE
 python run_daily_pipeline.py
 ```
 
-## Notes
+---
 
-- NeonDB is the production system of record for market data, signals, summaries, and trade history.
-- The current pipeline is designed to fail closed on market-data refresh errors rather than continue into prediction with stale inputs.
-- The GitHub Actions daily workflow is scheduled for weekdays at `08:02 UTC`, which is `15:02` Vietnam time.
+## 7. Operational Troubleshooting & Known Behaviors
+
+*   **Database Connection Exhaustion:** The backend mitigates this via `NullPool` in SQLAlchemy. If connection limits are reached locally, ensure no rogue Python processes are holding connections open.
+*   **Missing Market Data / Pipeline Failures:** The `vnstock` library relies on third-party APIs (VCI). If the daily pipeline fails, check the GitHub Actions logs. Failures are typically caused by upstream guest limits or API changes. The pipeline is designed to halt to prevent data corruption.
+*   **CORS Violations:** Ensure `VITE_API_URL` exactly matches the backend's address. The FastAPI backend employs `CORSMiddleware` configured to allow all origins by default in development.
+*   **Empty VN30F1M Charts:** Intraday derivative data is only polled during active trading hours (GMT+7). The charts will naturally be empty during weekends or overnight hours.
