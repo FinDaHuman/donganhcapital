@@ -202,6 +202,14 @@ const Dashboard = ({ onSelectStock }) => {
                 }
             });
 
+            // If there's only 1 small stock, don't group it into an "Others" category
+            if (othersCount === 1) {
+                visibleStocks.push(otherStocks[0]);
+                otherStocks.length = 0;
+                othersCount = 0;
+                othersVol = 0;
+            }
+
             // Add visible stocks normally
             visibleStocks.forEach(s => {
                 ids.push(s.code);

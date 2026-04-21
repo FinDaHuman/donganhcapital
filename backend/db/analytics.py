@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import gc
 import math
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -9,6 +12,61 @@ import pandas as pd
 from sqlalchemy import text
 
 from .connection import get_engine
+
+VALID_DATE_PATTERN = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+VALID_STOCK_ID_PATTERN = re.compile(r'^[A-Z0-9]{1,10}$')
+VALID_STATUS_VALUES = {'TP', 'SL', 'TIMEOUT', 'HOLD', 'ALL'}
+
+
+def validate_date(date_str: str, param_name: str = "date") -> str:
+    if not date_str:
+        return None
+    date_str = str(date_str).strip()
+    if not VALID_DATE_PATTERN.match(date_str):
+        raise ValueError(f"Invalid {param_name} format: {date_str}. Expected YYYY-MM-DD")
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"Invalid {param_name}: {date_str}")
+    return date_str
+
+
+def validate_sector(sector: str) -> str:
+    if not sector or sector == "ALL":
+        return None
+    sector = str(sector).strip()
+    if len(sector) > 50:
+        raise ValueError(f"Sector name too long: {len(sector)} characters (max 50)")
+    return sector
+
+
+def validate_ticker(ticker: str) -> str:
+    if not ticker or ticker == "ALL":
+        return None
+    ticker = str(ticker).upper().strip()
+    if len(ticker) > 10:
+        raise ValueError(f"Ticker too long: {len(ticker)} characters (max 10)")
+    if not VALID_STOCK_ID_PATTERN.match(ticker):
+        raise ValueError(f"Invalid ticker format: {ticker}")
+    return ticker
+
+
+def validate_probability_bucket(bucket: str) -> str:
+    if not bucket or bucket == "ALL":
+        return None
+    valid_buckets = {"<60%", "60-70%", "70-80%", "80-90%", "90%+"}
+    if bucket not in valid_buckets:
+        raise ValueError(f"Invalid probability_bucket: {bucket}. Must be one of {valid_buckets}")
+    return bucket
+
+
+def validate_analytics_status(status: str) -> str:
+    if not status or status == "ALL":
+        return None
+    status = str(status).upper().strip()
+    if status not in VALID_STATUS_VALUES:
+        raise ValueError(f"Invalid status: {status}. Must be one of {VALID_STATUS_VALUES}")
+    return status if status != "ALL" else None
 
 
 def _safe_float(value):
@@ -151,7 +209,16 @@ def _read_sql(query: str, params: Optional[dict] = None):
         return pd.DataFrame()
 
 
+# Hard cap: never load more than 365 days of stock data into memory (Fix 3)
+_MAX_HISTORY_DAYS = 365
+
+
 def _load_stock_frame(start_date: Optional[str] = None, end_date: Optional[str] = None):
+    # Enforce maximum lookback to protect server memory on free-tier hosting
+    max_history_date = (pd.Timestamp.today() - pd.Timedelta(days=_MAX_HISTORY_DAYS)).strftime("%Y-%m-%d")
+    if start_date is None or start_date < max_history_date:
+        start_date = max_history_date
+
     params = {}
     clauses = []
     if start_date:
@@ -167,6 +234,7 @@ def _load_stock_frame(start_date: Optional[str] = None, end_date: Optional[str] 
         FROM stock_ohlc
         {where_sql}
         ORDER BY "Ngay" ASC, stock_id ASC
+        LIMIT 100000
         """,
         params,
     )
@@ -395,6 +463,12 @@ def _freshness_payload():
 
 
 def get_market_intelligence_overview(start_date=None, end_date=None, sector=None, ticker=None, status=None):
+    start_date = validate_date(start_date, "start_date")
+    end_date = validate_date(end_date, "end_date")
+    sector = validate_sector(sector)
+    ticker = validate_ticker(ticker)
+    status = validate_analytics_status(status)
+    
     stocks_df = _apply_common_filters(_load_stock_frame(start_date, end_date), "trade_date", start_date, end_date, sector, ticker)
     signals_df = _apply_common_filters(_load_signal_frame(start_date, end_date), "signal_date", start_date, end_date, sector, ticker)
     trades_df = _apply_common_filters(_load_trade_frame(start_date, end_date, status), "entry_date", start_date, end_date, sector, ticker)
@@ -463,7 +537,7 @@ def get_market_intelligence_overview(start_date=None, end_date=None, sector=None
     latest_entries = trades_df[trades_df["entry_date"] == trades_df["entry_date"].max()] if not trades_df.empty else pd.DataFrame()
     latest_closures = closed[closed["exit_date"] == latest_trade_exit] if latest_trade_exit is not None and not closed.empty else pd.DataFrame()
 
-    return _json_safe({
+    result = _json_safe({
         "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL", "status": status or "ALL"},
         "summary": {
             "total_tickers": int(stocks_df["stock_id"].nunique()) if not stocks_df.empty else 0,
@@ -489,9 +563,22 @@ def get_market_intelligence_overview(start_date=None, end_date=None, sector=None
         "alerts": alerts,
         "metadata": {"unmapped_tickers": unmapped_tickers[:25]},
     })
+    # Fix 5: Free large DataFrames before returning
+    try:
+        del stocks_df, signals_df, trades_df, summary_df, vnindex_df
+    except NameError:
+        pass
+    gc.collect()
+    return result
 
 
 def get_market_intelligence_signals(start_date=None, end_date=None, sector=None, ticker=None, probability_bucket=None):
+    start_date = validate_date(start_date, "start_date")
+    end_date = validate_date(end_date, "end_date")
+    sector = validate_sector(sector)
+    ticker = validate_ticker(ticker)
+    probability_bucket = validate_probability_bucket(probability_bucket)
+    
     signals_df = _apply_common_filters(_load_signal_frame(start_date, end_date), "signal_date", start_date, end_date, sector, ticker)
     trades_df = _apply_common_filters(_load_trade_frame(start_date, end_date), "entry_date", start_date, end_date, sector, ticker)
     summary_df = _load_signal_summary_frame(start_date, end_date)
@@ -544,7 +631,7 @@ def get_market_intelligence_signals(start_date=None, end_date=None, sector=None,
     )
     recent_signals = signals_df.sort_values(["signal_date", "prob"], ascending=[False, False]).head(30).copy()
     recent_signals["date"] = recent_signals["signal_date"]
-    return _json_safe({
+    result = _json_safe({
         "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL", "probability_bucket": probability_bucket or "ALL"},
         "summary": {
             "total_signals": int(len(signals_df)),
@@ -564,9 +651,22 @@ def get_market_intelligence_signals(start_date=None, end_date=None, sector=None,
             )
         },
     })
+    # Fix 5: Free DataFrames before returning
+    try:
+        del signals_df, trades_df, summary_df
+    except NameError:
+        pass
+    gc.collect()
+    return result
 
 
 def get_market_intelligence_trades(start_date=None, end_date=None, sector=None, ticker=None, status=None):
+    start_date = validate_date(start_date, "start_date")
+    end_date = validate_date(end_date, "end_date")
+    sector = validate_sector(sector)
+    ticker = validate_ticker(ticker)
+    status = validate_analytics_status(status)
+    
     trades_df = _apply_common_filters(_load_trade_frame(start_date, end_date, status), "entry_date", start_date, end_date, sector, ticker)
     if trades_df.empty:
         return _json_safe({
@@ -609,7 +709,7 @@ def get_market_intelligence_trades(start_date=None, end_date=None, sector=None, 
         today = pd.Timestamp.today().normalize()
         open_trades["age_days"] = (today - open_trades["entry_date"].dt.normalize()).dt.days
     recent_trades = trades_df.sort_values("entry_date", ascending=False).head(25)
-    return _json_safe({
+    result = _json_safe({
         "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL", "status": status or "ALL"},
         "summary": kpis,
         "series": {
@@ -624,9 +724,21 @@ def get_market_intelligence_trades(start_date=None, end_date=None, sector=None, 
             "recent_trades": _records(recent_trades[["stock_id", "sector", "entry_date", "exit_date", "status", "return_pct", "holding_days", "prob"]], {"return_pct": 4, "prob": 4}),
         },
     })
+    # Fix 5: Free DataFrames before returning
+    try:
+        del trades_df, closed, outcome_breakdown, ticker_board, sector_board
+    except NameError:
+        pass
+    gc.collect()
+    return result
 
 
 def get_market_intelligence_market(start_date=None, end_date=None, sector=None, ticker=None):
+    start_date = validate_date(start_date, "start_date")
+    end_date = validate_date(end_date, "end_date")
+    sector = validate_sector(sector)
+    ticker = validate_ticker(ticker)
+    
     stocks_df = _apply_common_filters(_load_stock_frame(start_date, end_date), "trade_date", start_date, end_date, sector, ticker)
     vnindex_df = _load_vnindex_frame(start_date, end_date)
     if stocks_df.empty:
@@ -676,7 +788,7 @@ def get_market_intelligence_market(start_date=None, end_date=None, sector=None, 
         vn["running_peak"] = vn["close"].cummax()
         vn["drawdown_pct"] = (vn["close"] - vn["running_peak"]) / vn["running_peak"] * 100
         vn_series = _records(vn.tail(90), {"rolling_volatility_20d": 2, "drawdown_pct": 2})
-    return _json_safe({
+    result = _json_safe({
         "filters_applied": {"start_date": start_date, "end_date": end_date, "sector": sector or "ALL", "ticker": ticker or "ALL"},
         "summary": {"latest_trading_date": latest_date.isoformat() if latest_date is not None else None, "breadth": breadth},
         "series": {
@@ -686,18 +798,50 @@ def get_market_intelligence_market(start_date=None, end_date=None, sector=None, 
             "vnindex": vn_series,
         },
     })
+    # Fix 5: Free large DataFrames before returning
+    try:
+        del stocks_df, vnindex_df, market, latest
+    except NameError:
+        pass
+    gc.collect()
+    return result
 
 
 def get_market_intelligence_pipeline_health():
-    stocks_df = _load_stock_frame()
+    """Fix 1: Pure SQL aggregations - no full-table pandas load (saves ~50 MB per request)."""
     freshness = _freshness_payload()
-    total_tickers = int(stocks_df["stock_id"].nunique()) if not stocks_df.empty else 0
-    latest_date = stocks_df["trade_date"].max() if not stocks_df.empty else None
-    latest_slice = stocks_df[stocks_df["trade_date"] == latest_date] if latest_date is not None else pd.DataFrame()
-    latest_tickers = int(latest_slice["stock_id"].nunique()) if not latest_slice.empty else 0
-    unmapped = sorted([item for item in stocks_df["stock_id"].unique().tolist() if item not in SECTOR_LOOKUP]) if not stocks_df.empty else []
+
+    # Single SQL query returns 1 row with all aggregate stats
+    stats_df = _read_sql("""
+        SELECT
+            COUNT(DISTINCT stock_id)                                              AS total_tickers,
+            MAX("Ngay")                                                           AS latest_date,
+            COUNT(DISTINCT CASE WHEN "Ngay" = (
+                SELECT MAX("Ngay") FROM stock_ohlc
+            ) THEN stock_id END)                                                  AS tickers_present_latest_day
+        FROM stock_ohlc
+    """)
+
+    if not stats_df.empty and not stats_df.iloc[0].isnull().all():
+        total_tickers = int(stats_df.iloc[0]["total_tickers"] or 0)
+        latest_date_raw = stats_df.iloc[0]["latest_date"]
+        latest_date = pd.to_datetime(latest_date_raw) if pd.notnull(latest_date_raw) else None
+        latest_tickers = int(stats_df.iloc[0]["tickers_present_latest_day"] or 0)
+    else:
+        total_tickers, latest_date, latest_tickers = 0, None, 0
+
+    # Fetch only the distinct tickers from the latest trading day (tiny result set)
+    unmapped: list = []
+    if latest_date is not None:
+        ticker_df = _read_sql(
+            'SELECT DISTINCT stock_id FROM stock_ohlc WHERE "Ngay" = :d ORDER BY stock_id',
+            {"d": latest_date.strftime("%Y-%m-%d")},
+        )
+        if not ticker_df.empty:
+            unmapped = sorted([t for t in ticker_df["stock_id"].tolist() if t not in SECTOR_LOOKUP])
+
     signal_summary = _load_signal_summary_frame()
-    anomalies = []
+    anomalies: list = []
     stale_tables = [entry["table"] for entry in freshness if entry["status"] == "stale"]
     if stale_tables:
         anomalies.append({"level": "warning", "message": f"Stale tables detected: {', '.join(stale_tables)}"})
@@ -707,7 +851,8 @@ def get_market_intelligence_pipeline_health():
         zero_days = signal_summary[signal_summary["signal_count"] == 0].tail(10)
         if not zero_days.empty:
             anomalies.append({"level": "info", "message": f"{len(zero_days)} recent signal-summary rows show zero signals."})
-    return _json_safe({
+
+    result = _json_safe({
         "summary": {
             "total_tickers": total_tickers,
             "latest_trading_date": latest_date.isoformat() if latest_date is not None else None,
@@ -719,6 +864,12 @@ def get_market_intelligence_pipeline_health():
         "coverage": {"mapped_tickers": total_tickers - len(unmapped), "unmapped_tickers": unmapped[:50]},
         "anomalies": anomalies,
     })
+    try:
+        del stats_df, signal_summary
+    except NameError:
+        pass
+    gc.collect()
+    return result
 
 
 def get_market_intelligence_bootstrap(start_date=None, end_date=None, sector=None, ticker=None, status=None):

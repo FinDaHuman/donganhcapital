@@ -31,6 +31,7 @@ AGENTS.md
 .cursor/
 GEMINI.md
 plan.md
+PRODUCTION_CONSTRAINTS.md
 
 #Reference model
 xgb_model.ipynb
