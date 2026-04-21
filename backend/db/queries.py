@@ -1,8 +1,42 @@
 import math
+import re
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
 from .connection import get_engine
+
+VALID_STOCK_ID_PATTERN = re.compile(r'^[A-Z0-9]{1,10}$')
+VALID_STATUS_VALUES = {'TP', 'SL', 'TIMEOUT', 'HOLD'}
+
+
+def validate_stock_id(stock_id: str) -> str:
+    if not stock_id:
+        raise ValueError("stock_id is required")
+    normalized = stock_id.upper().strip()
+    if len(normalized) > 10:
+        raise ValueError(f"stock_id too long: {len(normalized)} characters (max 10)")
+    if not VALID_STOCK_ID_PATTERN.match(normalized):
+        raise ValueError(f"Invalid stock_id format: {stock_id}")
+    return normalized
+
+
+def validate_status(status: str) -> str:
+    if not status:
+        return None
+    normalized = status.upper().strip()
+    if normalized not in VALID_STATUS_VALUES:
+        raise ValueError(f"Invalid status value: {status}. Must be one of {VALID_STATUS_VALUES}")
+    return normalized
+
+
+def validate_limit(limit: int, max_limit: int = 2000) -> int:
+    if limit is None:
+        return max_limit
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    if limit > max_limit:
+        raise ValueError(f"limit exceeds maximum of {max_limit}")
+    return limit
 
 
 def _safe_float(x):
@@ -70,48 +104,39 @@ def get_stocks_from_db():
         return []
 
 def get_stock_ohlc(stock_id: str, limit: int = None):
+    try:
+        stock_id = validate_stock_id(stock_id)
+    except ValueError as e:
+        print(f"Invalid stock_id: {e}")
+        return pd.DataFrame()
+    
+    limit = validate_limit(limit, max_limit=2000)
+    
     engine = get_engine()
     if not engine:
         return pd.DataFrame()
     
-    if stock_id.upper() == "VN30F1M":
-        if limit:
-            query = text("""
-            SELECT * FROM (
-                SELECT time as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", 'VN30F1M' as "Ticker" 
-                FROM vn30f1m_intraday
-                ORDER BY time DESC 
-                LIMIT :limit
-            ) sub ORDER BY "Date" ASC
-            """)
-            params = {"limit": limit}
-        else:
-            query = text("""
+    if stock_id == "VN30F1M":
+        query = text("""
+        SELECT * FROM (
             SELECT time as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", 'VN30F1M' as "Ticker" 
             FROM vn30f1m_intraday
-            ORDER BY time ASC
-            """)
-            params = None
+            ORDER BY time DESC 
+            LIMIT :limit
+        ) sub ORDER BY "Date" ASC
+        """)
+        params = {"limit": limit}
     else:
-        if limit:
-            query = text("""
-            SELECT * FROM (
-                SELECT "Ngay" as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
-                FROM stock_ohlc 
-                WHERE stock_id = :stock_id 
-                ORDER BY "Ngay" DESC 
-                LIMIT :limit
-            ) sub ORDER BY "Date" ASC
-            """)
-            params = {"stock_id": stock_id, "limit": limit}
-        else:
-            query = text("""
+        query = text("""
+        SELECT * FROM (
             SELECT "Ngay" as "Date", open as "Open", high as "High", low as "Low", close as "Close", volume as "Volume", stock_id as "Ticker" 
             FROM stock_ohlc 
             WHERE stock_id = :stock_id 
-            ORDER BY "Ngay" ASC
-            """)
-            params = {"stock_id": stock_id}
+            ORDER BY "Ngay" DESC 
+            LIMIT :limit
+        ) sub ORDER BY "Date" ASC
+        """)
+        params = {"stock_id": stock_id, "limit": limit}
         
     try:
         df = pd.read_sql(query, engine, params=params)
@@ -302,7 +327,7 @@ def get_daily_signal_summary():
 
 
 def get_trade_history(status_filter: str = None):
-    """Return trade history records, optionally filtered by status."""
+    status_filter = validate_status(status_filter)
     engine = get_engine()
     if not engine:
         return []
@@ -317,7 +342,7 @@ def get_trade_history(status_filter: str = None):
         WHERE t.status = :status
         ORDER BY t.entry_date DESC
         """)
-        params = {"status": status_filter.upper()}
+        params = {"status": status_filter}
     else:
         query = text("""
         SELECT t.stock_id, t.entry_date, t.entry_price, t.tp_price, t.sl_price,

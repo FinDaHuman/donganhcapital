@@ -246,6 +246,7 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
     const [debouncedFilters, setDebouncedFilters] = useState(filters);
     const [showFilters, setShowFilters] = useState(false);
     const requestSequenceRef = useRef(0);
+    const hasMountedRef = useRef(false); // Fix 7: prevent duplicate bootstrap on mount
 
     useEffect(() => {
         const loadFilters = async () => {
@@ -302,34 +303,47 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
         setLoadedSections((prev) => ({ ...prev, [section]: value }));
     };
 
+    // Fix 2: Load overview and health independently with a stagger to reduce peak server memory
     const loadBootstrap = async ({ isRefresh = false } = {}) => {
         const requestId = requestSequenceRef.current;
         if (isRefresh) setRefreshing(true);
 
-        const cachedBootstrap = !isRefresh ? readCachedAnalytics('/analytics/bootstrap', bootstrapFilters) : null;
-        if (cachedBootstrap) {
-            updateSectionData('overview', cachedBootstrap.overview || defaultSectionState.overview);
-            updateSectionData('health', cachedBootstrap.health || defaultSectionState.health);
+        // ── Stage 1: Overview ────────────────────────────────────────────
+        const cachedOverview = !isRefresh ? readCachedAnalytics('/analytics/overview', bootstrapFilters) : null;
+        if (cachedOverview) {
+            updateSectionData('overview', cachedOverview);
             markSectionLoaded('overview', true);
-            markSectionLoaded('health', true);
             setLoading(false);
         } else if (!isRefresh) {
             setLoading(true);
         }
-
         markSectionLoading('overview', true);
-        markSectionLoading('health', true);
 
-        const payload = await getDataAnalystBootstrap(bootstrapFilters);
+        const overviewPayload = await getDataAnalystOverview(bootstrapFilters);
         if (requestId !== requestSequenceRef.current) return;
 
-        updateSectionData('overview', payload.overview || defaultSectionState.overview);
-        updateSectionData('health', payload.health || defaultSectionState.health);
+        updateSectionData('overview', overviewPayload || defaultSectionState.overview);
         markSectionLoaded('overview', true);
-        markSectionLoaded('health', true);
         markSectionLoading('overview', false);
+        setLoading(false); // unblock section tabs
+
+        // ── Stage 2: Health (staggered 400ms so backend can GC overview memory) ──
+        await new Promise((resolve) => window.setTimeout(resolve, 400));
+        if (requestId !== requestSequenceRef.current) return;
+
+        const cachedHealth = !isRefresh ? readCachedAnalytics('/analytics/pipeline-health', {}) : null;
+        if (cachedHealth) {
+            updateSectionData('health', cachedHealth);
+            markSectionLoaded('health', true);
+        }
+        markSectionLoading('health', true);
+
+        const healthPayload = await getDataAnalystPipelineHealth();
+        if (requestId !== requestSequenceRef.current) return;
+
+        updateSectionData('health', healthPayload || defaultSectionState.health);
+        markSectionLoaded('health', true);
         markSectionLoading('health', false);
-        setLoading(false);
         setRefreshing(false);
     };
 
@@ -365,17 +379,27 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
 
     useEffect(() => {
         requestSequenceRef.current += 1;
-        setLoadedSections(createLoadedSectionsState());
-        setSectionLoading(createSectionLoadingState());
-        setData(defaultSectionState);
+        if (hasMountedRef.current) {
+            // Genuine filter change — reset all section state
+            setLoadedSections(createLoadedSectionsState());
+            setSectionLoading(createSectionLoadingState());
+            setData(defaultSectionState);
+        } else {
+            // Fix 7: Initial mount — only run once, no state reset needed
+            hasMountedRef.current = true;
+        }
         loadBootstrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filtersSignature]);
 
     useEffect(() => {
+        // Fix 8: Don't load sections before bootstrap completes (cold-start buffer)
+        if (loading) return;
         if (activeSection === 'overview' || activeSection === 'health') return;
         if (loadedSections[activeSection] || sectionLoading[activeSection]) return;
         loadSection(activeSection);
-    }, [activeSection, loadedSections, sectionLoading, sectionFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeSection, loadedSections, sectionLoading, sectionFilters, loading]);
 
     const availableTickers = useMemo(() => {
         if (filters.sector === 'ALL') return stockList;
@@ -601,7 +625,7 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
                         )}
 
                         {/* ═══ OVERVIEW ═══ */}
-                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'overview' ? 'hidden' : ''}`}>
+                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'overview' || (sectionLoading[activeSection] && !loadedSections[activeSection]) ? 'hidden' : ''}`}>
                             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
                                 <KpiCard label="Tracked Tickers" value={formatNumber(data.overview.summary.total_tickers || 0, 0)} icon={Layers} accentColor="#6366f1" />
                                 <KpiCard label="Total Breakouts" value={formatNumber(data.overview.summary.total_signals || 0, 0)} tone="text-blue-400" icon={Zap} accentColor="#3b82f6" />
@@ -657,7 +681,7 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
                         </section>
 
                         {/* ═══ SIGNALS ═══ */}
-                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'signals' ? 'hidden' : ''}`}>
+                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'signals' || (sectionLoading[activeSection] && !loadedSections[activeSection]) ? 'hidden' : ''}`}>
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <ChartCard title="Signal Count Trend" icon={TrendingUp} description="Daily signal generation over time">
                                     <Plot data={[{ x: data.signals.series.signal_trend.map((item) => item.signal_date), y: data.signals.series.signal_trend.map((item) => item.signal_count), type: 'scatter', mode: 'lines+markers', line: { color: '#38bdf8', width: 2 }, marker: { size: 4 } }]} layout={basePlotLayout()} config={{ displayModeBar: false, responsive: true }} style={plotStyle} useResizeHandler />
@@ -696,7 +720,7 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
                         </section>
 
                         {/* ═══ TRADES ═══ */}
-                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'trades' ? 'hidden' : ''}`}>
+                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'trades' || (sectionLoading[activeSection] && !loadedSections[activeSection]) ? 'hidden' : ''}`}>
                             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
                                 <KpiCard label="Total Trades" value={formatNumber(data.trades.summary.total_trades || 0, 0)} icon={BarChart2} accentColor="#6366f1" />
                                 <KpiCard label="Open Trades" value={formatNumber(data.trades.summary.open_trades || 0, 0)} tone="text-blue-400" icon={Clock} accentColor="#3b82f6" />
@@ -723,7 +747,7 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
                         </section>
 
                         {/* ═══ MARKET ═══ */}
-                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'market' ? 'hidden' : ''}`}>
+                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'market' || (sectionLoading[activeSection] && !loadedSections[activeSection]) ? 'hidden' : ''}`}>
                             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                                 <KpiCard
                                     label="Market Regime"
@@ -758,7 +782,7 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
                         </section>
 
                         {/* ═══ HEALTH ═══ */}
-                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'health' ? 'hidden' : ''}`}>
+                        <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'health' || (sectionLoading[activeSection] && !loadedSections[activeSection]) ? 'hidden' : ''}`}>
                             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
                                 <KpiCard label="Latest Coverage" value={formatPercent(data.health.summary.coverage_pct || 0)} tone="text-blue-400" icon={Target} accentColor="#3b82f6" />
                                 <KpiCard label="Tracked Tickers" value={formatNumber(data.health.summary.total_tickers || 0, 0)} icon={Layers} accentColor="#6366f1" />

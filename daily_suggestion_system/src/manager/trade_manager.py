@@ -206,46 +206,52 @@ class TradeManager:
     # ==================================
 
     def save_to_db(self):
-        """Upsert all trades into NeonDB trade_history table."""
+        """Upsert all trades into NeonDB trade_history table using batch INSERT."""
         if not self.engine:
             logger.warning("No DB engine available for saving trade history.")
             return
 
+        if not self.data.get("trades"):
+            logger.info("No trades to sync.")
+            return
+
+        # Build batch parameter list (avoids N+1 individual queries)
+        params_list = []
+        for trade in self.data["trades"]:
+            entry_date = trade["entry_date"].split(" ")[0] if trade.get("entry_date") else None
+            exit_date = trade["exit_date"].split(" ")[0] if trade.get("exit_date") else None
+            params_list.append({
+                "stock_id": str(trade["stock_id"]),
+                "entry_date": entry_date,
+                "entry_price": _to_native(trade.get("entry_price")),
+                "tp_price": _to_native(trade.get("tp_price")),
+                "sl_price": _to_native(trade.get("sl_price")),
+                "exit_date": exit_date,
+                "exit_price": _to_native(trade.get("exit_price")),
+                "status": str(trade["status"]),
+                "return_pct": _to_native(trade.get("return_pct")),
+                "holding_days": _to_native(trade.get("holding_days")),
+            })
+
+        query = text("""
+        INSERT INTO trade_history 
+            (stock_id, entry_date, entry_price, tp_price, sl_price,
+             exit_date, exit_price, status, return_pct, holding_days)
+        VALUES 
+            (:stock_id, :entry_date, :entry_price, :tp_price, :sl_price,
+             :exit_date, :exit_price, :status, :return_pct, :holding_days)
+        ON CONFLICT (stock_id, entry_date) 
+        DO UPDATE SET
+            exit_date = EXCLUDED.exit_date,
+            exit_price = EXCLUDED.exit_price,
+            status = EXCLUDED.status,
+            return_pct = EXCLUDED.return_pct,
+            holding_days = EXCLUDED.holding_days;
+        """)
+
         try:
             with self.engine.begin() as conn:
-                for trade in self.data["trades"]:
-                    entry_date = trade["entry_date"].split(" ")[0] if trade.get("entry_date") else None
-                    exit_date = trade["exit_date"].split(" ")[0] if trade.get("exit_date") else None
-
-                    query = text("""
-                    INSERT INTO trade_history 
-                        (stock_id, entry_date, entry_price, tp_price, sl_price,
-                         exit_date, exit_price, status, return_pct, holding_days)
-                    VALUES 
-                        (:stock_id, :entry_date, :entry_price, :tp_price, :sl_price,
-                         :exit_date, :exit_price, :status, :return_pct, :holding_days)
-                    ON CONFLICT (stock_id, entry_date) 
-                    DO UPDATE SET
-                        exit_date = EXCLUDED.exit_date,
-                        exit_price = EXCLUDED.exit_price,
-                        status = EXCLUDED.status,
-                        return_pct = EXCLUDED.return_pct,
-                        holding_days = EXCLUDED.holding_days;
-                    """)
-
-                    conn.execute(query, {
-                        "stock_id": str(trade["stock_id"]),
-                        "entry_date": entry_date,
-                        "entry_price": _to_native(trade.get("entry_price")),
-                        "tp_price": _to_native(trade.get("tp_price")),
-                        "sl_price": _to_native(trade.get("sl_price")),
-                        "exit_date": exit_date,
-                        "exit_price": _to_native(trade.get("exit_price")),
-                        "status": str(trade["status"]),
-                        "return_pct": _to_native(trade.get("return_pct")),
-                        "holding_days": _to_native(trade.get("holding_days")),
-                    })
-
-            logger.info(f"{len(self.data['trades'])} trades synced to NeonDB")
+                conn.execute(query, params_list)
+            logger.info(f"{len(params_list)} trades synced to NeonDB (batch upsert)")
         except Exception as e:
             logger.error(f"Error saving trades to DB: {e}")

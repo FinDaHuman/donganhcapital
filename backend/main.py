@@ -19,7 +19,8 @@ from db.queries import (
     get_market_status_from_db, get_vnindex_from_db,
     get_ai_signals_dates, get_ai_signals,
     get_daily_signal_summary,
-    get_trade_history, get_trade_history_stats
+    get_trade_history, get_trade_history_stats,
+    validate_stock_id, validate_limit
 )
 from db.analytics import (
     get_market_intelligence_bootstrap,
@@ -28,6 +29,7 @@ from db.analytics import (
     get_market_intelligence_signals,
     get_market_intelligence_trades,
     get_market_intelligence_pipeline_health,
+    validate_date, validate_sector, validate_ticker, validate_analytics_status, validate_probability_bucket
 )
 
 # Disable GPU for lighter inference if needed
@@ -41,6 +43,8 @@ MAX_ROWS_PER_TICKER = 60  # Keep only ~60 trading days to save memory
 
 # Concurrency limiter for incoming requests (max 5 simultaneous users)
 concurrency_limiter = asyncio.Semaphore(5)
+# Stricter limiter for memory-intensive analytics endpoints (Fix 4)
+analytics_limiter = asyncio.Semaphore(1)
 # Simple in‑memory cache with TTL
 _cache: dict[str, tuple[Any, float]] = {}
 ANALYTICS_TTL_SHORT = 300
@@ -54,12 +58,29 @@ async def limit_concurrency():
     finally:
         concurrency_limiter.release()
 
+
+async def limit_analytics_concurrency():
+    """Stricter limiter for analytics endpoints - only 1 concurrent request (Fix 4)."""
+    await analytics_limiter.acquire()
+    try:
+        yield
+    finally:
+        analytics_limiter.release()
+
+MAX_CACHE_ENTRIES = 25  # Fix 6: cap cache size to prevent memory creep
+
+
 def get_cached(key: str, ttl: int, compute):
     """Return cached value if fresh, otherwise compute and store it."""
     now = time.time()
     entry = _cache.get(key)
     if entry and now < entry[1]:
         return entry[0]
+    # Evict expired entries when cache grows large (Fix 6)
+    if len(_cache) >= MAX_CACHE_ENTRIES:
+        expired = [k for k, (_, exp) in list(_cache.items()) if now > exp]
+        for k in expired:
+            _cache.pop(k, None)
     value = compute()
     _cache[key] = (value, now + ttl)
     return value
@@ -143,15 +164,10 @@ async def lifespan(app: FastAPI):
     global predictor, poll_task
     
     try:
-        if USE_XGB:
-            from models.xgb_predictor import XGBPredictor
-            model_path = os.path.join(os.path.dirname(__file__), "models", "xgb_model")
-            predictor = XGBPredictor.load(model_path)
-        else:
-            from models.quantile_lstm import QuantileLSTM
-            model_path = os.path.join(os.path.dirname(__file__), "models", "vn_stock_predictor")
-            predictor = QuantileLSTM.load(model_path)
-        print(f"Prediction Model loaded successfully (XGB: {USE_XGB}).")
+        from models.xgb_predictor import XGBPredictor
+        model_path = os.path.join(os.path.dirname(__file__), "models", "xgb_model")
+        predictor = XGBPredictor.load(model_path)
+        print("XGB Prediction Model loaded successfully.")
     except Exception as e:
         print(f"Prediction model load error: {e}")
     
@@ -165,11 +181,16 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="DongAnh Capital AI API", lifespan=lifespan)
 
 # --- CORS ---
+# In production, set ALLOWED_ORIGINS env var to your Vercel domain(s).
+# e.g., ALLOWED_ORIGINS="https://dong-anh-capital.vercel.app"
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+allow_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False, # Must be False for wildcard *
-    allow_methods=["*"],
+    allow_origins=allow_origins,
+    allow_credentials=False,  # Must be False when allow_origins includes "*"
+    allow_methods=["GET"],     # API is read-only; restrict to GET only
     allow_headers=["*"],
 )
 
@@ -272,7 +293,7 @@ async def get_market_intelligence_overview_endpoint(
     sector: Optional[str] = None,
     ticker: Optional[str] = None,
     status: Optional[str] = None,
-    concurrency: Any = Depends(limit_concurrency),
+    concurrency: Any = Depends(limit_analytics_concurrency),
 ):
     def compute():
         return get_market_intelligence_overview(start_date, end_date, sector, ticker, status)
@@ -286,7 +307,7 @@ async def get_market_intelligence_bootstrap_endpoint(
     sector: Optional[str] = None,
     ticker: Optional[str] = None,
     status: Optional[str] = None,
-    concurrency: Any = Depends(limit_concurrency),
+    concurrency: Any = Depends(limit_analytics_concurrency),
 ):
     def compute():
         return get_market_intelligence_bootstrap(start_date, end_date, sector, ticker, status)
@@ -299,7 +320,7 @@ async def get_market_intelligence_market_endpoint(
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
     ticker: Optional[str] = None,
-    concurrency: Any = Depends(limit_concurrency),
+    concurrency: Any = Depends(limit_analytics_concurrency),
 ):
     def compute():
         return get_market_intelligence_market(start_date, end_date, sector, ticker)
@@ -313,7 +334,7 @@ async def get_market_intelligence_signals_endpoint(
     sector: Optional[str] = None,
     ticker: Optional[str] = None,
     probability_bucket: Optional[str] = None,
-    concurrency: Any = Depends(limit_concurrency),
+    concurrency: Any = Depends(limit_analytics_concurrency),
 ):
     def compute():
         return get_market_intelligence_signals(start_date, end_date, sector, ticker, probability_bucket)
@@ -327,7 +348,7 @@ async def get_market_intelligence_trades_endpoint(
     sector: Optional[str] = None,
     ticker: Optional[str] = None,
     status: Optional[str] = None,
-    concurrency: Any = Depends(limit_concurrency),
+    concurrency: Any = Depends(limit_analytics_concurrency),
 ):
     def compute():
         return get_market_intelligence_trades(start_date, end_date, sector, ticker, status)
@@ -335,7 +356,7 @@ async def get_market_intelligence_trades_endpoint(
 
 
 @app.get("/api/analytics/pipeline-health")
-async def get_market_intelligence_pipeline_health_endpoint(concurrency: Any = Depends(limit_concurrency)):
+async def get_market_intelligence_pipeline_health_endpoint(concurrency: Any = Depends(limit_analytics_concurrency)):
     def compute():
         return get_market_intelligence_pipeline_health()
     return get_cached("analytics_pipeline_health", ANALYTICS_TTL_LONG, compute)
@@ -371,6 +392,10 @@ async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):
 @app.get("/api/ohlc/{stock_id}")
 async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any = Depends(limit_concurrency)):
     """Return stock OHLC data"""
+    try:
+        stock_id = validate_stock_id(stock_id)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     def compute():
         df = get_stock_ohlc(stock_id, limit)
         if df.empty:
@@ -392,7 +417,10 @@ async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any 
 async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurrency)):
     global predictor
     
-    stock_id = stock_id.upper()
+    try:
+        stock_id = validate_stock_id(stock_id)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
         
     try:
         cache_key = f"predict_{stock_id}"

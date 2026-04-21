@@ -109,13 +109,28 @@ const AIAnalystTab = ({ onSelectStock }) => {
         setSortConfig({ key, direction });
     };
 
-    const filteredTrades = useMemo(() => {
+    const baseTrades = useMemo(() => {
         return trades.filter(trade => {
             if (minWinRate > 0 && (!trade.prob || trade.prob < minWinRate)) return false;
+            return true;
+        });
+    }, [trades, minWinRate]);
+
+    const filteredTrades = useMemo(() => {
+        return baseTrades.filter(trade => {
             if (statusFilter && trade.status !== statusFilter) return false;
             return true;
         });
-    }, [trades, minWinRate, statusFilter]);
+    }, [baseTrades, statusFilter]);
+
+    const statusCounts = useMemo(() => {
+        return {
+            TP: baseTrades.filter(t => t.status === 'TP').length,
+            SL: baseTrades.filter(t => t.status === 'SL').length,
+            TIMEOUT: baseTrades.filter(t => t.status === 'TIMEOUT').length,
+            HOLD: baseTrades.filter(t => t.status === 'HOLD').length,
+        };
+    }, [baseTrades]);
 
     const sortedTrades = useMemo(() => {
         const sorted = [...filteredTrades];
@@ -144,12 +159,8 @@ const AIAnalystTab = ({ onSelectStock }) => {
     }, [filteredTrades, sortConfig]);
 
     const dynamicStats = useMemo(() => {
-        const tpCount = filteredTrades.filter(t => t.status === 'TP').length;
-        const slCount = filteredTrades.filter(t => t.status === 'SL').length;
-        const timeoutCount = filteredTrades.filter(t => t.status === 'TIMEOUT').length;
-        const holdCount = filteredTrades.filter(t => t.status === 'HOLD').length;
-
         const closedTrades = filteredTrades.filter(t => ['TP', 'SL', 'TIMEOUT'].includes(t.status));
+        const tpCount = filteredTrades.filter(t => t.status === 'TP').length;
         const winRate = closedTrades.length > 0 ? ((tpCount / closedTrades.length) * 100).toFixed(1) : 0;
 
         const validReturns = closedTrades.map(t => t.return_pct).filter(r => r != null);
@@ -161,10 +172,6 @@ const AIAnalystTab = ({ onSelectStock }) => {
 
         return {
             total_trades: filteredTrades.length,
-            tp_count: tpCount,
-            sl_count: slCount,
-            timeout_count: timeoutCount,
-            hold_count: holdCount,
             win_rate: Number(winRate),
             avg_return: Number(avgReturn),
             best_return: Number(bestReturn),
@@ -323,7 +330,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                         </div>
 
                         {/* Portfolio Stats Cards */}
-                        {dynamicStats.total_trades > 0 && (
+                        {trades.length > 0 && (
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Trades</div>
@@ -353,13 +360,13 @@ const AIAnalystTab = ({ onSelectStock }) => {
                         )}
 
                         {/* Status breakdown mini-cards */}
-                        {dynamicStats.total_trades > 0 && (
+                        {trades.length > 0 && (
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                                 {[
-                                    { key: 'TP', count: dynamicStats.tp_count },
-                                    { key: 'SL', count: dynamicStats.sl_count },
-                                    { key: 'TIMEOUT', count: dynamicStats.timeout_count },
-                                    { key: 'HOLD', count: dynamicStats.hold_count },
+                                    { key: 'TP', count: statusCounts.TP },
+                                    { key: 'SL', count: statusCounts.SL },
+                                    { key: 'TIMEOUT', count: statusCounts.TIMEOUT },
+                                    { key: 'HOLD', count: statusCounts.HOLD },
                                 ].map(({ key, count }) => (
                                     <button
                                         key={key}

@@ -6,6 +6,7 @@ import AIAnalystTab from './components/AIAnalystTab';
 import DataAnalystTab from './components/DataAnalystTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Search } from 'lucide-react';
 
 function App() {
@@ -96,7 +97,9 @@ function App() {
 
                     {activeTab === 'dashboard' && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
-                            <Dashboard onSelectStock={handleSelectStock} />
+                            <ErrorBoundary>
+                                <Dashboard onSelectStock={handleSelectStock} />
+                            </ErrorBoundary>
                         </div>
                     )}
 
@@ -188,13 +191,17 @@ function App() {
 
                     {activeTab === 'analyst' && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
-                            <AIAnalystTab onSelectStock={handleSelectStock} />
+                            <ErrorBoundary>
+                                <AIAnalystTab onSelectStock={handleSelectStock} />
+                            </ErrorBoundary>
                         </div>
                     )}
 
                     {activeTab === 'data-analyst' && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
-                            <DataAnalystTab onSelectStock={handleSelectStock} stockList={stockList} />
+                            <ErrorBoundary>
+                                <DataAnalystTab onSelectStock={handleSelectStock} stockList={stockList} />
+                            </ErrorBoundary>
                         </div>
                     )}
 

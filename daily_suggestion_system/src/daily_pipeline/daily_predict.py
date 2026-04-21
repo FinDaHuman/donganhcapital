@@ -172,28 +172,34 @@ def save_db_signal(df):
             ["stock_id", "entry_price", "tp_price", "sl_price", "prob"]
         ].copy()
         signals["date"] = date_str
-        
+
+        # Build batch param list (avoids N+1 individual queries)
+        params_list = [
+            {
+                "date": str(row["date"]),
+                "stock_id": str(row["stock_id"]),
+                "entry_price": float(row["entry_price"]) if pd.notnull(row["entry_price"]) else None,
+                "tp_price": float(row["tp_price"]) if pd.notnull(row["tp_price"]) else None,
+                "sl_price": float(row["sl_price"]) if pd.notnull(row["sl_price"]) else None,
+                "prob": float(row["prob"]) if pd.notnull(row["prob"]) else None,
+            }
+            for _, row in signals.iterrows()
+        ]
+
+        query = text("""
+        INSERT INTO ai_signals (date, stock_id, entry_price, tp_price, sl_price, prob)
+        VALUES (:date, :stock_id, :entry_price, :tp_price, :sl_price, :prob)
+        ON CONFLICT (date, stock_id) 
+        DO UPDATE SET 
+            entry_price = EXCLUDED.entry_price,
+            tp_price = EXCLUDED.tp_price,
+            sl_price = EXCLUDED.sl_price,
+            prob = EXCLUDED.prob;
+        """)
+
         with engine.begin() as conn:
-            for _, row in signals.iterrows():
-                query = text("""
-                INSERT INTO ai_signals (date, stock_id, entry_price, tp_price, sl_price, prob)
-                VALUES (:date, :stock_id, :entry_price, :tp_price, :sl_price, :prob)
-                ON CONFLICT (date, stock_id) 
-                DO UPDATE SET 
-                    entry_price = EXCLUDED.entry_price,
-                    tp_price = EXCLUDED.tp_price,
-                    sl_price = EXCLUDED.sl_price,
-                    prob = EXCLUDED.prob;
-                """)
-                conn.execute(query, {
-                    "date": str(row["date"]),
-                    "stock_id": str(row["stock_id"]),
-                    "entry_price": float(row["entry_price"]) if pd.notnull(row["entry_price"]) else None,
-                    "tp_price": float(row["tp_price"]) if pd.notnull(row["tp_price"]) else None,
-                    "sl_price": float(row["sl_price"]) if pd.notnull(row["sl_price"]) else None,
-                    "prob": float(row["prob"]) if pd.notnull(row["prob"]) else None
-                })
-        logger.info(f"{len(signals)} signals saved to NeonDB")
+            conn.execute(query, params_list)
+        logger.info(f"{len(params_list)} signals saved to NeonDB (batch upsert)")
     except Exception as e:
         logger.error(f"Error saving signals to DB: {e}")
 
