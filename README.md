@@ -35,7 +35,7 @@ A high-performance RESTful API serving as the intermediary between the presentat
 
 ### 1.3. ETL & Machine Learning Pipeline (`/daily_suggestion_system`)
 An autonomous, scheduled system responsible for data ingestion, feature engineering, and the generation of predictive signals.
-*   **Core Libraries:** Python, `vnstock` (market data adapter), XGBoost, TensorFlow, Pandas.
+*   **Core Libraries:** Python, `vnstock` (market data adapter), LightGBM, scikit-learn, Pandas.
 *   **Operational Execution:** Triggered daily via GitHub Actions (`.github/workflows/daily-pipeline.yml`).
 *   **Fail-Safe Mechanisms:** Designed to fail closed. If upstream data acquisition (via the VCI source) fails or returns anomalous data, the pipeline halts execution immediately, preventing the generation of signals based on stale or corrupted data.
 
@@ -107,11 +107,17 @@ DongAnhCapital/
 2.  **Styling Standards:** Utilize Tailwind CSS utility classes exclusively. Avoid creating custom CSS files unless fundamentally necessary for complex animations not supported by Tailwind/Framer.
 3.  **Client Integration:** Register any new backend endpoints within the Axios client located at `frontend/src/services/stock_api.js`.
 
-### 5.3. Retraining and Deploying the AI Model
-1.  **Training:** Execute the training pipeline located at `daily_suggestion_system/src/training/breakout_training.py` with an updated dataset.
-2.  **Export:** The training script will generate serialized artifacts. For XGBoost, this includes booster JSON files, `scaler.pkl`, and `types.pkl`.
-3.  **Deployment:** Replace the existing artifacts in `backend/models/xgb_model/` with the newly generated files.
-4.  **Verification:** Restart the FastAPI backend and execute a local test run of the prediction endpoint to ensure schema compatibility.
+### 5.3. Retraining and Deploying the AI Models
+There are two distinct models in the platform: the backend XGBoost predictor and the daily pipeline model.
+
+**1. Daily Pipeline Model (LightGBM/scikit-learn):**
+*   **Training:** Execute `daily_suggestion_system/src/training/breakout_training.py` with an updated dataset.
+*   **Deployment:** The script exports `breakout_model.pkl`. Move or ensure this file replaces `daily_suggestion_system/model/breakout_model.pkl`.
+
+**2. Backend Predictor Model (XGBoost):**
+*   **Training:** Execute `backend/train_xgb.py` to retrain the intraday/historical predictor.
+*   **Deployment:** Replaces existing artifacts in `backend/models/xgb_model/` (JSON booster files, `scaler.pkl`, etc.).
+*   **Verification:** Restart the FastAPI backend and execute a local test run of the `api/predict/{stock_id}` endpoint to ensure schema compatibility.
 
 ---
 
@@ -165,4 +171,4 @@ python run_daily_pipeline.py
 *   **Database Connection Exhaustion:** The backend mitigates this via `NullPool` in SQLAlchemy. If connection limits are reached locally, ensure no rogue Python processes are holding connections open.
 *   **Missing Market Data / Pipeline Failures:** The `vnstock` library relies on third-party APIs (VCI). If the daily pipeline fails, check the GitHub Actions logs. Failures are typically caused by upstream guest limits or API changes. The pipeline is designed to halt to prevent data corruption.
 *   **CORS Violations:** Ensure `VITE_API_URL` exactly matches the backend's address. The FastAPI backend employs `CORSMiddleware` configured to allow all origins by default in development.
-*   **Empty VN30F1M Charts:** Intraday derivative data is only polled during active trading hours (GMT+7). The charts will naturally be empty during weekends or overnight hours.
+*   **Empty VN30F1M Charts:** Intraday derivative data is only polled during active trading hours (GMT+7). The charts will naturally be empty during weekends or overnight hours.s.
