@@ -6,5 +6,5 @@ lightgbm
 sqlalchemy
 psycopg2-binary
 python-dotenv
-vnstock==3.5.1
+vnstock==4.0.2
 pytz

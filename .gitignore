@@ -32,6 +32,7 @@ AGENTS.md
 GEMINI.md
 plan.md
 PRODUCTION_CONSTRAINTS.md
+improvement_report.md
 
 #Reference model
 xgb_model.ipynb

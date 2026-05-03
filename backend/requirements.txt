@@ -11,4 +11,4 @@ pytz
 sqlalchemy
 psycopg2-binary
 xgboost
-vnstock==3.5.1
+vnstock==4.0.2
