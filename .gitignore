@@ -30,7 +30,6 @@ ToDoList.txt
 AGENTS.md
 .cursor/
 GEMINI.md
-plan.md
 PRODUCTION_CONSTRAINTS.md
 improvement_report.md
 
@@ -39,8 +38,10 @@ xgb_model.ipynb
 
 # Everything Claude Code (ECC) / Gemini CLI
 .gemini/
-.claude/
 .codex/
 .opencode/
 .mcp.json
 GEMINI-TUTORIAL.md
+
+# Project documentation
+docs/
