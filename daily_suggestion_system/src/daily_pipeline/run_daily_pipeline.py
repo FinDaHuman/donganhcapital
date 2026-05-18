@@ -26,6 +26,23 @@ def run():
     exit_code = 0
 
     # ==============================
+    # STEP 0: Verify Environment & DB
+    # ==============================
+
+    logger.info("=" * 50)
+    logger.info("STEP 0: ENVIRONMENT CHECK")
+    logger.info("=" * 50)
+
+    try:
+        from data_access.db_connection import get_engine
+        get_engine()  # Fails fast if DATABASE_URL is missing or DB is unreachable
+        logger.info("Database connection verified.")
+    except Exception as e:
+        logger.error(f"Pre-flight check failed: {e}")
+        logger.error("Stopping pipeline: Database is not configured or unreachable.")
+        sys.exit(1)
+
+    # ==============================
     # STEP 1: Update market data
     # ==============================
 
