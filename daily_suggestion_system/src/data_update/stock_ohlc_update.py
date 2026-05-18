@@ -52,6 +52,31 @@ class StockDataUpdater:
 
                 return pd.DataFrame()
             except Exception as e:
+                # Wide probe fallback for empty stock data / KBS errors
+                try:
+                    probe_start = (pd.to_datetime(self.to_date) - pd.Timedelta(days=180)).strftime("%Y-%m-%d")
+                    wide_df = Quote(symbol=stock_id, source="KBS").history(
+                        start=probe_start,
+                        end=self.to_date,
+                        interval="1d",
+                    )
+                    
+                    if wide_df is not None and len(wide_df) > 0:
+                        latest_date = pd.to_datetime(wide_df['time']).max()
+                        from_dt = pd.to_datetime(self.from_date)
+                        
+                        if latest_date < from_dt:
+                            print(f"{stock_id}: no recent trades; latest candle {latest_date.strftime('%Y-%m-%d')}, skipping without failure.")
+                            return pd.DataFrame()
+                        else:
+                            # Has recent data, filter to fetch window
+                            filtered_df = wide_df[pd.to_datetime(wide_df['time']) >= pd.to_datetime(self.fetch_from_date)].copy()
+                            if len(filtered_df) > 0:
+                                return filtered_df
+                except Exception:
+                    # Ignore probe error, fall back to main error logic
+                    pass
+
                 print(f"{stock_id} retry {attempt + 1}/{max_retry} error:", e)
 
                 error_text = str(e).lower()
