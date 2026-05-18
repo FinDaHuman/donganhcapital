@@ -7,4 +7,5 @@ sqlalchemy
 psycopg2-binary
 python-dotenv
 vnstock==4.0.2
+vnstock_ezchart==0.0.3
 pytz

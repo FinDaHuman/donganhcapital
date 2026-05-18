@@ -12,7 +12,7 @@ def update_vnindex_ohlc(start="2009-06-01", end=None):
 
     print("Downloading VNINDEX data...")
 
-    market_df = Quote(symbol="VNINDEX", source="VCI").history(
+    market_df = Quote(symbol="VNINDEX", source="KBS").history(
         start=start,
         end=end,
         interval="1d"

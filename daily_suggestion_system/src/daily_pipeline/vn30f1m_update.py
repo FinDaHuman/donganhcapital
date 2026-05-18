@@ -23,7 +23,7 @@ def update_vn30f1m_intraday():
     print(f"Fetching VN30F1M intraday for {today}...")
 
     try:
-        df = Quote(symbol="VN30F1M", source="VCI").history(
+        df = Quote(symbol="VN30F1M", source="KBS").history(
             start=today,
             end=today,
             interval="1m"

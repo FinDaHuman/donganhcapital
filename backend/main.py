@@ -92,7 +92,7 @@ def run_vn30f1m_sync():
         import pytz
         vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
         today = datetime.now(vn_tz).strftime("%Y-%m-%d")
-        df = Quote(symbol="VN30F1M", source="VCI").history(start=today, end=today, interval="1m")
+        df = Quote(symbol="VN30F1M", source="KBS").history(start=today, end=today, interval="1m")
         if df is None or len(df) == 0:
             return
         df = df.rename(columns={"time": "time"})

@@ -41,7 +41,7 @@ class StockDataUpdater:
     def _download_with_retry(self, stock_id, max_retry=5):
         for attempt in range(max_retry):
             try:
-                df = Quote(symbol=stock_id, source="VCI").history(
+                df = Quote(symbol=stock_id, source="KBS").history(
                     start=self.fetch_from_date,
                     end=self.to_date,
                     interval="1d",
