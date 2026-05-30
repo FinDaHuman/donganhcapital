@@ -9,11 +9,8 @@
         "preview": "vite preview"
     },
     "dependencies": {
-        "@splinetool/react-spline": "^4.1.0",
-        "@splinetool/runtime": "^1.12.67",
         "axios": "^1.6.0",
         "framer-motion": "^12.35.1",
-        "hls.js": "^1.6.15",
         "lightweight-charts": "^5.1.0",
         "lucide-react": "^0.563.0",
         "plotly.js": "^2.27.0",

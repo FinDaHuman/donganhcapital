@@ -90,7 +90,7 @@ function App() {
                 <main className="flex-1 overflow-hidden relative flex flex-col min-h-0" style={{ backgroundColor: '#000' }}>
 
                     {activeTab === 'home' && (
-                        <div className="h-full w-full overflow-y-auto">
+                        <div className="h-full w-full overflow-hidden">
                             <LandingPage onTabChange={setActiveTab} />
                         </div>
                     )}
@@ -215,4 +215,3 @@ function App() {
 }
 
 export default App;
- App;
