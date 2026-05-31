@@ -2,25 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   DONGANH CAPITAL — DESIGN SYSTEM
+   Luxury Fintech: Deep Navy + Champagne Gold
+   ============================================ */
+
 :root {
-  --bg-dark: #0b0e11;
-  --card-dark: #151924; 
-  --text-primary: #e0e3eb;
-  --text-secondary: #8791a8;
-  --accent-green: #26a69a;
-  --accent-red: #ef5350;
-  --accent-blue: #2962ff;
-  --border-color: #2a2e39;
+  /* ── Background Scale ──────────────────────────────────── */
+  --bg-void:        #060B14;
+  --bg-base:        #0A1020;
+  --bg-surface:     #0E1729;
+  --bg-elevated:    #132035;
+  --bg-overlay:     #192845;
+  --bg-input:       #0C1828;
+  --bg-input-focus: #111F35;
+
+  /* ── Gold (Primary Brand Accent) ───────────────────────── */
+  --gold-bright:    #E8C97A;
+  --gold-primary:   #C9A96E;
+  --gold-muted:     #A38550;
+  --gold-dim:       rgba(201, 169, 110, 0.2);
+  --gold-border:    rgba(201, 169, 110, 0.15);
+  --gold-border-hover: rgba(201, 169, 110, 0.35);
+  --gold-glow:      rgba(201, 169, 110, 0.15);
+
+  /* ── Navy (Secondary Structural Accent) ────────────────── */
+  --navy-light:     #2A4070;
+  --navy-mid:       #1A2B50;
+  --navy-deep:      #0F1E3A;
+
+  /* ── Text ──────────────────────────────────────────────── */
+  --text-primary:   #EDE8DA;
+  --text-secondary: #94A3BC;
+  --text-muted:     #4E617A;
+  --text-gold:      #C9A96E;
+  --text-inverse:   #060B14;
+  --text-disabled:  #2A3A52;
+
+  /* ── Market Data Colors (Immutable) ────────────────────── */
+  --market-up:      #4DB882;
+  --market-down:    #E05555;
+  --market-neutral: #C9A96E;
+  --market-ceiling: #C77DFF;
+  --market-floor:   #00D4FF;
+
+  /* ── Semantic UI ───────────────────────────────────────── */
+  --info:    #4A7FD4;
+  --success: #4DB882;
+  --warning: #E8A030;
+  --error:   #E05555;
+
+  /* ── Borders ───────────────────────────────────────────── */
+  --border-subtle:   rgba(255, 255, 255, 0.04);
+  --border-default:  rgba(255, 255, 255, 0.07);
+  --border-strong:   rgba(255, 255, 255, 0.12);
+  --border-gold:     rgba(201, 169, 110, 0.15);
+  --border-gold-strong: rgba(201, 169, 110, 0.4);
+
+  /* ── Shadows ───────────────────────────────────────────── */
+  --shadow-card:     0 4px 24px rgba(0,0,0,0.45), 0 1px 0 rgba(201,169,110,0.06);
+  --shadow-elevated: 0 8px 40px rgba(0,0,0,0.65), 0 0 0 1px rgba(201,169,110,0.1);
+  --shadow-modal:    0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(201,169,110,0.15);
+  --shadow-gold:     0 4px 20px rgba(201,169,110,0.25);
+  --shadow-gold-lg:  0 8px 36px rgba(201,169,110,0.35);
+
+  /* ── Animation Tokens ──────────────────────────────────── */
+  --dur-instant:  100ms;
+  --dur-fast:     200ms;
+  --dur-normal:   350ms;
+  --dur-slow:     600ms;
+  --dur-ambient:  2000ms;
+
+  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:   cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
+/* ============================================
+   GLOBAL STYLES
+   ============================================ */
 
 html {
   scroll-behavior: smooth;
 }
 
 body {
-  background-color: #000000;
+  background-color: var(--bg-base);
   color: var(--text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 html, body {
@@ -29,20 +98,165 @@ html, body {
   touch-action: pan-y;
 }
 
-/* Custom Scrollbar */
+/* Gold selection highlight */
+::selection {
+  background: rgba(201, 169, 110, 0.3);
+  color: var(--text-primary);
+}
+
+/* Focus outlines — gold */
+*:focus-visible {
+  outline: 2px solid var(--gold-primary);
+  outline-offset: 3px;
+}
+
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-dark); 
+  background: var(--bg-base);
 }
 ::-webkit-scrollbar-thumb {
-  background: #363a45; 
+  background: var(--navy-mid);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4a4e5c; 
+  background: var(--navy-light);
+}
+
+/* ============================================
+   TYPOGRAPHY UTILITY CLASSES
+   ============================================ */
+
+/* DISPLAY — Cormorant Garamond */
+.type-hero        { font-family: 'Cormorant Garamond', Georgia, serif; font-size: clamp(52px, 8vw, 96px);  font-weight: 600; line-height: 1.04; letter-spacing: -0.02em; }
+.type-hero-sub    { font-family: 'Cormorant Garamond', Georgia, serif; font-size: clamp(18px, 3vw, 26px);  font-weight: 400; font-style: italic; letter-spacing: 0.12em; color: var(--gold-primary); }
+.type-section     { font-family: 'Cormorant Garamond', Georgia, serif; font-size: clamp(32px, 5vw, 56px);  font-weight: 600; line-height: 1.1; }
+.type-card-title  { font-family: 'Cormorant Garamond', Georgia, serif; font-size: clamp(22px, 3vw, 32px);  font-weight: 500; line-height: 1.2; }
+
+/* HEADING — Outfit */
+.type-h1          { font-family: 'Outfit', sans-serif; font-size: 32px;  font-weight: 700; line-height: 1.2;  letter-spacing: -0.01em; }
+.type-h2          { font-family: 'Outfit', sans-serif; font-size: 24px;  font-weight: 700; line-height: 1.25; }
+.type-h3          { font-family: 'Outfit', sans-serif; font-size: 20px;  font-weight: 600; line-height: 1.3; }
+.type-h4          { font-family: 'Outfit', sans-serif; font-size: 16px;  font-weight: 600; line-height: 1.4; }
+
+/* BODY — Outfit */
+.type-body-lg     { font-family: 'Outfit', sans-serif; font-size: 18px;  font-weight: 400; line-height: 1.7; }
+.type-body        { font-family: 'Outfit', sans-serif; font-size: 15px;  font-weight: 400; line-height: 1.65; }
+.type-body-sm     { font-family: 'Outfit', sans-serif; font-size: 13px;  font-weight: 400; line-height: 1.6; }
+.type-caption     { font-family: 'Outfit', sans-serif; font-size: 11px;  font-weight: 500; line-height: 1.5; }
+
+/* LABEL — Outfit caps (echoes logo wordmark) */
+.type-label       { font-family: 'Outfit', sans-serif; font-size: 11px;  font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: var(--text-muted); }
+.type-label-gold  { font-family: 'Outfit', sans-serif; font-size: 11px;  font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold-primary); }
+.type-label-lg    { font-family: 'Outfit', sans-serif; font-size: 13px;  font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; }
+
+/* MONO — DM Mono, for all data values */
+.type-number-xl   { font-family: 'DM Mono', monospace; font-size: 36px; font-weight: 500; }
+.type-number-lg   { font-family: 'DM Mono', monospace; font-size: 24px; font-weight: 500; }
+.type-number      { font-family: 'DM Mono', monospace; font-size: 16px; font-weight: 400; }
+.type-number-sm   { font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 400; }
+.type-ticker      { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 500; letter-spacing: 0.06em; }
+
+/* ============================================
+   BUTTON SYSTEM
+   ============================================ */
+
+/* PRIMARY — Gold gradient, dark text */
+.btn-primary {
+  background: linear-gradient(135deg, #E8C97A 0%, #C9A96E 50%, #A38550 100%);
+  color: #060B14;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 11px 24px;
+  border-radius: 100px;
+  border: none;
+  box-shadow: 0 4px 20px rgba(201,169,110,0.25), inset 0 1px 0 rgba(255,255,255,0.15);
+  transition: box-shadow 0.2s ease, transform 0.1s ease;
+  cursor: pointer;
+}
+.btn-primary:hover {
+  box-shadow: 0 6px 28px rgba(201,169,110,0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.btn-primary:active {
+  transform: scale(0.97);
+}
+
+/* SECONDARY — Gold ghost */
+.btn-secondary {
+  background: transparent;
+  color: var(--gold-primary);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  padding: 10px 24px;
+  border-radius: 100px;
+  border: 1px solid rgba(201,169,110,0.3);
+  transition: background 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+}
+.btn-secondary:hover {
+  background: rgba(201,169,110,0.08);
+  border-color: rgba(201,169,110,0.5);
+}
+
+/* GHOST — Subtle */
+.btn-ghost {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+}
+.btn-ghost:hover {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  border-color: var(--border-gold);
+}
+
+/* ============================================
+   CARD SYSTEM
+   ============================================ */
+
+.card-premium {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--gold-border);
+  border-radius: 16px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-premium::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, transparent, var(--gold-primary), transparent);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.card-premium:hover {
+  border-color: var(--gold-border-hover);
+  box-shadow: var(--shadow-elevated);
+}
+
+.card-premium:hover::before {
+  opacity: 1;
 }
 
 /* ============================================
@@ -60,14 +274,15 @@ html, body {
 }
 
 .hero-gradient-bg {
-  background: radial-gradient(ellipse at 30% 20%, rgba(37, 99, 235, 0.15) 0%, transparent 50%),
-              radial-gradient(ellipse at 70% 80%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-              radial-gradient(ellipse at 50% 50%, rgba(6, 19, 31, 1) 0%, rgba(0, 0, 0, 1) 100%);
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 30%,  rgba(201, 169, 110, 0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 70%,  rgba(26, 43, 80, 0.5) 0%, transparent 60%),
+    radial-gradient(ellipse 100% 80% at 50% 50%, rgba(10, 16, 32, 1) 0%, rgba(6, 11, 20, 1) 100%);
   background-size: 200% 200%;
-  animation: gradient-shift 15s ease-in-out infinite;
+  animation: gradient-shift 20s ease-in-out infinite;
 }
 
-/* Floating particles */
+/* Floating particles — gold/navy */
 @keyframes float-particle {
   0%, 100% {
     transform: translateY(0px) translateX(0px);
@@ -105,57 +320,66 @@ html, body {
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: rgba(96, 165, 250, 0.6);
+  background: rgba(201, 169, 110, 0.4);
   animation: float-particle 8s ease-in-out infinite;
   pointer-events: none;
 }
 
 .particle:nth-child(odd) {
   animation: float-particle-alt 10s ease-in-out infinite;
-  background: rgba(139, 92, 246, 0.5);
+  background: rgba(26, 43, 80, 0.6);
   width: 2px;
   height: 2px;
 }
 
-/* Signal pulse — AI section */
+/* Signal pulse — gold version */
 @keyframes signal-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+    box-shadow: 0 0 0 0 rgba(201, 169, 110, 0.6);
   }
   70% {
-    box-shadow: 0 0 0 20px rgba(37, 99, 235, 0);
+    box-shadow: 0 0 0 16px rgba(201, 169, 110, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+    box-shadow: 0 0 0 0 rgba(201, 169, 110, 0);
   }
 }
 
 .signal-pulse {
-  animation: signal-pulse 2s infinite;
+  animation: signal-pulse 2.5s infinite;
+  background-color: #C9A96E;
 }
 
-/* Glow border on hover */
+/* Glow border on hover — gold */
 @keyframes glow-border {
   0%, 100% {
-    border-color: rgba(96, 165, 250, 0.2);
+    border-color: var(--gold-border);
   }
   50% {
-    border-color: rgba(96, 165, 250, 0.5);
+    border-color: var(--gold-border-hover);
   }
 }
 
 .card-glow:hover {
   animation: glow-border 2s ease-in-out infinite;
-  box-shadow: 0 0 30px -5px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 0 30px -5px rgba(201, 169, 110, 0.15);
 }
 
-/* Scan line effect for AI section */
+/* Scan line effect — gold */
 @keyframes scan-line {
   0% {
     top: -2px;
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  95% {
+    opacity: 1;
   }
   100% {
     top: 100%;
+    opacity: 0;
   }
 }
 
@@ -165,11 +389,11 @@ html, body {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.6), transparent);
+  background: linear-gradient(90deg, transparent, rgba(201, 169, 110, 0.6), transparent);
   animation: scan-line 3s linear infinite;
 }
 
-/* Shimmer effect for premium text */
+/* Gold shimmer text effect */
 @keyframes shimmer {
   0% {
     background-position: -200% center;
@@ -182,11 +406,11 @@ html, body {
 .text-shimmer {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.8) 0%,
-    rgba(96, 165, 250, 1) 25%,
-    rgba(255, 255, 255, 0.8) 50%,
-    rgba(139, 92, 246, 1) 75%,
-    rgba(255, 255, 255, 0.8) 100%
+    #EDE8DA 0%,
+    #E8C97A 25%,
+    #EDE8DA 50%,
+    #C9A96E 75%,
+    #EDE8DA 100%
   );
   background-size: 200% auto;
   -webkit-background-clip: text;
@@ -195,13 +419,13 @@ html, body {
   animation: shimmer 6s linear infinite;
 }
 
-/* Dashboard preview glow */
+/* Dashboard preview glow — gold */
 @keyframes dashboard-glow {
   0%, 100% {
-    box-shadow: 0 0 40px -10px rgba(37, 99, 235, 0.3), 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 50px -10px rgba(201, 169, 110, 0.18), 0 25px 50px -12px rgba(0,0,0,0.6);
   }
   50% {
-    box-shadow: 0 0 60px -10px rgba(37, 99, 235, 0.4), 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 70px -10px rgba(201, 169, 110, 0.30), 0 25px 50px -12px rgba(0,0,0,0.6);
   }
 }
 
@@ -228,6 +452,20 @@ html, body {
   animation: data-stream 3s ease-in-out infinite;
 }
 
+/* Star rotation for loading/decoration */
+@keyframes star-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.star-spin {
+  animation: star-rotate 4s linear infinite;
+}
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+
 /* Reduce motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -245,4 +483,189 @@ html, body {
   .particle:nth-child(n+9) {
     display: none;
   }
+}
+
+/* ============================================
+   MARQUEE TICKER (social proof bar)
+   ============================================ */
+
+@keyframes marquee-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll 28s linear infinite;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* ============================================
+   PREMIUM SECTION SEPARATOR
+   ============================================ */
+
+.section-sep {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 auto;
+  width: fit-content;
+}
+
+.section-sep::before,
+.section-sep::after {
+  content: '';
+  display: block;
+  width: 80px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(201,169,110,0.3));
+}
+
+.section-sep::after {
+  background: linear-gradient(to left, transparent, rgba(201,169,110,0.3));
+}
+
+/* ============================================
+   STAT NUMBER GLOW ON VIEWPORT ENTRY
+   ============================================ */
+
+.stat-number {
+  font-family: 'DM Mono', monospace;
+  color: var(--gold-primary);
+  transition: text-shadow 0.6s ease;
+}
+
+.stat-number.in-view {
+  text-shadow: 0 0 24px rgba(201,169,110,0.4);
+}
+
+/* ============================================
+   FEATURE CARD — REVEAL GRADIENT
+   ============================================ */
+
+.feature-reveal {
+  position: relative;
+  overflow: hidden;
+}
+
+.feature-reveal::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg,
+    rgba(201,169,110,0.04) 0%,
+    rgba(201,169,110,0) 60%
+  );
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.feature-reveal:hover::after {
+  opacity: 1;
+}
+
+/* ============================================
+   GOLD HORIZONTAL RULE
+   ============================================ */
+
+.hr-gold {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(201,169,110,0.25) 20%,
+    rgba(201,169,110,0.25) 80%,
+    transparent 100%
+  );
+  margin: 0;
+}
+
+/* ============================================
+   ENHANCED CARD HOVER — depth + gold glow
+   ============================================ */
+
+.card-premium {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid rgba(201,169,110,0.13);
+  border-radius: 16px;
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    transform 0.25s ease;
+}
+
+.card-premium::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 15%;
+  right: 15%;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, transparent, var(--gold-primary), transparent);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.card-premium:hover {
+  border-color: rgba(201,169,110,0.28);
+  box-shadow:
+    0 8px 40px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(201,169,110,0.1),
+    0 0 30px -8px rgba(201,169,110,0.12);
+  transform: translateY(-2px);
+}
+
+.card-premium:hover::before {
+  opacity: 1;
+}
+
+/* ============================================
+   TESTIMONIAL / SOCIAL PROOF CARD
+   ============================================ */
+
+.proof-card {
+  background: var(--bg-elevated);
+  border: 1px solid rgba(201,169,110,0.1);
+  border-radius: 14px;
+  padding: 20px 24px;
+  transition: border-color 0.3s ease;
+}
+
+.proof-card:hover {
+  border-color: rgba(201,169,110,0.25);
+}
+
+/* ============================================
+   LOADING SKELETON PULSE
+   ============================================ */
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+.skeleton {
+  background: var(--bg-elevated);
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* ============================================
+   PLOTLY FIXES
+   ============================================ */
+
+/* Fix Plotly hover tooltip jumping from top-left on first frame */
+.plotly .hoverlayer,
+.plotly .hoverlayer .hovertext,
+.plotly .hoverlayer path,
+.plotly .hoverlayer text {
+  transition: none !important;
+  animation: none !important;
 }

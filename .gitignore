@@ -26,13 +26,12 @@ data/
 ToDoList.txt
 
 # Agents
-.agents/
+.agent/
 AGENTS.md
 .cursor/
-GEMINI.md
 PRODUCTION_CONSTRAINTS.md
-improvement_report.md
 .antigravitycli
+donganhcapital_theme_rules.md
 
 #Reference model
 xgb_model.ipynb
@@ -42,7 +41,6 @@ xgb_model.ipynb
 .codex/
 .opencode/
 .mcp.json
-GEMINI-TUTORIAL.md
 
 # Project documentation
 docs/

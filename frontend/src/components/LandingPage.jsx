@@ -1,23 +1,36 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Menu, X, Bot, Cpu, Sparkles, ChevronUp } from 'lucide-react';
-import { FeaturesSection, AIAdvantageSection, FutureSection, QAndASection, AboutUsSection, FooterSection } from './LandingSections';
+import { ArrowRight, Menu, X, ChevronUp, Bot } from 'lucide-react';
+import {
+    HowItWorksSection,
+    FeaturesSection,
+    AIAgentSection,
+    AIAdvantageSection,
+    SocialProofSection,
+    TestimonialsSection,
+    FutureSection,
+    PricingSection,
+    QAndASection,
+    AboutUsSection,
+    FooterSection,
+    MarqueeTicker,
+} from './LandingSections';
+import { BrandedLoader, StarMark } from './BrandedLoader';
 
-// Animated counter hook
-const useCounter = (end, duration = 2000, startOnView = true) => {
+/* ── Animated counter hook ── */
+const useCounter = (end, duration = 2000) => {
     const [count, setCount] = useState(0);
     const [hasStarted, setHasStarted] = useState(false);
     const ref = useRef(null);
 
     useEffect(() => {
-        if (!startOnView) return;
         const observer = new IntersectionObserver(
             ([entry]) => { if (entry.isIntersecting && !hasStarted) setHasStarted(true); },
             { threshold: 0.3 }
         );
         if (ref.current) observer.observe(ref.current);
         return () => observer.disconnect();
-    }, [hasStarted, startOnView]);
+    }, [hasStarted]);
 
     useEffect(() => {
         if (!hasStarted) return;
@@ -34,28 +47,55 @@ const useCounter = (end, duration = 2000, startOnView = true) => {
     return { count, ref };
 };
 
-// Floating particles component
+/* ── Animation Variants ── */
+const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+        opacity: 1,
+        transition: { staggerChildren: 0.1, delayChildren: 0.05 }
+    },
+};
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 24 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } },
+};
+
+/* ── Floating particles ── */
 const FloatingParticles = () => {
-    const particles = Array.from({ length: 16 }, (_, i) => ({
+    const particles = Array.from({ length: 20 }, (_, i) => ({
         id: i,
-        left: `${Math.random() * 100}%`,
-        top: `${50 + Math.random() * 50}%`,
-        delay: `${Math.random() * 8}s`,
-        size: Math.random() > 0.5 ? '3px' : '2px',
+        x: Math.random() * 100,
+        y: Math.random() * 100,
+        size: Math.random() * 2 + 1,
+        duration: Math.random() * 8 + 6,
+        delay: Math.random() * 4,
+        opacity: Math.random() * 0.4 + 0.1,
     }));
 
     return (
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
             {particles.map(p => (
-                <div
+                <motion.div
                     key={p.id}
-                    className="particle"
+                    className="absolute rounded-full"
                     style={{
-                        left: p.left,
-                        top: p.top,
-                        animationDelay: p.delay,
+                        left: `${p.x}%`,
+                        top: `${p.y}%`,
                         width: p.size,
                         height: p.size,
+                        background: `rgba(201,169,110,${p.opacity})`,
+                    }}
+                    animate={{
+                        y: [0, -80, 0],
+                        x: [0, Math.random() > 0.5 ? 20 : -20, 0],
+                        opacity: [0, p.opacity, 0],
+                    }}
+                    transition={{
+                        duration: p.duration,
+                        delay: p.delay,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
                     }}
                 />
             ))}
@@ -63,81 +103,90 @@ const FloatingParticles = () => {
     );
 };
 
+/* ============================================================
+   LANDING PAGE
+   ============================================================ */
 const LandingPage = ({ onTabChange }) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [activeSection, setActiveSection] = useState('hero');
     const [navScrolled, setNavScrolled] = useState(false);
     const [showBackToTop, setShowBackToTop] = useState(false);
+    const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
 
     const scrollContainerRef = useRef(null);
 
-    // Animated counters for hero stats
-    const stocksCounter = useCounter(400, 2000);
+    /* Animated counters */
+    const stocksCounter = useCounter(400, 2200);
     const modelsCounter = useCounter(6, 1500);
+    const accuracyCounter = useCounter(87, 1800);
 
-    // 3.2: Navbar backdrop on scroll + back-to-top visibility
+    /* Mouse-based spotlight */
+    const handleMouseMove = useCallback((e) => {
+        setMousePos({
+            x: e.clientX / window.innerWidth,
+            y: e.clientY / window.innerHeight,
+        });
+    }, []);
+
+    /* Navbar backdrop + back-to-top */
     useEffect(() => {
         const container = scrollContainerRef.current;
         if (!container) return;
         const handleScroll = () => {
-            setNavScrolled(container.scrollTop > 100);
+            setNavScrolled(container.scrollTop > 60);
             setShowBackToTop(container.scrollTop > window.innerHeight * 0.8);
         };
         container.addEventListener('scroll', handleScroll, { passive: true });
         return () => container.removeEventListener('scroll', handleScroll);
     }, []);
 
-    // 3.1: IntersectionObserver to highlight active nav link on scroll
+    /* IntersectionObserver — with improved rootMargin to reduce missed triggers */
     useEffect(() => {
         const container = scrollContainerRef.current;
         if (!container) return;
 
-        const sectionIds = ['hero', 'features', 'ai-advantage', 'future', 'qna', 'about'];
+        const sectionIds = ['hero', 'how-it-works', 'features', 'ai-agents', 'ai-advantage', 'future', 'pricing', 'qna', 'about'];
+        let lastScrollTop = 0;
+
         const observer = new IntersectionObserver(
             (entries) => {
-                for (const entry of entries) {
+                entries.forEach((entry) => {
                     if (entry.isIntersecting) {
                         setActiveSection(entry.target.id || 'hero');
                     }
-                }
+                });
             },
-            { root: container, rootMargin: '-30% 0px -60% 0px', threshold: 0 }
+            { root: container, rootMargin: '-15% 0px -55% 0px', threshold: 0 }
         );
+
+        const handleScrollFallback = () => {
+            // Fallback: update based on current scroll if IntersectionObserver misses
+            const scrollTop = container.scrollTop;
+            lastScrollTop = scrollTop;
+        };
+        container.addEventListener('scroll', handleScrollFallback, { passive: true });
 
         sectionIds.forEach((id) => {
             const el = container.querySelector(`#${id}`);
             if (el) observer.observe(el);
         });
 
-        return () => observer.disconnect();
+        return () => {
+            observer.disconnect();
+            container.removeEventListener('scroll', handleScrollFallback);
+        };
     }, []);
 
-    const containerVariants = {
-        hidden: { opacity: 0 },
-        visible: {
-            opacity: 1,
-            transition: {
-                staggerChildren: 0.15,
-                delayChildren: 0.1
-            }
-        },
-    };
-
-    const itemVariants = {
-        hidden: { opacity: 0, y: 20 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" } }
-    };
-
     const navLinks = [
-        { id: 'features', label: 'Features' },
-        { id: 'ai-advantage', label: 'AI Advantage' },
-        { id: 'future', label: 'Roadmap' },
-        { id: 'qna', label: 'Q&A' },
-        { id: 'about', label: 'About' }
+        { id: 'features',      label: 'Platform' },
+        { id: 'ai-agents',     label: 'AI Agents' },
+        { id: 'pricing',       label: 'Pricing' },
+        { id: 'qna',           label: 'Q&A' },
+        { id: 'about',         label: 'About' },
     ];
 
-    // 3.1: Smooth scroll to section
-    const scrollToSection = (id) => {
+    /* Smooth scroll */
+    const scrollToSection = useCallback((id) => {
         const container = scrollContainerRef.current;
         if (!container) return;
         if (id === 'hero') {
@@ -146,213 +195,436 @@ const LandingPage = ({ onTabChange }) => {
         }
         const el = container.querySelector(`#${id}`);
         if (el) {
-            const offset = el.offsetTop - 80; // account for fixed nav
+            const containerRect = container.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            // Calculate absolute position relative to scroll container, minus header offset
+            const offset = elRect.top - containerRect.top + container.scrollTop - 72;
             container.scrollTo({ top: offset, behavior: 'smooth' });
         }
-    };
+    }, []);
 
     return (
-        <div className="w-full h-screen bg-[#000000] text-white flex flex-col relative overflow-hidden font-sans">
+        <div
+            className="w-full h-screen flex flex-col relative overflow-hidden"
+            style={{ backgroundColor: 'var(--bg-void)', color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}
+            onMouseMove={handleMouseMove}
+        >
+            {/* ── Deep void base ── */}
+            <div className="absolute inset-0 z-0" style={{ background: 'var(--bg-void)' }} />
 
-            {/* Premium animated gradient background — replaces Spline globe */}
-            <div className="absolute inset-0 z-0 hero-gradient-bg" />
-
-            {/* Hero background image — faded for texture */}
+            {/* ── Background image ── */}
             <div
-                className="absolute inset-0 z-0 opacity-20"
+                className="absolute inset-0 z-0"
                 style={{
-                    backgroundImage: 'url(/assets/hero_ai_trading.png)',
+                    backgroundImage: 'url(/assets/hero_premium_bg.png)',
                     backgroundSize: 'cover',
-                    backgroundPosition: 'center 40%',
+                    backgroundPosition: 'center center',
                     backgroundRepeat: 'no-repeat',
-                    maskImage: 'radial-gradient(ellipse at 50% 40%, black 20%, transparent 70%)',
-                    WebkitMaskImage: 'radial-gradient(ellipse at 50% 40%, black 20%, transparent 70%)',
+                    opacity: 0.5,
+                    maskImage: 'radial-gradient(ellipse 90% 80% at 50% 50%, black 0%, transparent 100%)',
+                    WebkitMaskImage: 'radial-gradient(ellipse 90% 80% at 50% 50%, black 0%, transparent 100%)',
                 }}
             />
 
-            {/* Floating particles */}
-            <FloatingParticles />
+            {/* ── Mouse-reactive gold spotlight ── */}
+            <div
+                className="absolute inset-0 z-0 pointer-events-none transition-opacity duration-700"
+                style={{
+                    background: `radial-gradient(ellipse 60% 50% at ${mousePos.x * 100}% ${mousePos.y * 100}%, rgba(201,169,110,0.07) 0%, transparent 70%)`,
+                }}
+            />
 
-            {/* 3.2: Navbar with scroll-aware backdrop */}
-            <nav className={`fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 md:px-12 py-4 md:py-5 flex items-center justify-between transition-all duration-300 ${navScrolled ? 'bg-black/80 backdrop-blur-lg border-b border-white/10' : ''}`}>
-                {/* Logo */}
-                <div
-                    className="text-white font-medium text-lg md:text-xl tracking-tight flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => scrollToSection('hero')}
-                >
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 text-white flex items-center justify-center font-bold text-lg rounded-lg">D</div>
-                    <span className="hidden sm:inline">DongAnh Capital</span>
-                    <span className="sm:hidden">DAC</span>
-                </div>
+            {/* ── Ambient top-center glow ── */}
+            <div
+                className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] z-0 pointer-events-none"
+                style={{
+                    background: 'radial-gradient(ellipse at 50% 0%, rgba(201,169,110,0.09) 0%, transparent 70%)',
+                    filter: 'blur(40px)',
+                }}
+            />
 
-                <div
-                    onMouseMove={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        e.currentTarget.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
-                        e.currentTarget.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
-                    }}
-                    className="group relative hidden md:flex items-center gap-8 text-sm font-medium text-gray-300 px-8 py-3 rounded-full bg-white/5 backdrop-blur-md border border-white/10"
-                >
+            {/* ── Grain texture overlay ── */}
+            <div
+                className="absolute inset-0 z-0 pointer-events-none opacity-[0.025]"
+                style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '200px 200px',
+                }}
+            />
+
+            {/* ============================================================
+                NAVBAR
+               ============================================================ */}
+            <nav
+                className="fixed top-0 left-0 right-0 z-50 transition-all duration-500"
+                style={{
+                    padding: navScrolled ? '12px 24px' : '18px 24px',
+                    ...(navScrolled ? {
+                        backgroundColor: 'rgba(6, 11, 20, 0.9)',
+                        backdropFilter: 'blur(20px)',
+                        WebkitBackdropFilter: 'blur(20px)',
+                        borderBottom: '1px solid rgba(201,169,110,0.12)',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                    } : {}),
+                }}
+            >
+                <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+                    {/* Logo */}
                     <div
-                        className="pointer-events-none absolute -inset-px opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-full"
-                        style={{
-                            background: `radial-gradient(100px circle at var(--mouse-x) var(--mouse-y), rgba(96, 165, 250, 0.8), transparent 100%)`,
-                            WebkitMask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
-                            WebkitMaskComposite: `xor`,
-                            maskComposite: `exclude`,
-                            padding: `1px`,
-                        }}
-                    />
-                    {navLinks.map((link) => (
-                        <button
-                            key={link.id}
-                            onClick={() => scrollToSection(link.id)}
-                            className={`transition-colors duration-300 relative ${activeSection === link.id ? 'text-blue-400 font-semibold drop-shadow-[0_0_8px_rgba(37,99,235,0.8)]' : 'hover:text-white'}`}
+                        className="flex items-center gap-3 cursor-pointer group shrink-0"
+                        onClick={() => scrollToSection('hero')}
+                    >
+                        <img
+                            src="/assets/NoBGLogoNoName.png"
+                            alt="DongAnh Capital"
+                            className="h-9 w-9 object-contain transition-all duration-300 group-hover:opacity-80"
+                            style={{ filter: 'drop-shadow(0 0 10px rgba(201,169,110,0.3))' }}
+                        />
+                        <span
+                            className="hidden sm:block font-semibold text-sm transition-opacity duration-200 group-hover:opacity-80"
+                            style={{
+                                fontFamily: "'Outfit', sans-serif",
+                                letterSpacing: '0.2em',
+                                textTransform: 'uppercase',
+                                color: 'var(--text-primary)',
+                            }}
                         >
-                            {link.label}
-                        </button>
-                    ))}
-                </div>
+                            DongAnh<span style={{ color: 'var(--gold-primary)' }}> Capital</span>
+                        </span>
+                    </div>
 
-                <div className="flex items-center gap-3">
-                    <button
-                        className="hidden md:flex px-5 py-2.5 text-sm font-medium rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-md hover:bg-white/20 transition-all cursor-pointer items-center gap-2 whitespace-nowrap"
-                        onClick={() => onTabChange && onTabChange('dashboard')}
-                    >
-                        Get Started — Free
-                        <ArrowRight size={16} />
-                    </button>
-                    {/* Hamburger — mobile only */}
-                    <button
-                        className="md:hidden flex items-center justify-center w-10 h-10 rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-md"
-                        onClick={() => setIsMobileMenuOpen(v => !v)}
-                        aria-label="Toggle menu"
-                    >
-                        {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-                    </button>
-                </div>
-            </nav>
-
-            {/* Mobile nav dropdown */}
-            <AnimatePresence>
-                {isMobileMenuOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -10, height: 0 }}
-                        animate={{ opacity: 1, y: 0, height: "auto" }}
-                        exit={{ opacity: 0, y: -10, height: 0 }}
-                        transition={{ duration: 0.25, ease: "easeOut" }}
-                        className="fixed top-[64px] left-0 right-0 z-50 md:hidden bg-black/95 backdrop-blur-md flex flex-col px-6 py-4 gap-1 overflow-hidden"
+                    {/* Desktop nav — glass pill */}
+                    <div
+                        className="hidden md:flex items-center gap-1 text-sm font-medium px-6 py-2.5 rounded-full"
+                        style={{
+                            background: 'rgba(14, 23, 41, 0.75)',
+                            backdropFilter: 'blur(20px)',
+                            WebkitBackdropFilter: 'blur(20px)',
+                            border: '1px solid rgba(201,169,110,0.14)',
+                        }}
                     >
                         {navLinks.map((link) => (
                             <button
                                 key={link.id}
-                                onClick={() => { scrollToSection(link.id); setIsMobileMenuOpen(false); }}
-                                className={`text-left py-3.5 text-lg font-medium border-b border-white/5 last:border-0 transition-colors ${activeSection === link.id ? 'text-blue-400' : 'text-gray-300'
-                                    }`}
+                                onClick={() => scrollToSection(link.id)}
+                                className="relative px-4 py-2 rounded-full transition-all duration-200 cursor-pointer"
+                                style={{
+                                    fontFamily: "'Outfit', sans-serif",
+                                    color: activeSection === link.id ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                                    fontWeight: activeSection === link.id ? 600 : 400,
+                                    background: activeSection === link.id ? 'rgba(201,169,110,0.08)' : 'transparent',
+                                    border: 'none',
+                                }}
                             >
                                 {link.label}
                             </button>
                         ))}
+                    </div>
+
+                    {/* CTA + Hamburger */}
+                    <div className="flex items-center gap-3 shrink-0">
                         <button
-                            onClick={() => { onTabChange && onTabChange('dashboard'); setIsMobileMenuOpen(false); }}
-                            className="mt-4 w-full py-3.5 px-5 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center justify-center gap-2 transition-colors"
+                            className="hidden md:flex items-center gap-2 whitespace-nowrap btn-primary cursor-pointer"
+                            style={{ padding: '10px 22px', fontSize: '13px' }}
+                            onClick={() => onTabChange && onTabChange('analyst')}
                         >
-                            Get Started — Free <ArrowRight size={16} />
+                            <Bot size={14} />
+                            View AI Signals
                         </button>
+                        <button
+                            className="md:hidden flex items-center justify-center w-10 h-10 rounded-full cursor-pointer"
+                            style={{
+                                border: '1px solid rgba(201,169,110,0.2)',
+                                background: 'rgba(14, 23, 41, 0.8)',
+                                color: 'var(--text-primary)',
+                                backdropFilter: 'blur(12px)',
+                            }}
+                            onClick={() => setIsMobileMenuOpen(v => !v)}
+                            aria-label="Toggle menu"
+                        >
+                            {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+                        </button>
+                    </div>
+                </div>
+            </nav>
+
+            {/* ── Mobile nav dropdown ── */}
+            <AnimatePresence>
+                {isMobileMenuOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.25, ease: 'easeOut' }}
+                        className="fixed top-[60px] left-0 right-0 z-50 md:hidden flex flex-col overflow-hidden"
+                        style={{
+                            background: 'rgba(6, 11, 20, 0.97)',
+                            backdropFilter: 'blur(20px)',
+                            borderBottom: '1px solid rgba(201,169,110,0.12)',
+                        }}
+                    >
+                        <div className="px-6 py-3 flex flex-col gap-1">
+                            {navLinks.map((link) => (
+                                <button
+                                    key={link.id}
+                                    onClick={() => { scrollToSection(link.id); setIsMobileMenuOpen(false); }}
+                                    className="text-left px-4 py-3.5 rounded-xl text-base font-medium transition-colors cursor-pointer"
+                                    style={{
+                                        fontFamily: "'Outfit', sans-serif",
+                                        color: activeSection === link.id ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                                        background: activeSection === link.id ? 'rgba(201,169,110,0.06)' : 'transparent',
+                                        border: 'none',
+                                    }}
+                                >
+                                    {link.label}
+                                </button>
+                            ))}
+                            <button
+                                onClick={() => { onTabChange && onTabChange('analyst'); setIsMobileMenuOpen(false); }}
+                                className="mt-2 w-full py-3.5 px-5 rounded-full font-semibold flex items-center justify-center gap-2 btn-primary cursor-pointer"
+                                style={{ fontSize: '15px' }}
+                            >
+                                <Bot size={16} />
+                                View AI Signals
+                            </button>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* All sections rendered inline inside scroll container */}
+            {/* ============================================================
+                SCROLL CONTAINER
+               ============================================================ */}
             <div ref={scrollContainerRef} className="flex-1 overflow-y-auto relative z-10">
 
-                {/* Hero Section */}
-                <div id="hero" className="min-h-[100dvh] flex flex-col items-center relative">
-                    {/* Dark overlay gradient below hero to separate from content */}
-                    <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black to-transparent z-10 pointer-events-none"></div>
+                {/* ── HERO SECTION ── */}
+                <div
+                    id="hero"
+                    className="relative flex flex-col items-center justify-center"
+                    style={{ minHeight: '100dvh' }}
+                >
+                    {/* Floating particles */}
+                    <FloatingParticles />
+
+                    {/* Bottom fade */}
+                    <div
+                        className="absolute bottom-0 left-0 right-0 h-64 z-10 pointer-events-none"
+                        style={{ background: 'linear-gradient(to top, var(--bg-void) 0%, transparent 100%)' }}
+                    />
 
                     <motion.div
                         variants={containerVariants}
                         initial="hidden"
                         animate="visible"
-                        className="flex flex-col items-center text-center max-w-5xl mx-auto w-full relative z-20 mt-auto mb-16 md:mb-24 pointer-events-auto px-4 sm:px-6"
+                        className="relative z-20 flex flex-col items-center text-center w-full max-w-5xl mx-auto px-5 sm:px-8"
+                        style={{ paddingTop: '120px', paddingBottom: '80px' }}
                     >
-                        {/* Badges */}
-                        <motion.div variants={itemVariants} className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-8 sm:mb-10">
-                            <div className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-xs font-semibold tracking-wide uppercase text-gray-200">
-                                <Bot size={12} className="text-blue-400" />
-                                <span className="text-gray-400">AI-POWERED SIGNALS</span>
-                            </div>
-                            <div className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-xs font-semibold tracking-wide uppercase text-gray-200">
-                                <Cpu size={12} className="text-purple-400" />
-                                <span className="text-gray-400">6 PROPRIETARY MODELS</span>
-                            </div>
-                            <div className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-xs font-semibold tracking-wide uppercase text-gray-200">
-                                <Sparkles size={12} className="text-amber-400" />
-                                <span className="text-gray-400">COMPLETELY FREE</span>
-                            </div>
+                        {/* ── Overline label ── */}
+                        <motion.div variants={itemVariants} className="flex items-center gap-3 mb-8">
+                            <motion.div
+                                animate={{ scaleX: [0, 1] }}
+                                transition={{ duration: 0.8, delay: 0.3 }}
+                                style={{ width: '32px', height: '1px', background: 'var(--gold-primary)', opacity: 0.6 }}
+                            />
+                            <motion.span
+                                animate={{ opacity: [0, 1] }}
+                                transition={{ duration: 1, delay: 0.5 }}
+                                style={{
+                                    fontFamily: "'Outfit', sans-serif",
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    letterSpacing: '0.28em',
+                                    textTransform: 'uppercase',
+                                    color: 'var(--gold-primary)',
+                                }}
+                            >
+                                AI Intelligence for Vietnamese Markets
+                            </motion.span>
+                            <motion.div
+                                animate={{ scaleX: [0, 1] }}
+                                transition={{ duration: 0.8, delay: 0.3 }}
+                                style={{ width: '32px', height: '1px', background: 'var(--gold-primary)', opacity: 0.6, transformOrigin: 'right' }}
+                            />
                         </motion.div>
 
-                        {/* Main headline */}
-                        <motion.h1 variants={itemVariants} className="text-3xl sm:text-5xl md:text-6xl lg:text-[72px] font-bold leading-[1.08] tracking-tighter mb-4 pb-2 cursor-default">
-                            <span className="bg-clip-text text-transparent bg-gradient-to-b from-white to-gray-400">Make Trading AI Agents</span>
-                            <br />
-                            <span className="text-shimmer">Your Unfair Advantage</span>
+                        {/* ── Main headline ── */}
+                        <motion.h1 variants={itemVariants} className="mb-7 cursor-default">
+                            <span
+                                className="block"
+                                style={{
+                                    fontFamily: "'Cormorant Garamond', Georgia, serif",
+                                    fontSize: 'clamp(38px, 6.5vw, 80px)',
+                                    fontWeight: 600,
+                                    lineHeight: 1.04,
+                                    color: 'var(--text-primary)',
+                                    letterSpacing: '-0.02em',
+                                }}
+                            >
+                                Make trading AI agents
+                            </span>
+                            <span
+                                className="block"
+                                style={{
+                                    fontFamily: "'Cormorant Garamond', Georgia, serif",
+                                    fontSize: 'clamp(40px, 7.5vw, 88px)',
+                                    fontWeight: 700,
+                                    lineHeight: 1.04,
+                                    letterSpacing: '-0.02em',
+                                    paddingBottom: '6px',
+                                    background: 'linear-gradient(135deg, var(--gold-bright, #E8C97A), var(--gold-primary, #C9A96E))',
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                }}
+                            >
+                                your unfair advantage
+                            </span>
                         </motion.h1>
 
-                        {/* Subtitle */}
-                        <motion.p variants={itemVariants} className="text-sm sm:text-base md:text-lg text-gray-400 max-w-xl mx-auto mb-4 leading-relaxed font-medium cursor-default">
-                            Our AI analyzes 400+ Vietnamese stocks daily so you don't have to. Proprietary signals, real-time intelligence, zero cost.
+                        {/* ── Subtitle ── */}
+                        <motion.p
+                            variants={itemVariants}
+                            className="max-w-[580px] mx-auto mb-3 leading-relaxed cursor-default"
+                            style={{
+                                fontFamily: "'Outfit', sans-serif",
+                                fontSize: 'clamp(14px, 2.2vw, 18px)',
+                                fontWeight: 400,
+                                color: 'var(--text-secondary)',
+                                lineHeight: 1.7,
+                            }}
+                        >
+                            An AI Agent that tracks market news, learns your trading style, suggests trades tailored to your taste, and executes with your approval — across 400+ Vietnamese equities.
                         </motion.p>
 
-                        {/* Free pricing statement */}
-                        <motion.p variants={itemVariants} className="text-xs sm:text-sm text-gray-500 mb-8 cursor-default">
-                            No credit card required. No hidden fees. Start in 30 seconds.
+                        {/* ── Trust micro-line ── */}
+                        <motion.p
+                            variants={itemVariants}
+                            className="mb-9 cursor-default"
+                            style={{
+                                fontFamily: "'Outfit', sans-serif",
+                                fontSize: '12px',
+                                color: 'var(--text-muted)',
+                                letterSpacing: '0.04em',
+                            }}
+                        >
+                            No credit card · No hidden fees · Free forever
                         </motion.p>
 
-                        {/* CTA button */}
-                        <motion.div variants={itemVariants}>
-                            <button
-                                onClick={() => onTabChange && onTabChange('dashboard')}
-                                className="group px-8 py-4 text-sm sm:text-base font-semibold rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center gap-2.5 transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98]"
+                        {/* ── Dual CTA ── */}
+                        <motion.div variants={itemVariants} className="flex flex-wrap items-center justify-center gap-3 mb-14">
+                            <motion.button
+                                whileHover={{ scale: 1.03 }}
+                                whileTap={{ scale: 0.97 }}
+                                onClick={() => onTabChange && onTabChange('analyst')}
+                                className="group flex items-center gap-2.5 btn-primary cursor-pointer"
+                                style={{ padding: '14px 32px', fontSize: '15px' }}
                             >
-                                Start Getting Signals
-                                <ArrowRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
-                            </button>
+                                <Bot size={16} />
+                                Meet Your AI Agent
+                                <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                            </motion.button>
+
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.97 }}
+                                onClick={() => scrollToSection('how-it-works')}
+                                className="flex items-center gap-2 btn-secondary cursor-pointer"
+                                style={{ padding: '13px 28px', fontSize: '14px' }}
+                            >
+                                How It Works ↓
+                            </motion.button>
                         </motion.div>
 
-                        {/* Social proof counters */}
-                        <motion.div variants={itemVariants} className="flex flex-wrap justify-center gap-6 md:gap-10 mt-12 text-center">
-                            <div ref={stocksCounter.ref}>
-                                <span className="text-2xl md:text-3xl font-black text-white">{stocksCounter.count}+</span>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider mt-1 font-semibold">Stocks Analyzed Daily</p>
-                            </div>
-                            <div className="w-px h-10 bg-white/10 hidden md:block"></div>
-                            <div>
-                                <span className="text-2xl md:text-3xl font-black text-white">Real-time</span>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider mt-1 font-semibold">Market Intelligence</p>
-                            </div>
-                            <div className="w-px h-10 bg-white/10 hidden md:block"></div>
-                            <div ref={modelsCounter.ref}>
-                                <span className="text-2xl md:text-3xl font-black text-white">{modelsCounter.count}</span>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider mt-1 font-semibold">AI Models</p>
-                            </div>
+                        {/* ── Stats row ── */}
+                        <motion.div
+                            variants={itemVariants}
+                            className="flex flex-wrap justify-center items-center gap-0"
+                            style={{
+                                background: 'rgba(14, 23, 41, 0.7)',
+                                backdropFilter: 'blur(16px)',
+                                border: '1px solid rgba(201,169,110,0.13)',
+                                borderRadius: '16px',
+                                padding: '20px 32px',
+                            }}
+                        >
+                            {[
+                                { ref: stocksCounter.ref, value: `${stocksCounter.count}+`, label: 'Stocks Monitored' },
+                                { ref: null, value: 'Real-time', label: 'Market Intelligence' },
+                                { ref: modelsCounter.ref, value: modelsCounter.count.toString(), label: 'AI Models' },
+                                { ref: accuracyCounter.ref, value: `${accuracyCounter.count}%`, label: 'Avg. Signal Score' },
+                            ].map((stat, i, arr) => (
+                                <React.Fragment key={i}>
+                                    <div ref={stat.ref} className="flex flex-col items-center px-6 sm:px-8 py-2">
+                                        <motion.span
+                                            animate={{ textShadow: ['0 0 0px rgba(201,169,110,0)', '0 0 20px rgba(201,169,110,0.4)', '0 0 0px rgba(201,169,110,0)'] }}
+                                            transition={{ duration: 3, repeat: Infinity, delay: i * 0.5 }}
+                                            style={{
+                                                fontFamily: "'DM Mono', monospace",
+                                                fontSize: 'clamp(20px, 3vw, 26px)',
+                                                fontWeight: 500,
+                                                color: 'var(--gold-primary)',
+                                                lineHeight: 1,
+                                            }}
+                                        >
+                                            {stat.value}
+                                        </motion.span>
+                                        <p className="type-label mt-2" style={{ whiteSpace: 'nowrap' }}>
+                                            {stat.label}
+                                        </p>
+                                    </div>
+                                    {i < arr.length - 1 && (
+                                        <div
+                                            className="hidden sm:block h-10 w-px"
+                                            style={{ background: 'rgba(201,169,110,0.15)' }}
+                                        />
+                                    )}
+                                </React.Fragment>
+                            ))}
+                        </motion.div>
+
+                        {/* ── Art deco divider ── */}
+                        <motion.div variants={itemVariants} className="mt-10 flex items-center gap-4" style={{ opacity: 0.25 }}>
+                            <div style={{ width: '56px', height: '1px', background: 'linear-gradient(to right, transparent, var(--gold-primary))' }} />
+                            <StarMark size={12} />
+                            <div style={{ width: '56px', height: '1px', background: 'linear-gradient(to left, transparent, var(--gold-primary))' }} />
+                        </motion.div>
+
+                        {/* ── Scroll cue ── */}
+                        <motion.div
+                            variants={itemVariants}
+                            className="mt-8 flex flex-col items-center gap-2"
+                            style={{ opacity: 0.35 }}
+                        >
+                            <motion.div
+                                animate={{ y: [0, 7, 0] }}
+                                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M10 4v12M5 11l5 5 5-5" stroke="var(--gold-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </motion.div>
                         </motion.div>
                     </motion.div>
                 </div>
 
-                {/* Dark section background for content below hero */}
-                <div className="bg-black relative z-20">
+                {/* ── Content sections below hero ── */}
+                <div className="relative z-20" style={{ backgroundColor: 'var(--bg-base)' }}>
+                    <MarqueeTicker />
+                    <HowItWorksSection />
+                    <SocialProofSection />
                     <FeaturesSection />
+                    <AIAgentSection onTabChange={onTabChange} />
                     <AIAdvantageSection onTabChange={onTabChange} />
+                    <TestimonialsSection />
                     <FutureSection />
+                    <PricingSection onTabChange={onTabChange} />
                     <QAndASection />
                     <AboutUsSection />
                     <FooterSection />
                 </div>
             </div>
 
-            {/* Back to top button */}
+            {/* ── Back to top button ── */}
             <AnimatePresence>
                 {showBackToTop && (
                     <motion.button
@@ -361,7 +633,13 @@ const LandingPage = ({ onTabChange }) => {
                         exit={{ opacity: 0, scale: 0.8 }}
                         transition={{ duration: 0.2 }}
                         onClick={() => scrollToSection('hero')}
-                        className="fixed bottom-6 right-6 z-50 w-11 h-11 rounded-full bg-white/10 border border-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-all shadow-lg"
+                        className="fixed bottom-6 right-6 z-50 w-11 h-11 rounded-full flex items-center justify-center shadow-lg cursor-pointer"
+                        style={{
+                            background: 'rgba(14, 23, 41, 0.9)',
+                            border: '1px solid rgba(201,169,110,0.25)',
+                            color: 'var(--gold-primary)',
+                            backdropFilter: 'blur(12px)',
+                        }}
                         aria-label="Back to top"
                     >
                         <ChevronUp size={20} />
