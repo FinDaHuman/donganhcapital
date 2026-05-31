@@ -8,6 +8,7 @@ import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Search } from 'lucide-react';
+import { BrandedLoader } from './components/BrandedLoader';
 
 function App() {
     const [activeTab, setActiveTab] = useState('home');
@@ -90,7 +91,7 @@ function App() {
                 <main className="flex-1 overflow-hidden relative flex flex-col min-h-0" style={{ backgroundColor: '#000' }}>
 
                     {activeTab === 'home' && (
-                        <div className="h-full w-full overflow-y-auto">
+                        <div className="h-full w-full overflow-hidden">
                             <LandingPage onTabChange={setActiveTab} />
                         </div>
                     )}
@@ -110,12 +111,11 @@ function App() {
                                 {/* Chart Container */}
                                 <div className="flex-1 relative bg-black min-h-0 overflow-hidden">
                                     {loading ? (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-[#111213] flex-col gap-4 z-10">
-                                            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                                            <span className="text-gray-400 font-medium tracking-wide animate-pulse">Loading {selectedTicker} Data...</span>
+                                        <div className="absolute inset-0 flex items-center justify-center flex-col gap-6 z-10" style={{ background: 'var(--bg-void)' }}>
+                                            <BrandedLoader label={`Loading ${selectedTicker}...`} />
                                         </div>
                                     ) : error ? (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-[#111213] flex-col gap-4 z-10">
+                                        <div className="absolute inset-0 flex items-center justify-center flex-col gap-4 z-10" style={{ background: 'var(--bg-void)' }}>
                                             <div className="text-red-400 font-medium tracking-wide bg-red-500/10 px-4 py-2 rounded border border-red-500/20 shadow break-words max-w-md text-center">{error}</div>
                                             <div className="flex gap-4 mt-2">
                                                 <button 
@@ -215,4 +215,3 @@ function App() {
 }
 
 export default App;
- App;

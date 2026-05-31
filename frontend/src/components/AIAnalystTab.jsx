@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getAISignals, getAISignalsDates, getAISignalsSummary, getTradeHistory } from '../services/stock_api';
+import { BrandedLoader } from './BrandedLoader';
 
 const SortIndicator = ({ sortConfig, columnKey }) => {
     if (!sortConfig || sortConfig.key !== columnKey) return null;
@@ -246,7 +247,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
 
                         {loading ? (
                             <div className="flex justify-center items-center py-20">
-                                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                <BrandedLoader label="Loading signals..." />
                             </div>
                         ) : data.signals.length === 0 ? (() => {
                             const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
@@ -386,7 +387,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                         {/* Trade History Table */}
                         {tradesLoading ? (
                             <div className="flex justify-center items-center py-20">
-                                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                <BrandedLoader label="Loading history..." />
                             </div>
                         ) : sortedTrades.length === 0 ? (
                             <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center">

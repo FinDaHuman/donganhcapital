@@ -283,22 +283,82 @@ const Dashboard = ({ onSelectStock }) => {
     if (!gateOpen) {
         const pct = progress.total > 0 ? Math.round((progress.loaded / Math.max(progress.total, MIN_STOCKS_TO_SHOW)) * 100) : 0;
         return (
-            <div className="flex-1 w-full flex flex-col items-center justify-center bg-[#111213] gap-6 p-8">
-                <div className="flex flex-col items-center gap-4 max-w-md w-full">
-                    <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <h2 className="text-xl font-bold text-white tracking-wide">Loading Market Data</h2>
-                    <p className="text-gray-500 text-sm text-center">
-                        Fetching live data from VN stock exchange. This takes about a minute on cold start.
-                    </p>
-                    <div className="w-full bg-[#1a1c1e] rounded-full h-3 border border-[#2a2e39] overflow-hidden">
-                        <div
-                            className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all duration-700 ease-out"
-                            style={{ width: `${Math.min(pct, 100)}%` }}
-                        ></div>
+            <div
+                className="flex-1 w-full flex flex-col items-center justify-center gap-8 p-8"
+                style={{ background: 'var(--bg-void)' }}
+            >
+                <div className="flex flex-col items-center gap-6 max-w-sm w-full">
+                    {/* Branded gold loader */}
+                    <div className="relative w-16 h-16">
+                        <svg
+                            className="absolute inset-0 w-full h-full animate-spin"
+                            style={{ animationDuration: '2s' }}
+                            viewBox="0 0 64 64"
+                            fill="none"
+                        >
+                            <circle cx="32" cy="32" r="28" stroke="rgba(201,169,110,0.12)" strokeWidth="2" />
+                            <path
+                                d="M32 4 A28 28 0 0 1 60 32"
+                                stroke="url(#goldArcDash)"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                            />
+                            <defs>
+                                <linearGradient id="goldArcDash" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stopColor="#E8C97A" />
+                                    <stop offset="100%" stopColor="rgba(201,169,110,0)" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <svg width="22" height="22" viewBox="0 0 16 16" style={{ animation: 'star-rotate 4s linear infinite' }}>
+                                <path d="M8 0 L9 6.5 L16 8 L9 9.5 L8 16 L7 9.5 L0 8 L7 6.5 Z" fill="#C9A96E" />
+                            </svg>
+                        </div>
                     </div>
-                    <div className="flex justify-between w-full text-xs text-gray-500">
-                        <span>{progress.loaded} / {progress.total || '...'} stocks loaded</span>
-                        <span className="text-blue-400 font-mono">{pct}%</span>
+
+                    <div className="text-center">
+                        <h2
+                            style={{
+                                fontFamily: "'Outfit', sans-serif",
+                                fontSize: '18px',
+                                fontWeight: 600,
+                                color: 'var(--text-primary)',
+                                letterSpacing: '0.02em',
+                                marginBottom: '8px',
+                            }}
+                        >
+                            Loading Market Data
+                        </h2>
+                        <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                            Fetching live data from VN stock exchange.{' '}
+                            <br className="hidden sm:block" />
+                            This takes about a minute on cold start.
+                        </p>
+                    </div>
+
+                    {/* Gold progress bar */}
+                    <div className="w-full space-y-2">
+                        <div
+                            className="w-full rounded-full h-1.5 overflow-hidden"
+                            style={{ background: 'var(--bg-elevated)', border: '1px solid rgba(201,169,110,0.1)' }}
+                        >
+                            <div
+                                className="h-full rounded-full transition-all duration-700 ease-out"
+                                style={{
+                                    width: `${Math.min(pct, 100)}%`,
+                                    background: 'linear-gradient(90deg, #A38550, #C9A96E, #E8C97A)',
+                                }}
+                            />
+                        </div>
+                        <div className="flex justify-between">
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'var(--text-muted)' }}>
+                                {progress.loaded} / {progress.total || '...'} stocks
+                            </span>
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'var(--gold-muted)', fontWeight: 500 }}>
+                                {pct}%
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -307,15 +367,61 @@ const Dashboard = ({ onSelectStock }) => {
 
     // --- Normal Dashboard ---
     return (
-        <div className="flex-1 w-full flex flex-col bg-[#111213] overflow-hidden p-2 gap-2">
+        <div className="flex-1 w-full flex flex-col overflow-hidden p-2 gap-2" style={{ background: 'var(--bg-void)' }}>
             <div className="grid grid-cols-2 sm:grid-cols-4 w-full shrink-0 gap-2">
                 {indices.map(idx => (
-                    <div key={idx.name} className="flex-1 bg-[#1a1c1e] border border-[#2a2e39] rounded-lg p-3 hover:bg-[#25282c] transition-colors cursor-pointer flex flex-col justify-center">
+                    <div
+                        key={idx.name}
+                        className="flex-1 rounded-lg p-3 cursor-pointer flex flex-col justify-center"
+                        style={{
+                            background: 'var(--bg-surface)',
+                            border: '1px solid rgba(201,169,110,0.1)',
+                            willChange: 'background-color, border-color',
+                            transition: 'background-color 200ms ease, border-color 200ms ease',
+                        }}
+                        onMouseEnter={e => {
+                            e.currentTarget.style.backgroundColor = 'var(--bg-elevated)';
+                            e.currentTarget.style.borderColor = 'rgba(201,169,110,0.2)';
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
+                            e.currentTarget.style.borderColor = 'rgba(201,169,110,0.1)';
+                        }}
+                    >
                         <div className="flex justify-between items-center mb-1">
-                            <span className="font-bold text-sm text-gray-300">{idx.name}</span>
-                            <span className={`text-xs font-bold ${idx.chg.includes('+') ? 'text-green-500' : idx.chg.includes('-') ? 'text-red-500' : 'text-yellow-500'}`}>{idx.chg}</span>
+                            <span
+                                style={{
+                                    fontFamily: "'Outfit', sans-serif",
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    letterSpacing: '0.14em',
+                                    textTransform: 'uppercase',
+                                    color: 'var(--text-muted)',
+                                }}
+                            >
+                                {idx.name}
+                            </span>
+                            <span
+                                style={{
+                                    fontFamily: "'DM Mono', monospace",
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    color: idx.chg.includes('+') ? 'var(--market-up)' : idx.chg.includes('-') ? 'var(--market-down)' : 'var(--market-neutral)',
+                                }}
+                            >
+                                {idx.chg}
+                            </span>
                         </div>
-                        <div className="text-xl font-mono text-gray-200">{idx.val}</div>
+                        <div
+                            style={{
+                                fontFamily: "'DM Mono', monospace",
+                                fontSize: '18px',
+                                fontWeight: 500,
+                                color: 'var(--text-primary)',
+                            }}
+                        >
+                            {idx.val}
+                        </div>
                     </div>
                 ))}
             </div>
