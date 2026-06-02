@@ -8,9 +8,10 @@ logger = logging.getLogger(__name__)
 
 # List of RSS feeds for Vietnam financial news
 RSS_FEEDS = [
-    "https://cafef.vn/rss/thi-truong-chung-khoan.rss",
+    "https://vnexpress.net/rss/kinh-doanh/chung-khoan.rss",
+    "https://baodautu.vn/chung-khoan.rss",
     "https://vietstock.vn/rss/chung-khoan.rss",
-    "https://vneconomy.vn/chung-khoan.rss" # Added vneconomy as fallback
+    "https://vneconomy.vn/chung-khoan.rss"
 ]
 
 def fetch_latest_news(max_articles=3):
