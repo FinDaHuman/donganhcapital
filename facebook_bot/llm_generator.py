@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 import os
 import logging
 import random
@@ -25,8 +25,7 @@ def generate_facebook_post(action_data):
         logger.error("GEMINI_API_KEY environment variable not set.")
         return None
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    client = genai.Client(api_key=api_key)
     
     system_rules = load_system_rules()
     post_type = action_data.get("type")
@@ -107,7 +106,10 @@ def generate_facebook_post(action_data):
         return None
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
         return response.text
     except Exception as e:
         logger.error(f"Error generating content with Gemini: {e}")

@@ -9,7 +9,8 @@ logger = logging.getLogger(__name__)
 # List of RSS feeds for Vietnam financial news
 RSS_FEEDS = [
     "https://cafef.vn/rss/thi-truong-chung-khoan.rss",
-    "https://vietstock.vn/rss/chung-khoan.rss"
+    "https://vietstock.vn/rss/chung-khoan.rss",
+    "https://vneconomy.vn/chung-khoan.rss" # Added vneconomy as fallback
 ]
 
 def fetch_latest_news(max_articles=3):
@@ -23,10 +24,22 @@ def fetch_latest_news(max_articles=3):
     feeds_to_fetch = RSS_FEEDS.copy()
     random.shuffle(feeds_to_fetch)
     
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    }
+    
     for feed_url in feeds_to_fetch:
         logger.info(f"Fetching RSS feed: {feed_url}")
         try:
-            feed = feedparser.parse(feed_url)
+            # Some Vietnamese news sites block standard urllib requests (which feedparser uses)
+            # We fetch the raw XML via requests first using a browser user-agent
+            response = requests.get(feed_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            # Parse the raw XML content string
+            feed = feedparser.parse(response.content)
+            
             for entry in feed.entries[:max_articles]:
                 articles.append({
                     "title": entry.title,
