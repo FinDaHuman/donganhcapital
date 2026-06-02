@@ -10,10 +10,10 @@ def clean_markdown(text):
     """Robustly strips markdown formatting characters to ensure clean Facebook display."""
     if not text:
         return text
-    # Remove bold/italic markers (**, __, *, _)
-    text = re.sub(r'(\*\*|\_\_|\*|\_)', '', text)
-    # Remove headers (e.g. ### Title -> Title)
-    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+    # Remove bold markers
+    text = text.replace('**', '')
+    # Remove header hashes ONLY if followed by a space (protects #hashtags)
+    text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
     # Remove horizontal rules
     text = re.sub(r'^\s*[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
     # Clean up multiple consecutive newlines
