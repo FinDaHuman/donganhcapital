@@ -82,7 +82,7 @@ def generate_facebook_post(action_data):
         concepts = [
             "Quản trị rủi ro: Tại sao phải luôn đặt Stop Loss (Cắt lỗ)?",
             "Mô hình giá Breakout: Dấu hiệu nhận biết dòng tiền lớn tham gia.",
-            "Tâm lý giao dịch: Cách tránh FOMA (Sợ lỡ cơ hội) trong những phiên tăng nóng.",
+            "Tâm lý giao dịch: Cách tránh FOMO (Sợ lỡ cơ hội) trong những phiên tăng nóng.",
             "Tại sao khối lượng giao dịch (Volume) lại quan trọng khi phân tích cổ phiếu?"
         ]
         concept = random.choice(concepts)
@@ -110,7 +110,12 @@ def generate_facebook_post(action_data):
             model='gemini-2.5-flash',
             contents=prompt,
         )
-        return response.text
+        # Post-process to remove stubborn markdown characters
+        clean_text = response.text
+        clean_text = clean_text.replace("**", "")
+        clean_text = clean_text.replace("### ", "")
+        clean_text = clean_text.replace("---", "")
+        return clean_text
     except Exception as e:
         logger.error(f"Error generating content with Gemini: {e}")
         return None
