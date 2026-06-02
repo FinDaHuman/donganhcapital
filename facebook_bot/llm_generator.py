@@ -2,8 +2,23 @@ from google import genai
 import os
 import logging
 import random
+import re
 
 logger = logging.getLogger(__name__)
+
+def clean_markdown(text):
+    """Robustly strips markdown formatting characters to ensure clean Facebook display."""
+    if not text:
+        return text
+    # Remove bold/italic markers (**, __, *, _)
+    text = re.sub(r'(\*\*|\_\_|\*|\_)', '', text)
+    # Remove headers (e.g. ### Title -> Title)
+    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+    # Remove horizontal rules
+    text = re.sub(r'^\s*[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+    # Clean up multiple consecutive newlines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 def load_system_rules():
     """Loads the content generation rules from rule.md"""
@@ -110,12 +125,7 @@ def generate_facebook_post(action_data):
             model='gemini-2.5-flash',
             contents=prompt,
         )
-        # Post-process to remove stubborn markdown characters
-        clean_text = response.text
-        clean_text = clean_text.replace("**", "")
-        clean_text = clean_text.replace("### ", "")
-        clean_text = clean_text.replace("---", "")
-        return clean_text
+        return clean_markdown(response.text)
     except Exception as e:
         logger.error(f"Error generating content with Gemini: {e}")
         return None
