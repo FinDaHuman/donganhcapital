@@ -4,9 +4,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def post_to_facebook(message):
+def post_to_facebook(message, link=None):
     """
     Posts a given message text to the configured Facebook Page.
+    If 'link' is provided, Facebook will automatically fetch the image (thumbnail)
+    and display it along with the post.
     """
     page_id = os.environ.get("FB_PAGE_ID")
     page_token = os.environ.get("FB_PAGE_TOKEN")
@@ -21,6 +23,10 @@ def post_to_facebook(message):
         "message": message,
         "access_token": page_token
     }
+    
+    # Adding a link will force Facebook to display a preview card with an image
+    if link:
+        payload["link"] = link
     
     try:
         response = requests.post(url, data=payload)
