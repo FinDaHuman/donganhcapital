@@ -121,29 +121,36 @@ def generate_facebook_post(action_data):
         logger.error("Unknown post type.")
         return None
 
+    # We prioritize the fast model, then fall back to the pro model if unavailable.
+    models_to_try = ['gemini-2.5-flash', 'gemini-2.5-pro']
+    
     max_retries = 3
     base_delay = 10  # Base delay of 10 seconds
 
     for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
-            return clean_markdown(response.text)
-        except Exception as e:
-            error_msg = str(e)
-            # Check for transient errors like 503, 429, or general unavailability
-            if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg or "ResourceExhausted" in error_msg:
-                if attempt < max_retries - 1:
-                    # Exponential backoff: 10s, 20s... plus jitter
-                    delay = base_delay * (2 ** attempt) + random.uniform(1, 5)
-                    logger.warning(f"Gemini API busy (503/429). Attempt {attempt + 1}/{max_retries} failed. Retrying in {delay:.1f}s...")
-                    time.sleep(delay)
+        for model_name in models_to_try:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
+                return clean_markdown(response.text)
+            except Exception as e:
+                error_msg = str(e)
+                # Check for transient errors like 503, 429, or general unavailability
+                if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg or "ResourceExhausted" in error_msg:
+                    logger.warning(f"Model {model_name} busy (503/429). Attempt {attempt + 1}/{max_retries} failed: {error_msg}. Trying next model if available...")
+                    continue # Try the next model in the fallback list immediately
                 else:
-                    logger.error(f"Max retries ({max_retries}) reached. Gemini API is still unavailable: {e}")
+                    # For non-transient errors (e.g., 400 Bad Request, auth issues), fail immediately
+                    logger.error(f"Error generating content with {model_name}: {e}")
                     return None
-            else:
-                # For non-transient errors (e.g., 400 Bad Request, auth issues), fail immediately
-                logger.error(f"Error generating content with Gemini: {e}")
-                return None
+                    
+        # If all models in the fallback list failed due to being busy, wait before retrying the whole list
+        if attempt < max_retries - 1:
+            delay = base_delay * (2 ** attempt) + random.uniform(1, 5)
+            logger.warning(f"All models busy. Retrying in {delay:.1f}s...")
+            time.sleep(delay)
+        else:
+            logger.error(f"Max retries ({max_retries}) reached. Gemini API is still unavailable across all fallback models.")
+            return None
