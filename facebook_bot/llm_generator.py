@@ -3,6 +3,7 @@ import os
 import logging
 import random
 import re
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -120,12 +121,29 @@ def generate_facebook_post(action_data):
         logger.error("Unknown post type.")
         return None
 
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
-        return clean_markdown(response.text)
-    except Exception as e:
-        logger.error(f"Error generating content with Gemini: {e}")
-        return None
+    max_retries = 3
+    base_delay = 10  # Base delay of 10 seconds
+
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+            )
+            return clean_markdown(response.text)
+        except Exception as e:
+            error_msg = str(e)
+            # Check for transient errors like 503, 429, or general unavailability
+            if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg or "ResourceExhausted" in error_msg:
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 10s, 20s... plus jitter
+                    delay = base_delay * (2 ** attempt) + random.uniform(1, 5)
+                    logger.warning(f"Gemini API busy (503/429). Attempt {attempt + 1}/{max_retries} failed. Retrying in {delay:.1f}s...")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"Max retries ({max_retries}) reached. Gemini API is still unavailable: {e}")
+                    return None
+            else:
+                # For non-transient errors (e.g., 400 Bad Request, auth issues), fail immediately
+                logger.error(f"Error generating content with Gemini: {e}")
+                return None
