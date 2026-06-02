@@ -17,7 +17,7 @@ This file contains strict rules that the LLM MUST adhere to when generating cont
 ## 3. PROMOTIONAL GUIDELINES
 - Integrate promotional messaging naturally.
 - Always include a call-to-action (CTA) pointing to the DongAnhCapital website.
-  *Example CTA:* `💡 Khám phá thêm các tín hiệu giao dịch AI và phân tích chuyên sâu hoàn toàn miễn phí tại: donganhcapital.com`
+  *Example CTA:* `💡 Khám phá thêm các tín hiệu giao dịch AI và phân tích chuyên sâu hoàn toàn miễn phí tại: https://dong-anh-capital.vercel.app`
 
 ## 4. RESTRICTIONS
 - Do not guarantee profits or provide absolute financial advice (e.g., "Chắc chắn giá sẽ tăng").

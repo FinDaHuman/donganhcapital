@@ -73,7 +73,7 @@ def generate_facebook_post(action_data):
         1. Giọng văn thu hút, chuyên nghiệp nhưng vẫn gần gũi với nhà đầu tư cá nhân.
         2. Nhấn mạnh việc nền tảng hoàn toàn MIỄN PHÍ.
         3. Thêm các emoji phù hợp.
-        4. BẮT BUỘC chèn Call-to-action (CTA) trỏ về link website: https://donganhcapital.com
+        4. BẮT BUỘC chèn Call-to-action (CTA) trỏ về link website: https://dong-anh-capital.vercel.app
         
         QUY TẮC:
         {system_rules}
@@ -97,7 +97,7 @@ def generate_facebook_post(action_data):
         YÊU CẦU:
         1. Giải thích khái niệm dễ hiểu, lấy ví dụ thực tế liên quan đến thị trường chứng khoán VN (nếu có thể).
         2. Dùng bullet points và emoji để bài viết rõ ràng, dễ đọc.
-        3. BẮT BUỘC chèn Call-to-action (CTA) trỏ về website: https://donganhcapital.com ở cuối bài, mời họ xem thêm các tín hiệu AI.
+        3. BẮT BUỘC chèn Call-to-action (CTA) trỏ về website: https://dong-anh-capital.vercel.app ở cuối bài, mời họ xem thêm các tín hiệu AI.
         
         QUY TẮC:
         {system_rules}

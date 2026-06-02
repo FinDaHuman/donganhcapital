@@ -34,7 +34,7 @@ def run_bot():
         if not articles:
             logger.warning("No articles fetched. Falling back to promotion post.")
             action_data["type"] = "promotion"
-            link_to_attach = "https://donganhcapital.com"
+            link_to_attach = "https://dong-anh-capital.vercel.app"
         else:
             article = articles[0]
             logger.info(f"Selected article: {article['title']}")
@@ -52,7 +52,7 @@ def run_bot():
     
     if action_data["type"] in ["promotion", "education"]:
         # Attach the website link so Facebook displays the OG preview image
-        link_to_attach = "https://donganhcapital.com"
+        link_to_attach = "https://dong-anh-capital.vercel.app"
         
     # 3. Generate Post via LLM
     logger.info("Generating post content via LLM...")
