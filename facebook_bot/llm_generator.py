@@ -36,8 +36,8 @@ def generate_facebook_post(action_data):
         domain = article.get("link", "").split("/")[2] if "//" in article.get("link", "") else "Nguồn nội bộ"
         
         prompt = f"""
-        Bạn là chuyên gia phân tích chứng khoán làm việc cho DongAnh Capital.
-        Hãy đọc thông tin bài báo dưới đây và viết một bài đăng Facebook hấp dẫn.
+        Bạn là hệ thống AI phân tích chứng khoán của DongAnh Capital.
+        Hãy đọc thông tin bài báo dưới đây và viết một bài đăng Facebook hấp dẫn đại diện cho thương hiệu.
         
         TÀI LIỆU BÀI BÁO:
         Tiêu đề: {article.get('title')}
@@ -63,13 +63,13 @@ def generate_facebook_post(action_data):
         topic = random.choice(topics)
         
         prompt = f"""
-        Bạn là chuyên viên marketing cho quỹ giao dịch DongAnh Capital.
+        Bạn là hệ thống truyền thông chính thức của quỹ giao dịch DongAnh Capital.
         Hãy viết một bài đăng Facebook (khoảng 150-250 từ) để quảng bá về nền tảng của chúng tôi.
         
         CHỦ ĐỀ HÔM NAY: {topic}
         
         YÊU CẦU:
-        1. Giọng văn thu hút, chuyên nghiệp nhưng vẫn gần gũi với nhà đầu tư cá nhân.
+        1. Giọng văn thu hút, chuyên nghiệp nhưng vẫn gần gũi với nhà đầu tư cá nhân. Không xưng "tôi".
         2. Nhấn mạnh việc nền tảng hoàn toàn MIỄN PHÍ.
         3. Thêm các emoji phù hợp.
         4. BẮT BUỘC chèn Call-to-action (CTA) trỏ về link website: https://dong-anh-capital.vercel.app
@@ -88,13 +88,13 @@ def generate_facebook_post(action_data):
         concept = random.choice(concepts)
         
         prompt = f"""
-        Bạn là chuyên gia phân tích kỹ thuật và đào tạo đầu tư tại DongAnh Capital.
+        Bạn là hệ thống đào tạo và phân tích kỹ thuật của DongAnh Capital.
         Hãy viết một bài chia sẻ kiến thức ngắn (khoảng 200-300 từ) cho cộng đồng nhà đầu tư trên Facebook.
         
         KIẾN THỨC HÔM NAY: {concept}
         
         YÊU CẦU:
-        1. Giải thích khái niệm dễ hiểu, lấy ví dụ thực tế liên quan đến thị trường chứng khoán VN (nếu có thể).
+        1. Giải thích khái niệm dễ hiểu, lấy ví dụ thực tế liên quan đến thị trường chứng khoán VN (nếu có thể). Không xưng "tôi".
         2. Dùng bullet points và emoji để bài viết rõ ràng, dễ đọc.
         3. BẮT BUỘC chèn Call-to-action (CTA) trỏ về website: https://dong-anh-capital.vercel.app ở cuối bài, mời họ xem thêm các tín hiệu AI.
         
