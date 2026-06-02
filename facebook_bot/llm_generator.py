@@ -122,7 +122,12 @@ def generate_facebook_post(action_data):
         return None
 
     # We prioritize the fast model, then fall back to the pro model if unavailable.
-    models_to_try = ['gemini-2.5-flash', 'gemini-2.5-pro']
+    models_to_try = [
+    'gemini-3.1-pro-preview', # [Top 1] Thông minh nhất, suy luận logic tốt nhất (Model mới nhất)
+    'gemini-2.5-pro',         # [Top 2] Thông minh nhì (Phiên bản Stable ổn định)
+    'gemini-3.5-flash',       # [Top 3] Thông minh tiệm cận Pro, tốc độ cao
+    'gemini-2.5-flash'        # [Top 4] Phương án dự phòng cuối cùng
+]
     
     max_retries = 3
     base_delay = 10  # Base delay of 10 seconds
