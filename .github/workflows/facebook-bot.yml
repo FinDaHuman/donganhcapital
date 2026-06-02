@@ -1,0 +1,35 @@
+name: Facebook Auto Poster
+
+on:
+  schedule:
+    # Run everyday at 09:00 UTC (16:00 Vietnam time)
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    # Allows manual trigger
+
+jobs:
+  post-facebook:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          pip install -r facebook_bot/requirements.txt
+          
+      - name: Run Facebook Bot
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+        run: |
+          cd facebook_bot
+          python main.py
