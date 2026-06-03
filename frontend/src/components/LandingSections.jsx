@@ -1331,8 +1331,8 @@ export const AboutUsSection = () => {
                     </div>
 
                     <div className="flex items-center gap-3 mt-6 sm:mt-8 pt-6 sm:pt-8" style={{ borderTop: '1px solid var(--gold-border)' }}>
-                        <a href="#" className="w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer"
-                            title="Facebook - Coming Soon"
+                        <a href="https://www.facebook.com/profile.php?id=61590323739631" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer"
+                            title="Facebook"
                             style={{ background: 'rgba(201,169,110,0.1)', border: '1px solid var(--gold-border)', color: 'var(--text-secondary)' }}>
                             <Facebook size={18} />
                         </a>
@@ -1390,8 +1390,8 @@ export const FooterSection = () => {
                     <div>
                         <h4 className="type-label mb-4" style={{ color: 'var(--text-secondary)' }}>Follow Us</h4>
                         <div className="flex items-center gap-3">
-                            <a href="#" className="w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer"
-                                title="Facebook - Coming Soon"
+                            <a href="https://www.facebook.com/profile.php?id=61590323739631" target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer"
+                                title="Facebook"
                                 style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid var(--gold-border)', color: 'var(--text-muted)' }}>
                                 <Facebook size={16} />
                             </a>
