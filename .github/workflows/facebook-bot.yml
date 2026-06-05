@@ -2,8 +2,8 @@ name: Facebook Auto Poster
 
 on:
   schedule:
-    # Run everyday at 04:00 UTC (11:00 VN time) and 09:00 UTC (16:00 VN time)
-    - cron: '0 4,9 * * *'
+    # Run everyday at 00:00 UTC (7:00 VN time) and 08:00 UTC (15:00 VN time)
+    - cron: '0 0,8 * * *'
   workflow_dispatch:
     # Allows manual trigger
 
