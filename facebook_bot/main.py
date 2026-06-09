@@ -19,8 +19,8 @@ def run_bot():
     logger.info("Starting Facebook Automation Bot...")
     
     # Randomly select a post type. You can adjust the weights/probabilities.
-    # 50% News, 25% Promotion, 25% Education
-    post_types = ["news", "news", "promotion", "education"]
+    # ~62.5% News, ~12.5% Promotion, ~25% Education
+    post_types = ["news"] * 5 + ["promotion"] * 1 + ["education"] * 2
     post_type = random.choice(post_types)
     
     logger.info(f"Selected post type for this run: {post_type.upper()}")

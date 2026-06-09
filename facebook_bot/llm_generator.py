@@ -72,9 +72,9 @@ def generate_facebook_post(action_data):
         
     elif post_type == "promotion":
         topics = [
-            "Giới thiệu nền tảng tín hiệu giao dịch AI miễn phí của DongAnh Capital (độ trễ bằng 0, quét 400+ mã).",
-            "Công nghệ 6 mô hình AI độc quyền giúp phát hiện Breakout cổ phiếu như thế nào?",
-            "Tại sao nhà đầu tư cá nhân nên dùng Bot AI để theo dõi thị trường 24/7 thay vì làm thủ công?"
+            "Giới thiệu nền tảng tín hiệu giao dịch AI của DongAnh Capital: Miễn phí sử dụng Mô hình dự đoán Breakout công khai (Public Model) với độ trễ bằng 0.",
+            "Khám phá hệ thống AI của chúng tôi: 1 Mô hình Public dự đoán cổ phiếu hoàn toàn miễn phí và 2 Mô hình Pro chuyên sâu dành cho gói trả phí.",
+            "Tại sao nhà đầu tư cá nhân nên dùng Bot AI để theo dõi thị trường 24/7? Trải nghiệm ngay Mô hình Public miễn phí của DongAnh Capital."
         ]
         topic = random.choice(topics)
         
@@ -86,7 +86,7 @@ def generate_facebook_post(action_data):
         
         YÊU CẦU:
         1. Giọng văn thu hút, chuyên nghiệp nhưng vẫn gần gũi với nhà đầu tư cá nhân. Không xưng "tôi".
-        2. Nhấn mạnh việc nền tảng hoàn toàn MIỄN PHÍ.
+        2. Đảm bảo thông tin chính xác về hệ thống AI: Chúng tôi có 1 Mô hình Public miễn phí (chuyên dự đoán/lọc cổ phiếu Breakout) và 2 Mô hình Pro chuyên sâu dành cho hội viên trả phí.
         3. Thêm các emoji phù hợp.
         4. BẮT BUỘC chèn Call-to-action (CTA) trỏ về link website: https://dong-anh-capital.vercel.app
         
@@ -96,23 +96,26 @@ def generate_facebook_post(action_data):
         
     elif post_type == "education":
         concepts = [
-            "Quản trị rủi ro: Tại sao phải luôn đặt Stop Loss (Cắt lỗ)?",
-            "Mô hình giá Breakout: Dấu hiệu nhận biết dòng tiền lớn tham gia.",
-            "Tâm lý giao dịch: Cách tránh FOMO (Sợ lỡ cơ hội) trong những phiên tăng nóng.",
-            "Tại sao khối lượng giao dịch (Volume) lại quan trọng khi phân tích cổ phiếu?"
+            "Quản trị rủi ro: Tại sao phải luôn đặt Stop Loss (Cắt lỗ)? Nguyên tắc kỷ luật giúp bảo vệ vốn.",
+            "Mô hình giá Breakout: Dấu hiệu nhận biết dòng tiền lớn tham gia và cách AI hỗ trợ phát hiện sớm.",
+            "Tâm lý giao dịch: Cách tránh FOMO trong những phiên tăng nóng và quản lý cảm xúc khi thị trường giảm.",
+            "Phân tích khối lượng (Volume) kết hợp với hành động giá (Price Action): Bí quyết tìm điểm mua an toàn.",
+            "Sự khác biệt giữa Đầu tư dài hạn (Phân tích cơ bản) và Giao dịch ngắn hạn (Phân tích kỹ thuật) trong chứng khoán VN."
         ]
         concept = random.choice(concepts)
         
         prompt = f"""
-        Bạn là hệ thống đào tạo và phân tích kỹ thuật của DongAnh Capital.
+        Bạn là chuyên gia phân tích kỹ thuật và đào tạo của DongAnh Capital.
         Hãy viết một bài chia sẻ kiến thức ngắn (khoảng 200-300 từ) cho cộng đồng nhà đầu tư trên Facebook.
         
         KIẾN THỨC HÔM NAY: {concept}
         
         YÊU CẦU:
-        1. Giải thích khái niệm dễ hiểu, lấy ví dụ thực tế liên quan đến thị trường chứng khoán VN (nếu có thể). Không xưng "tôi".
-        2. Dùng bullet points và emoji để bài viết rõ ràng, dễ đọc.
-        3. BẮT BUỘC chèn Call-to-action (CTA) trỏ về website: https://dong-anh-capital.vercel.app ở cuối bài, mời họ xem thêm các tín hiệu AI.
+        1. Giải thích khái niệm chuyên sâu nhưng cực kỳ dễ hiểu bằng ví dụ thực tế trên thị trường chứng khoán Việt Nam (VD: VNIndex, cổ phiếu ngân hàng, chứng khoán...). Không xưng "tôi".
+        2. Cấu trúc bài viết mạch lạc: Nêu vấn đề -> Giải thích/Phân tích -> Bài học rút ra.
+        3. Liên hệ khéo léo: Nhắc đến việc nhà đầu tư có thể sử dụng các Mô hình AI (như Mô hình Public miễn phí của DongAnh Capital) để tự động hóa việc lọc tín hiệu, giảm bớt khó khăn trong phân tích thủ công.
+        4. Dùng bullet points và emoji để bài viết trực quan, dễ đọc.
+        5. BẮT BUỘC chèn Call-to-action (CTA) trỏ về website: https://dong-anh-capital.vercel.app ở cuối bài.
         
         QUY TẮC:
         {system_rules}
