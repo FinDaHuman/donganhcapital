@@ -133,10 +133,10 @@ def generate_facebook_post(action_data):
 ]
     
     max_retries = 3
-    base_delay = 10  # Base delay of 10 seconds
+    retry_delay_503 = 30  # 30 seconds
 
-    for attempt in range(max_retries):
-        for model_name in models_to_try:
+    for model_name in models_to_try:
+        for attempt in range(max_retries):
             try:
                 response = client.models.generate_content(
                     model=model_name,
@@ -145,20 +145,25 @@ def generate_facebook_post(action_data):
                 return clean_markdown(response.text)
             except Exception as e:
                 error_msg = str(e)
-                # Check for transient errors like 503, 429, or general unavailability
-                if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg or "ResourceExhausted" in error_msg:
-                    logger.warning(f"Model {model_name} busy (503/429). Attempt {attempt + 1}/{max_retries} failed: {error_msg}. Trying next model if available...")
-                    continue # Try the next model in the fallback list immediately
+                # 1. Handle 503/500/502/504 (Service Unavailable / Server Errors) -> Retry the same model
+                if "503" in error_msg or "UNAVAILABLE" in error_msg or "500" in error_msg or "502" in error_msg or "504" in error_msg:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Model {model_name} server error (503/50x). Attempt {attempt + 1}/{max_retries} failed. Retrying in {retry_delay_503}s...")
+                        time.sleep(retry_delay_503)
+                        continue  # Retry the same model
+                    else:
+                        logger.error(f"Model {model_name} failed after {max_retries} attempts due to server errors.")
+                        break  # Give up on this model, try the next one
+                
+                # 2. Handle 429 (Too Many Requests / Quota Exceeded) -> Skip the model immediately
+                elif "429" in error_msg or "ResourceExhausted" in error_msg:
+                    logger.warning(f"Model {model_name} quota exceeded (429). Skipping to next model...")
+                    break  # Skip to the next model
+                
+                # 3. Handle other errors (400, 401, 403, 404, etc.) -> Skip the model immediately
                 else:
-                    # For non-transient errors (e.g., 400 Bad Request, auth issues), fail immediately
-                    logger.error(f"Error generating content with {model_name}: {e}")
-                    return None
-                    
-        # If all models in the fallback list failed due to being busy, wait before retrying the whole list
-        if attempt < max_retries - 1:
-            delay = base_delay * (2 ** attempt) + random.uniform(1, 5)
-            logger.warning(f"All models busy. Retrying in {delay:.1f}s...")
-            time.sleep(delay)
-        else:
-            logger.error(f"Max retries ({max_retries}) reached. Gemini API is still unavailable across all fallback models.")
-            return None
+                    logger.error(f"Error generating content with {model_name}: {e}. Skipping to next model...")
+                    break  # Skip to the next model
+
+    logger.error("All fallback models failed.")
+    return None
