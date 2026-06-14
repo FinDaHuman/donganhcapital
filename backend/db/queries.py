@@ -436,3 +436,45 @@ def get_trade_history_stats():
     except Exception as e:
         print(f"Error fetching trade_history stats: {e}")
         return {"total_trades": 0}
+
+
+def insert_subscriber(email: str) -> bool:
+    """Insert a subscriber email using parameterized query.
+    
+    Uses ON CONFLICT DO NOTHING to silently handle duplicates.
+    Returns True on success, False on failure. Never reveals
+    whether the email already existed (security: anti-enumeration).
+    """
+    engine = get_engine()
+    if not engine:
+        return False
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO subscribers (email, source) "
+                    "VALUES (:email, 'website') "
+                    "ON CONFLICT (email) DO NOTHING"
+                ),
+                {"email": email},
+            )
+        return True
+    except Exception as e:
+        print(f"Error inserting subscriber: {e}")
+        return False
+
+
+def get_subscriber_count() -> int:
+    """Return total subscriber count (for internal admin use)."""
+    engine = get_engine()
+    if not engine:
+        return 0
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT COUNT(*) FROM subscribers"))
+            return result.scalar() or 0
+    except Exception as e:
+        print(f"Error counting subscribers: {e}")
+        return 0

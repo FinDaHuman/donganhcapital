@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 import asyncio
 from datetime import datetime
@@ -10,6 +10,7 @@ import joblib
 import os
 import json
 import gc
+import re
 from fastapi import Depends
 from typing import Any, Optional
 import time
@@ -20,7 +21,8 @@ from db.queries import (
     get_ai_signals_dates, get_ai_signals,
     get_daily_signal_summary,
     get_trade_history, get_trade_history_stats,
-    validate_stock_id, validate_limit
+    validate_stock_id, validate_limit,
+    insert_subscriber,
 )
 from db.analytics import (
     get_market_intelligence_bootstrap,
@@ -171,6 +173,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Prediction model load error: {e}")
     
+    # Auto-migrate subscribers table
+    try:
+        from db.migrate_subscribers import run_migration
+        run_migration()
+    except Exception as e:
+        print(f"Subscriber migration warning: {e}")
+
     poll_task = asyncio.create_task(realtime_vn30f1m())
     
     yield
@@ -190,9 +199,49 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=False,  # Must be False when allow_origins includes "*"
-    allow_methods=["GET"],     # API is read-only; restrict to GET only
+    allow_methods=["GET", "POST"],  # GET for data, POST for email subscribe
     allow_headers=["*"],
 )
+
+# --- Email Subscription Security ---
+EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
+DANGEROUS_CHARS = re.compile(r"[<>'\"`;\-\-]")  # SQL injection / XSS chars
+
+
+class SubscribeRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=254)
+
+
+# IP-based rate limiter for subscribe endpoint
+_subscribe_rate: dict[str, list[float]] = {}
+SUBSCRIBE_RATE_LIMIT = 5      # max requests per window
+SUBSCRIBE_RATE_WINDOW = 600    # 10 minutes in seconds
+MAX_RATE_ENTRIES = 500         # cap stored IPs to prevent memory leak
+
+
+def _check_subscribe_rate(client_ip: str) -> bool:
+    """Return True if request is allowed, False if rate-limited."""
+    now = time.time()
+
+    # Evict stale entries if map is too large
+    if len(_subscribe_rate) >= MAX_RATE_ENTRIES:
+        stale_ips = [
+            ip for ip, ts_list in _subscribe_rate.items()
+            if not ts_list or ts_list[-1] < now - SUBSCRIBE_RATE_WINDOW
+        ]
+        for ip in stale_ips:
+            _subscribe_rate.pop(ip, None)
+
+    timestamps = _subscribe_rate.get(client_ip, [])
+    # Remove timestamps outside the window
+    timestamps = [t for t in timestamps if now - t < SUBSCRIBE_RATE_WINDOW]
+    if len(timestamps) >= SUBSCRIBE_RATE_LIMIT:
+        _subscribe_rate[client_ip] = timestamps
+        return False
+    timestamps.append(now)
+    _subscribe_rate[client_ip] = timestamps
+    return True
+
 
 # --- Endpoints ---
 @app.get("/")
@@ -388,6 +437,44 @@ async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):
             return {}
             
     return get_cached("sectors", 3600, compute)
+
+@app.post("/api/subscribe")
+async def subscribe_email(body: SubscribeRequest, request: Request):
+    """Subscribe an email for product launch notifications.
+    
+    Security layers:
+      1. Pydantic validation (length, required field)
+      2. Regex email format check
+      3. Dangerous char rejection (SQL injection / XSS)
+      4. IP-based rate limiting
+      5. Parameterized SQL in queries module
+      6. Opaque response (never reveal if email existed)
+    """
+    # Layer 4: Rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_subscribe_rate(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+
+    # Layer 2 + 3: Sanitize and validate format
+    email = body.email.strip().lower()
+
+    if DANGEROUS_CHARS.search(email):
+        raise HTTPException(status_code=422, detail="Invalid email format.")
+
+    if not EMAIL_REGEX.match(email):
+        raise HTTPException(status_code=422, detail="Invalid email format.")
+
+    # Extra: reject if domain has no dot (e.g. user@localhost)
+    domain = email.split("@", 1)[-1]
+    if "." not in domain:
+        raise HTTPException(status_code=422, detail="Invalid email format.")
+
+    # Layer 5: Parameterized insert (in db/queries.py)
+    insert_subscriber(email)
+
+    # Layer 6: Opaque response — always succeed
+    return {"status": "ok", "message": "You're on the list! We'll notify you at launch."}
+
 
 @app.get("/api/ohlc/{stock_id}")
 async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any = Depends(limit_concurrency)):

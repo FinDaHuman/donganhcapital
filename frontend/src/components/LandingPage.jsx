@@ -117,7 +117,7 @@ const LandingPage = ({ onTabChange }) => {
 
     /* Animated counters */
     const stocksCounter = useCounter(400, 2200);
-    const modelsCounter = useCounter(6, 1500);
+    const modelsCounter = useCounter(3, 1500);
     const accuracyCounter = useCounter(87, 1800);
 
     /* Mouse-based spotlight */

@@ -261,3 +261,15 @@ export const getDataAnalystPipelineHealth = async () =>
         anomalies: [],
     });
 
+export const subscribeEmail = async (email, honeypot = '') => {
+    // Honeypot check — if filled, silently succeed (bot trap)
+    if (honeypot) return { status: 'ok', message: 'Subscribed!' };
+
+    // Client-side sanitization before sending
+    const sanitized = email.trim().toLowerCase();
+    if (!sanitized || sanitized.length > 254) throw new Error('Invalid email');
+
+    const response = await axios.post(`${API_Base_URL}/subscribe`, { email: sanitized });
+    return response.data;
+};
+

@@ -7,8 +7,10 @@ import {
     CheckCircle2, Clock, Sparkles, Send, ArrowRight,
     Bot, Brain, Target, Shield, Zap, BarChart2, Eye, Cpu,
     XCircle, TrendingDown, AlertTriangle, BarChart,
-    Star, Newspaper, Settings, Play, BadgeCheck, Infinity, Rocket
+    Star, Newspaper, Settings, Play, BadgeCheck, Infinity, Rocket,
+    CreditCard, Building2, Wallet, Loader2
 } from 'lucide-react';
+import { subscribeEmail } from '../services/stock_api';
 
 /* ============================================================
    ANIMATION VARIANTS
@@ -78,7 +80,7 @@ export const MarqueeTicker = () => {
         { label: 'FPT', value: '+12.3%', up: true },
         { label: 'HPG', value: '+5.4%', up: true },
         { label: 'Stocks Covered', value: '400+', up: null },
-        { label: 'AI Models', value: '6 Active', up: null },
+        { label: 'AI Models', value: '3 Active', up: null },
         { label: 'VCB', value: '+6.1%', up: true },
         { label: 'MWG', value: '-2.3%', up: false },
         { label: 'Signal Score', value: 'Avg 87%', up: null },
@@ -132,7 +134,7 @@ export const HowItWorksSection = () => {
         {
             number: '01',
             title: 'AI Scans the Market',
-            description: 'Every trading day, six proprietary models analyze 400+ Vietnamese equities — price patterns, volume dynamics, momentum, and real-time news sentiment.',
+            description: 'Every trading day, three proprietary models analyze 400+ Vietnamese equities — price patterns, volume dynamics, momentum, and real-time news sentiment.',
             icon: Cpu,
         },
         {
@@ -206,7 +208,7 @@ export const HowItWorksSection = () => {
 export const SocialProofSection = () => {
     const stats = [
         { value: '400+', label: 'Stocks Monitored Daily', icon: BarChart3 },
-        { value: '6', label: 'Proprietary AI Models', icon: Brain },
+        { value: '3', label: 'Proprietary AI Models', icon: Brain },
         { value: '87%', label: 'Avg. Signal Confidence', icon: Target },
         { value: '24/7', label: 'Automated Monitoring', icon: Shield },
         { value: '3:02 PM', label: 'Signals Delivered Daily', icon: Clock },
@@ -591,8 +593,8 @@ export const AIAdvantageSection = ({ onTabChange }) => {
         {
             icon: Brain,
             title: 'Market Sentiment Engine',
-            description: 'Real-time sentiment analysis across 6 proprietary models, giving you conviction when others hesitate.',
-            stat: '6',
+            description: 'Real-time sentiment analysis across 3 proprietary models, giving you conviction when others hesitate.',
+            stat: '3',
             statLabel: 'AI models deployed',
         },
         {
@@ -757,7 +759,7 @@ export const TestimonialsSection = () => {
             name: 'Lê Hoàng Phúc',
             role: 'Portfolio Manager · Private',
             avatar: 'LHP',
-            quote: 'I\'ve been waiting for an AI-driven platform built specifically for Vietnamese markets. The 6-model cross-validation approach is exactly what I needed to filter noise from real signals.',
+            quote: 'I\'ve been waiting for an AI-driven platform built specifically for Vietnamese markets. The 3-model cross-validation approach is exactly what I needed to filter noise from real signals.',
             stars: 5,
         },
     ];
@@ -958,27 +960,214 @@ export const FutureSection = () => {
 
 
 /* ============================================================
-   PRICING SECTION — "Free Forever" with premium teaser
+   EMAIL SUBSCRIBE FORM — Reusable, security-hardened
+   ============================================================ */
+const EmailSubscribeForm = ({ variant = 'default', ctaText = 'Get Notified at Launch', className = '' }) => {
+    const [email, setEmail] = useState('');
+    const [honeypot, setHoneypot] = useState('');
+    const [status, setStatus] = useState('idle'); // idle | loading | success | error
+    const [message, setMessage] = useState('');
+    const [cooldown, setCooldown] = useState(false);
+
+    const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (cooldown || status === 'loading') return;
+
+        const trimmed = email.trim().toLowerCase();
+        if (!trimmed || !EMAIL_PATTERN.test(trimmed)) {
+            setStatus('error');
+            setMessage('Please enter a valid email address.');
+            return;
+        }
+        if (trimmed.length > 254) {
+            setStatus('error');
+            setMessage('Email is too long.');
+            return;
+        }
+
+        setStatus('loading');
+        setCooldown(true);
+
+        try {
+            const result = await subscribeEmail(trimmed, honeypot);
+            setStatus('success');
+            setMessage(result?.message || "You're on the list!");
+            setEmail('');
+        } catch (err) {
+            setStatus('error');
+            const detail = err?.response?.data?.detail;
+            if (err?.response?.status === 429) {
+                setMessage('Too many requests. Please try again later.');
+            } else {
+                setMessage(detail || 'Something went wrong. Please try again.');
+            }
+        }
+
+        // 3-second cooldown to prevent spam
+        setTimeout(() => setCooldown(false), 3000);
+    };
+
+    const isGold = variant === 'gold';
+
+    return (
+        <form onSubmit={handleSubmit} className={`flex flex-col gap-3 ${className}`} noValidate>
+            {/* Honeypot — invisible to users, bots auto-fill it */}
+            <input
+                type="text"
+                name="website"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0, width: 0, overflow: 'hidden' }}
+                aria-hidden="true"
+            />
+
+            <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                    type="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); if (status !== 'idle') setStatus('idle'); }}
+                    maxLength={254}
+                    required
+                    className="flex-1 px-4 py-3 rounded-xl text-sm focus:outline-none transition-all duration-200"
+                    style={{
+                        background: 'var(--bg-elevated)',
+                        border: `1px solid ${status === 'error' ? 'rgba(239,68,68,0.5)' : isGold ? 'rgba(201,169,110,0.3)' : 'rgba(201,169,110,0.15)'}`,
+                        color: 'var(--text-primary)',
+                        fontFamily: "'Outfit', sans-serif",
+                    }}
+                    id="email-subscribe-input"
+                />
+                <motion.button
+                    type="submit"
+                    disabled={cooldown || status === 'loading'}
+                    whileHover={!cooldown ? { scale: 1.02 } : {}}
+                    whileTap={!cooldown ? { scale: 0.97 } : {}}
+                    className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${cooldown || status === 'loading' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                    style={{
+                        background: isGold
+                            ? 'linear-gradient(135deg, var(--gold-primary), var(--gold-bright, #E8C97A))'
+                            : 'linear-gradient(135deg, rgba(201,169,110,0.2), rgba(201,169,110,0.1))',
+                        color: isGold ? 'var(--bg-void)' : 'var(--gold-primary)',
+                        border: isGold ? 'none' : '1px solid rgba(201,169,110,0.25)',
+                        fontFamily: "'Outfit', sans-serif",
+                        whiteSpace: 'nowrap',
+                    }}
+                    id="email-subscribe-button"
+                >
+                    {status === 'loading' ? (
+                        <><Loader2 size={14} className="animate-spin" /> Subscribing...</>
+                    ) : status === 'success' ? (
+                        <><CheckCircle2 size={14} /> Subscribed!</>
+                    ) : (
+                        <><Send size={14} /> {ctaText}</>
+                    )}
+                </motion.button>
+            </div>
+
+            <AnimatePresence>
+                {(status === 'success' || status === 'error') && (
+                    <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="text-xs px-1"
+                        style={{
+                            color: status === 'success' ? 'var(--market-up)' : 'rgb(239,68,68)',
+                            fontFamily: "'Outfit', sans-serif",
+                        }}
+                    >
+                        {message}
+                    </motion.p>
+                )}
+            </AnimatePresence>
+        </form>
+    );
+};
+
+
+/* ============================================================
+   PRICING SECTION — 3-tier with preorder
    ============================================================ */
 export const PricingSection = ({ onTabChange }) => {
-    const freeTier = [
-        'Real-time HOSE, HNX & UPCoM data',
-        '6 AI models scanning 400+ stocks',
-        'Daily signals at 3:02 PM',
-        'Entry, TP & SL levels for every signal',
-        'Advanced charting with indicators',
-        'Derivatives tracker for VN30',
-        'AI News summarization',
-        'No account required to start',
+    const [isYearly, setIsYearly] = useState(false);
+
+    const plans = [
+        {
+            name: 'Free',
+            badge: 'Current',
+            badgeStyle: { background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)', border: '1px solid rgba(77,184,130,0.25)' },
+            priceMonthly: '0',
+            priceYearly: '0',
+            priceSuffix: 'VND',
+            description: 'Everything you need to start.',
+            features: [
+                { text: 'Vietnam market dashboard', included: true },
+                { text: 'Daily news & price board', included: true },
+                { text: '1 basic AI model', included: true },
+                { text: 'AI news analysis agent', included: false },
+                { text: 'Investment advisory chatbot', included: false },
+                { text: 'FinAI Stock Predict model', included: false },
+            ],
+            cta: 'Start Free',
+            ctaAction: () => onTabChange && onTabChange('analyst'),
+            ctaStyle: 'secondary',
+            highlight: false,
+        },
+        {
+            name: 'Pro',
+            badge: 'Preorder',
+            badgeStyle: { background: 'rgba(201,169,110,0.12)', color: 'var(--gold-primary)', border: '1px solid rgba(201,169,110,0.25)' },
+            priceMonthly: '199,000',
+            priceYearly: '1,990,000',
+            priceSuffix: 'VND',
+            description: 'For active traders who want an edge.',
+            features: [
+                { text: 'Vietnam market dashboard', included: true },
+                { text: 'Daily news & price board', included: true },
+                { text: 'Stock price alerts by ticker', included: true },
+                { text: 'AI news analysis (limited)', included: true },
+                { text: 'Investment chatbot (limited)', included: true },
+                { text: '1 FinAI Stock Predict model', included: true },
+            ],
+            cta: 'Preorder Pro',
+            ctaAction: null, // uses email form
+            ctaStyle: 'primary',
+            highlight: true,
+        },
+        {
+            name: 'Premium',
+            badge: 'Preorder',
+            badgeStyle: { background: 'rgba(168,85,247,0.12)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)' },
+            priceMonthly: '499,000',
+            priceYearly: '4,990,000',
+            priceSuffix: 'VND',
+            description: 'Full power. Unlimited access.',
+            features: [
+                { text: 'Vietnam market dashboard', included: true },
+                { text: 'Daily news & price board', included: true },
+                { text: 'Full AI model access', included: true },
+                { text: 'AI news analysis (unlimited)', included: true },
+                { text: 'Investment chatbot (unlimited)', included: true },
+                { text: '2 FinAI Stock Predict models', included: true },
+            ],
+            cta: 'Preorder Premium',
+            ctaAction: null, // uses email form
+            ctaStyle: 'premium',
+            highlight: false,
+        },
     ];
 
-    const premiumTeaser = [
-        'Personal AI Trading Agent',
-        'Learns your investment style',
-        'Automated trade execution',
-        'Portfolio auto-rebalancing',
-        'Priority signal delivery',
-        'Direct brokerage integration',
+    const paymentMethods = [
+        { name: 'Bank Transfer', icon: Building2 },
+        { name: 'MoMo', icon: Wallet },
+        { name: 'ZaloPay', icon: Wallet },
+        { name: 'Visa / Mastercard', icon: CreditCard },
     ];
 
     return (
@@ -987,127 +1176,158 @@ export const PricingSection = ({ onTabChange }) => {
             variants={sectionVariants}
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="w-full max-w-5xl mx-auto px-4 py-16 md:py-24"
+            viewport={{ once: true, amount: 0.1 }}
+            className="w-full max-w-6xl mx-auto px-4 py-16 md:py-24"
         >
-            <div className="text-center mb-14">
+            <div className="text-center mb-10">
                 <motion.div variants={itemVariants}>
                     <SectionLabel>Transparent Pricing</SectionLabel>
                 </motion.div>
                 <motion.h2 variants={itemVariants} className="type-section mb-4" style={{ color: 'var(--text-primary)' }}>
-                    Institutional Intelligence,<br />Zero Cost
+                    Choose Your Plan
                 </motion.h2>
-                <motion.p variants={itemVariants} className="type-body-lg max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-                    Our core platform is free forever. We believe every Vietnamese investor deserves access to professional-grade tools.
+                <motion.p variants={itemVariants} className="type-body-lg max-w-xl mx-auto mb-6" style={{ color: 'var(--text-secondary)' }}>
+                    Start free. Upgrade when you're ready. Pro & Premium are available for preorder — products launching soon.
                 </motion.p>
+
+                {/* Monthly / Yearly Toggle */}
+                <motion.div variants={itemVariants} className="flex items-center justify-center gap-3 mb-2">
+                    <span className="text-sm font-medium" style={{ color: !isYearly ? 'var(--gold-primary)' : 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>Monthly</span>
+                    <button
+                        onClick={() => setIsYearly(v => !v)}
+                        className="relative w-12 h-6 rounded-full transition-colors duration-300 cursor-pointer"
+                        style={{ background: isYearly ? 'var(--gold-primary)' : 'rgba(201,169,110,0.25)', border: 'none' }}
+                        aria-label="Toggle billing period"
+                        id="pricing-billing-toggle"
+                    >
+                        <motion.div
+                            className="absolute top-0.5 w-5 h-5 rounded-full"
+                            style={{ background: 'var(--bg-void)' }}
+                            animate={{ left: isYearly ? '26px' : '2px' }}
+                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                        />
+                    </button>
+                    <span className="text-sm font-medium" style={{ color: isYearly ? 'var(--gold-primary)' : 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
+                        Yearly
+                        <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)' }}>Save 17%</span>
+                    </span>
+                </motion.div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Free Tier */}
-                <motion.div
-                    variants={itemVariants}
-                    className="rounded-3xl p-7 sm:p-8 relative overflow-hidden"
-                    style={{
-                        background: 'var(--bg-surface)',
-                        border: '1px solid rgba(201,169,110,0.2)',
-                    }}
-                >
-                    {/* Subtle glow top */}
-                    <div className="absolute top-0 left-0 right-0 h-[1px]"
-                        style={{ background: 'linear-gradient(90deg, transparent, rgba(201,169,110,0.4), transparent)' }}
-                    />
-
-                    <div className="mb-6">
-                        <div className="flex items-center gap-2 mb-3">
-                            <span
-                                className="px-3 py-1 rounded-full text-xs font-bold uppercase"
-                                style={{ background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)', border: '1px solid rgba(77,184,130,0.25)', fontFamily: "'Outfit', sans-serif", letterSpacing: '0.1em' }}
-                            >
-                                Current
-                            </span>
-                        </div>
-                        <div className="flex items-end gap-2 mb-2">
-                            <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '56px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1 }}>
-                                Free
-                            </span>
-                            <span className="type-body-sm mb-2" style={{ color: 'var(--text-muted)' }}>forever</span>
-                        </div>
-                        <p className="type-body-sm" style={{ color: 'var(--text-muted)' }}>No credit card. No trials. No catch.</p>
-                    </div>
-
-                    <ul className="space-y-3 mb-8">
-                        {freeTier.map((item, i) => (
-                            <li key={i} className="flex items-start gap-3">
-                                <CheckCircle2 size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--market-up)' }} />
-                                <span className="type-body-sm" style={{ color: 'var(--text-secondary)' }}>{item}</span>
-                            </li>
-                        ))}
-                    </ul>
-
-                    <button
-                        onClick={() => onTabChange && onTabChange('analyst')}
-                        className="w-full btn-primary flex items-center justify-center gap-2 cursor-pointer"
-                        style={{ padding: '14px 24px', fontSize: '15px' }}
-                    >
-                        <Bot size={16} />
-                        Start Free — No Signup
-                        <ArrowRight size={14} />
-                    </button>
-                </motion.div>
-
-                {/* Premium Teaser */}
-                <motion.div
-                    variants={itemVariants}
-                    className="rounded-3xl p-7 sm:p-8 relative overflow-hidden"
-                    style={{
-                        background: 'linear-gradient(135deg, rgba(201,169,110,0.05) 0%, var(--bg-surface) 100%)',
-                        border: '1px solid rgba(201,169,110,0.15)',
-                    }}
-                >
-                    <div className="absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"
-                        style={{ background: 'rgba(201,169,110,0.06)' }}
-                    />
-
-                    <div className="mb-6">
-                        <div className="flex items-center gap-2 mb-3">
-                            <span
-                                className="px-3 py-1 rounded-full text-xs font-bold uppercase"
-                                style={{ background: 'rgba(201,169,110,0.1)', color: 'var(--gold-primary)', border: '1px solid rgba(201,169,110,0.25)', fontFamily: "'Outfit', sans-serif", letterSpacing: '0.1em' }}
-                            >
-                                Coming Soon
-                            </span>
-                        </div>
-                        <div className="flex items-end gap-2 mb-2">
-                            <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '56px', fontWeight: 600, color: 'var(--gold-primary)', lineHeight: 1 }}>
-                                Pro
-                            </span>
-                            <span className="type-body-sm mb-2" style={{ color: 'var(--text-muted)' }}>AI Agent tier</span>
-                        </div>
-                        <p className="type-body-sm" style={{ color: 'var(--text-muted)' }}>Your autonomous trading agent. Pricing TBA.</p>
-                    </div>
-
-                    <ul className="space-y-3 mb-8">
-                        {premiumTeaser.map((item, i) => (
-                            <li key={i} className="flex items-start gap-3">
-                                <Sparkles size={15} className="shrink-0 mt-0.5" style={{ color: 'var(--gold-muted)' }} />
-                                <span className="type-body-sm" style={{ color: 'var(--text-secondary)' }}>{item}</span>
-                            </li>
-                        ))}
-                    </ul>
-
-                    <button
-                        className="w-full btn-secondary flex items-center justify-center gap-2 cursor-pointer"
-                        style={{ padding: '14px 24px', fontSize: '14px' }}
-                        onClick={() => {
-                            const el = document.querySelector('#qna');
-                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+            {/* Pricing Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
+                {plans.map((plan, i) => (
+                    <motion.div
+                        key={i}
+                        variants={itemVariants}
+                        className={`relative rounded-3xl p-6 sm:p-7 overflow-hidden flex flex-col ${plan.highlight ? 'ring-1' : ''}`}
+                        style={{
+                            background: plan.highlight
+                                ? 'linear-gradient(135deg, rgba(201,169,110,0.08) 0%, var(--bg-surface) 100%)'
+                                : 'var(--bg-surface)',
+                            border: `1px solid ${plan.highlight ? 'rgba(201,169,110,0.3)' : 'rgba(201,169,110,0.12)'}`,
+                            ...(plan.highlight ? { ringColor: 'rgba(201,169,110,0.2)' } : {}),
                         }}
                     >
-                        <Mail size={14} />
-                        Get Notified at Launch
-                    </button>
-                </motion.div>
+                        {/* Top glow line for highlighted plan */}
+                        {plan.highlight && (
+                            <div className="absolute top-0 left-0 right-0 h-[2px]"
+                                style={{ background: 'linear-gradient(90deg, transparent, var(--gold-primary), transparent)' }}
+                            />
+                        )}
+
+                        {/* Badge */}
+                        <div className="flex items-center gap-2 mb-4">
+                            <span
+                                className="px-3 py-1 rounded-full text-xs font-bold uppercase"
+                                style={{ ...plan.badgeStyle, fontFamily: "'Outfit', sans-serif", letterSpacing: '0.1em' }}
+                            >
+                                {plan.badge}
+                            </span>
+                        </div>
+
+                        {/* Plan Name */}
+                        <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '32px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1, marginBottom: '4px' }}>
+                            {plan.name}
+                        </h3>
+
+                        {/* Price */}
+                        <div className="flex items-end gap-1.5 mb-2 mt-2">
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 'clamp(24px, 4vw, 32px)', fontWeight: 500, color: plan.name === 'Free' ? 'var(--market-up)' : 'var(--gold-primary)', lineHeight: 1 }}>
+                                {isYearly ? plan.priceYearly : plan.priceMonthly}
+                            </span>
+                            <span className="text-xs mb-1" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
+                                {plan.priceSuffix}{plan.name !== 'Free' ? (isYearly ? '/year' : '/mo') : ''}
+                            </span>
+                        </div>
+
+                        <p className="type-body-sm mb-5" style={{ color: 'var(--text-muted)' }}>{plan.description}</p>
+
+                        {/* Features */}
+                        <ul className="space-y-2.5 mb-6 flex-1">
+                            {plan.features.map((feat, j) => (
+                                <li key={j} className="flex items-start gap-2.5">
+                                    {feat.included ? (
+                                        <CheckCircle2 size={15} className="shrink-0 mt-0.5" style={{ color: 'var(--market-up)' }} />
+                                    ) : (
+                                        <XCircle size={15} className="shrink-0 mt-0.5" style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
+                                    )}
+                                    <span className="type-body-sm" style={{ color: feat.included ? 'var(--text-secondary)' : 'var(--text-muted)', opacity: feat.included ? 1 : 0.5 }}>
+                                        {feat.text}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+
+                        {/* CTA */}
+                        {plan.ctaAction ? (
+                            <button
+                                onClick={plan.ctaAction}
+                                className="w-full btn-primary flex items-center justify-center gap-2 cursor-pointer"
+                                style={{ padding: '13px 24px', fontSize: '14px' }}
+                                id={`pricing-cta-${plan.name.toLowerCase()}`}
+                            >
+                                <Bot size={16} />
+                                {plan.cta}
+                                <ArrowRight size={14} />
+                            </button>
+                        ) : (
+                            <div className="mt-auto">
+                                <p className="type-caption text-center mb-2" style={{ color: 'var(--text-muted)' }}>
+                                    Enter email to preorder
+                                </p>
+                                <EmailSubscribeForm
+                                    variant={plan.highlight ? 'gold' : 'default'}
+                                    ctaText={plan.cta}
+                                />
+                            </div>
+                        )}
+                    </motion.div>
+                ))}
             </div>
+
+            {/* Payment Methods */}
+            <motion.div variants={itemVariants} className="text-center">
+                <p className="type-label mb-4" style={{ color: 'var(--text-muted)' }}>Accepted payment methods at launch</p>
+                <div className="flex items-center justify-center flex-wrap gap-3">
+                    {paymentMethods.map((pm, i) => (
+                        <div
+                            key={i}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
+                            style={{
+                                background: 'var(--bg-surface)',
+                                border: '1px solid rgba(201,169,110,0.1)',
+                            }}
+                        >
+                            <pm.icon size={16} style={{ color: 'var(--gold-muted)' }} />
+                            <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)', fontFamily: "'Outfit', sans-serif" }}>{pm.name}</span>
+                        </div>
+                    ))}
+                </div>
+                <p className="type-caption mt-4" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>
+                    * Pro & Premium plans are preorder only. You will be charged when the product launches. Cancel anytime before launch for a full refund.
+                </p>
+            </motion.div>
         </motion.section>
     );
 };
@@ -1122,7 +1342,7 @@ export const QAndASection = () => {
     const faqs = [
         {
             q: "How do the AI trading agents work?",
-            a: "Our AI agents continuously analyze 400+ Vietnamese stocks using 6 proprietary models. They identify high-probability trading opportunities, calculate entry/exit prices, and generate actionable signals — all automatically, every trading day."
+            a: "Our AI agents continuously analyze 400+ Vietnamese stocks using 3 proprietary models. They identify high-probability trading opportunities, calculate entry/exit prices, and generate actionable signals — all automatically, every trading day."
         },
         {
             q: "What is the upcoming AI Agent feature?",
@@ -1142,7 +1362,7 @@ export const QAndASection = () => {
         },
         {
             q: "Is DongAnh Capital really free?",
-            a: "Yes, completely free. No credit card required, no hidden fees. Our mission is to democratize financial analytics for the Vietnamese market. Optional premium AI Agent features are planned for the future, but the core platform will always remain free."
+            a: "Yes, the core platform is completely free. No credit card required, no hidden fees. Our mission is to democratize financial analytics for the Vietnamese market. We also offer Pro and Premium preorder plans with advanced AI features — pricing starts at 199,000 VND/month. The core platform will always remain free."
         },
         {
             q: "How accurate are the AI predictions?",
@@ -1150,7 +1370,11 @@ export const QAndASection = () => {
         },
         {
             q: "When will the AI Agent be available?",
-            a: "The AI Agent is currently in development (Q3 2026 target). Sign up for our newsletter to be notified at launch. Early adopters will receive priority access and help shape the product through beta testing."
+            a: "The AI Agent is currently in development (Q3 2026 target). Subscribe with your email to be notified at launch. Early adopters will receive priority access and help shape the product through beta testing."
+        },
+        {
+            q: "How does preorder pricing work?",
+            a: "Pro (199,000 VND/mo) and Premium (499,000 VND/mo) plans are available for preorder. You won't be charged until the product officially launches. You can cancel your preorder anytime before launch for a full refund. Preorder now to lock in early-bird pricing and get priority access."
         },
     ];
 
@@ -1396,6 +1620,17 @@ export const FooterSection = () => {
                                 <Facebook size={16} />
                             </a>
                         </div>
+                    </div>
+                </div>
+
+                {/* Newsletter Subscribe */}
+                <div className="mt-8 sm:mt-10 pt-6 sm:pt-8" style={{ borderTop: '1px solid var(--gold-border)' }}>
+                    <div className="max-w-md mx-auto text-center">
+                        <h4 className="type-label mb-2" style={{ color: 'var(--text-secondary)' }}>Stay Updated</h4>
+                        <p className="type-caption mb-3" style={{ color: 'var(--text-muted)' }}>
+                            Get notified when new features and products launch.
+                        </p>
+                        <EmailSubscribeForm ctaText="Subscribe" />
                     </div>
                 </div>
 
