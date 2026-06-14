@@ -962,7 +962,7 @@ export const FutureSection = () => {
 /* ============================================================
    EMAIL SUBSCRIBE FORM — Reusable, security-hardened
    ============================================================ */
-const EmailSubscribeForm = ({ variant = 'default', ctaText = 'Get Notified at Launch', className = '' }) => {
+const EmailSubscribeForm = ({ variant = 'default', ctaText = 'Get Notified at Launch', className = '', layout = 'row' }) => {
     const [email, setEmail] = useState('');
     const [honeypot, setHoneypot] = useState('');
     const [status, setStatus] = useState('idle'); // idle | loading | success | error
@@ -1025,7 +1025,7 @@ const EmailSubscribeForm = ({ variant = 'default', ctaText = 'Get Notified at La
                 aria-hidden="true"
             />
 
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className={`flex flex-col ${layout === 'row' ? 'sm:flex-row' : ''} gap-2`}>
                 <input
                     type="email"
                     placeholder="Enter your email"
@@ -1299,6 +1299,7 @@ export const PricingSection = ({ onTabChange }) => {
                                 <EmailSubscribeForm
                                     variant={plan.highlight ? 'gold' : 'default'}
                                     ctaText={plan.cta}
+                                    layout="col"
                                 />
                             </div>
                         )}
