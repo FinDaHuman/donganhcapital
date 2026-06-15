@@ -270,6 +270,7 @@ def _check_subscribe_rate(client_ip: str) -> bool:
 
 # --- Endpoints ---
 @app.get("/")
+@app.head("/")
 def root():
     return {"message": "DongAnh Capital API is running", "docs": "/docs"}
 
