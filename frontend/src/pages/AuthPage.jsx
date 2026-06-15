@@ -50,6 +50,7 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [agreedToTerms, setAgreedToTerms] = useState(false);
+    const [loginFailed, setLoginFailed] = useState(false);
 
     // Handle Google OAuth callback (URL contains ?code=...)
     useEffect(() => {
@@ -116,6 +117,7 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
         }
 
         setLoading(true);
+        setLoginFailed(false);
 
         if (mode === 'login') {
             const result = await login(email, password);
@@ -125,6 +127,7 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                 setTimeout(() => onTabChange && onTabChange('dashboard'), 800);
             } else {
                 setError(result.error);
+                setLoginFailed(true);
             }
         } else {
             const result = await register(email, password, fullName);
@@ -144,6 +147,7 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
         setSuccess('');
         setPassword('');
         setConfirmPassword('');
+        setLoginFailed(false);
     };
 
     return (
@@ -426,11 +430,39 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                                     initial={{ opacity: 0, y: -4 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0 }}
-                                    className="flex items-start gap-2 p-3 rounded-lg"
-                                    style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
+                                    className="rounded-xl overflow-hidden"
+                                    style={{ border: '1px solid rgba(239,68,68,0.2)' }}
                                 >
-                                    <AlertCircle size={14} className="shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
-                                    <span className="text-xs" style={{ color: '#ef4444' }}>{error}</span>
+                                    <div
+                                        className="flex items-start gap-2 p-3"
+                                        style={{ background: 'rgba(239,68,68,0.08)' }}
+                                    >
+                                        <AlertCircle size={14} className="shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
+                                        <span className="text-xs" style={{ color: '#ef4444' }}>{error}</span>
+                                    </div>
+                                    {/* Suggest creating account after failed login */}
+                                    {loginFailed && mode === 'login' && (
+                                        <div
+                                            className="px-3 py-2.5 flex items-center justify-between"
+                                            style={{ background: 'rgba(201,169,110,0.06)', borderTop: '1px solid rgba(201,169,110,0.1)' }}
+                                        >
+                                            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>New here?</span>
+                                            <button
+                                                type="button"
+                                                onClick={switchMode}
+                                                className="text-xs font-semibold cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all"
+                                                style={{
+                                                    color: 'var(--gold-primary)',
+                                                    background: 'rgba(201,169,110,0.1)',
+                                                    border: '1px solid rgba(201,169,110,0.2)',
+                                                    fontFamily: "'Outfit', sans-serif",
+                                                }}
+                                                id="auth-suggest-register"
+                                            >
+                                                Create Account <ArrowRight size={12} />
+                                            </button>
+                                        </div>
+                                    )}
                                 </motion.div>
                             )}
                             {success && (
