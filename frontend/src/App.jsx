@@ -16,8 +16,10 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 
 function App() {
-    // Read initial tab from URL query params (e.g. ?tab=privacy)
-    const initialTab = new URLSearchParams(window.location.search).get('tab') || 'home';
+    // Read initial tab from URL path (e.g. /privacy) or query param fallback
+    const path = window.location.pathname.replace('/', '');
+    const queryTab = new URLSearchParams(window.location.search).get('tab');
+    const initialTab = path || queryTab || 'home';
     const [activeTab, setActiveTab] = useState(initialTab);
     const [checkoutPlan, setCheckoutPlan] = useState({ plan: 'pro', period: 'monthly' });
 
@@ -27,8 +29,8 @@ function App() {
             setCheckoutPlan(data);
         }
         setActiveTab(tab);
-        // Update URL without reloading page
-        const newUrl = tab === 'home' ? window.location.pathname : `${window.location.pathname}?tab=${tab}`;
+        // Update URL path without reloading page
+        const newUrl = tab === 'home' ? '/' : `/${tab}`;
         window.history.pushState({ path: newUrl }, '', newUrl);
         window.scrollTo(0, 0);
     };

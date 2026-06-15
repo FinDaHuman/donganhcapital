@@ -1625,7 +1625,7 @@ export const FooterSection = ({ onTabChange }) => {
                         <h4 className="type-label mt-8 mb-4" style={{ color: 'var(--text-secondary)' }}>Legal</h4>
                         <div className="space-y-2 type-body-sm flex flex-col items-start">
                             <a
-                                href="?tab=privacy"
+                                href="/privacy"
                                 onClick={(e) => { e.preventDefault(); onTabChange && onTabChange('privacy'); }}
                                 className="block transition-colors hover:text-gold-primary text-left"
                                 style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
@@ -1633,7 +1633,7 @@ export const FooterSection = ({ onTabChange }) => {
                                 Privacy Policy
                             </a>
                             <a
-                                href="?tab=terms"
+                                href="/terms"
                                 onClick={(e) => { e.preventDefault(); onTabChange && onTabChange('terms'); }}
                                 className="block transition-colors hover:text-gold-primary text-left"
                                 style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
