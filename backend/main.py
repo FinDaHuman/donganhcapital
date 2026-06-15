@@ -180,6 +180,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Subscriber migration warning: {e}")
 
+    # Auto-migrate users table
+    try:
+        from db.models_user import run_user_migration
+        run_user_migration()
+    except Exception as e:
+        print(f"User migration warning: {e}")
+
+    # Auto-migrate payments table
+    try:
+        from db.models_payment import run_payment_migration
+        run_payment_migration()
+    except Exception as e:
+        print(f"Payment migration warning: {e}")
+
     poll_task = asyncio.create_task(realtime_vn30f1m())
     
     yield
@@ -190,18 +204,29 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="DongAnh Capital AI API", lifespan=lifespan)
 
 # --- CORS ---
-# In production, set ALLOWED_ORIGINS env var to your Vercel domain(s).
-# e.g., ALLOWED_ORIGINS="https://dong-anh-capital.vercel.app"
+# In production, set ALLOWED_ORIGINS env var to your domain(s).
+# e.g., ALLOWED_ORIGINS="https://donganhcapital.com,https://www.donganhcapital.com"
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
 allow_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
+# When using specific origins (not "*"), enable credentials for httpOnly cookies
+_allow_credentials = "*" not in allow_origins
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=False,  # Must be False when allow_origins includes "*"
-    allow_methods=["GET", "POST"],  # GET for data, POST for email subscribe
+    allow_credentials=_allow_credentials,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# --- Auth Router ---
+from routers.auth import router as auth_router
+app.include_router(auth_router)
+
+# --- Payments Router ---
+from routers.payments import router as payments_router
+app.include_router(payments_router)
 
 # --- Email Subscription Security ---
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')

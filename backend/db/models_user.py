@@ -1,0 +1,61 @@
+"""
+User database model and migration for DongAnh Capital authentication.
+Uses direct SQL migration (matching existing project pattern with NeonDB).
+"""
+
+from db.connection import get_engine
+from sqlalchemy import text
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def run_user_migration():
+    """Create users table if it doesn't exist.
+    
+    Security design:
+    - email is unique and indexed for fast lookups
+    - google_id indexed for OAuth lookups
+    - hashed_password is nullable (Google-only users don't have one)
+    - refresh_token_hash stores bcrypt hash of refresh token (not the token itself)
+    - failed_login_attempts + locked_until implement account lockout
+    """
+    engine = get_engine()
+    if engine is None:
+        logger.warning("No database engine available, skipping user migration")
+        return
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                email VARCHAR(254) NOT NULL,
+                hashed_password VARCHAR(255),
+                full_name VARCHAR(100),
+                avatar_url VARCHAR(500),
+                google_id VARCHAR(50),
+                auth_provider VARCHAR(20) NOT NULL DEFAULT 'email',
+                risk_appetite VARCHAR(20) NOT NULL DEFAULT 'moderate',
+                subscription_tier VARCHAR(20) NOT NULL DEFAULT 'free',
+                subscription_expires_at TIMESTAMP WITH TIME ZONE,
+                failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+                locked_until TIMESTAMP WITH TIME ZONE,
+                refresh_token_hash VARCHAR(255),
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            );
+        """))
+
+        # Create indexes safely (IF NOT EXISTS)
+        conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
+            ON users(email);
+        """))
+        conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id
+            ON users(google_id)
+            WHERE google_id IS NOT NULL;
+        """))
+
+    logger.info("User migration completed successfully")

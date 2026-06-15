@@ -620,7 +620,7 @@ const LandingPage = ({ onTabChange }) => {
                     <PricingSection onTabChange={onTabChange} />
                     <QAndASection />
                     <AboutUsSection />
-                    <FooterSection />
+                    <FooterSection onTabChange={onTabChange} />
                 </div>
             </div>
 

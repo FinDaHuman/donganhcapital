@@ -8,7 +8,7 @@ import {
     Bot, Brain, Target, Shield, Zap, BarChart2, Eye, Cpu,
     XCircle, TrendingDown, AlertTriangle, BarChart,
     Star, Newspaper, Settings, Play, BadgeCheck, Infinity, Rocket,
-    CreditCard, Building2, Wallet, Loader2
+    CreditCard, Building2, Loader2
 } from 'lucide-react';
 import { subscribeEmail } from '../services/stock_api';
 
@@ -949,7 +949,7 @@ export const FutureSection = () => {
             <motion.div variants={itemVariants} className="text-center mt-12">
                 <p className="type-body-sm" style={{ color: 'var(--text-muted)' }}>
                     Want to shape our roadmap?{' '}
-                    <a href="mailto:donganhcapital@gmail.com" className="underline underline-offset-2 transition-colors" style={{ color: 'var(--gold-primary)' }}>
+                    <a href="mailto:contact@donganhcapital.com" className="underline underline-offset-2 transition-colors" style={{ color: 'var(--gold-primary)' }}>
                         Join our community
                     </a>.
                 </p>
@@ -1135,8 +1135,8 @@ export const PricingSection = ({ onTabChange }) => {
                 { text: 'Investment chatbot (limited)', included: true },
                 { text: '1 FinAI Stock Predict model', included: true },
             ],
-            cta: 'Preorder Pro',
-            ctaAction: null, // uses email form
+            cta: 'Get Pro',
+            ctaAction: () => onTabChange && onTabChange('checkout', { plan: 'pro', period: isYearly ? 'yearly' : 'monthly' }),
             ctaStyle: 'primary',
             highlight: true,
         },
@@ -1156,18 +1156,16 @@ export const PricingSection = ({ onTabChange }) => {
                 { text: 'Investment chatbot (unlimited)', included: true },
                 { text: '2 FinAI Stock Predict models', included: true },
             ],
-            cta: 'Preorder Premium',
-            ctaAction: null, // uses email form
+            cta: 'Get Premium',
+            ctaAction: () => onTabChange && onTabChange('checkout', { plan: 'premium', period: isYearly ? 'yearly' : 'monthly' }),
             ctaStyle: 'premium',
             highlight: false,
         },
     ];
 
     const paymentMethods = [
-        { name: 'Bank Transfer', icon: Building2 },
-        { name: 'MoMo', icon: Wallet },
-        { name: 'ZaloPay', icon: Wallet },
-        { name: 'Visa / Mastercard', icon: CreditCard },
+        { name: 'Bank Transfer (VietQR)', icon: Building2 },
+        { name: 'More coming soon', icon: CreditCard },
     ];
 
     return (
@@ -1463,8 +1461,8 @@ export const QAndASection = () => {
             <motion.div variants={itemVariants} className="text-center mt-8">
                 <p className="type-body-sm" style={{ color: 'var(--text-muted)' }}>
                     Have another question? Reach out at{' '}
-                    <a href="mailto:donganhcapital@gmail.com" className="underline underline-offset-2 transition-colors" style={{ color: 'var(--gold-primary)' }}>
-                        donganhcapital@gmail.com
+                    <a href="mailto:contact@donganhcapital.com" className="underline underline-offset-2 transition-colors" style={{ color: 'var(--gold-primary)' }}>
+                        contact@donganhcapital.com
                     </a>
                 </p>
             </motion.div>
@@ -1543,14 +1541,14 @@ export const AboutUsSection = () => {
                                 <p className="type-body font-medium" style={{ color: 'var(--text-primary)' }}>0813 221 910</p>
                             </div>
                         </a>
-                        <a href="mailto:donganhcapital@gmail.com" className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all group cursor-pointer"
+                        <a href="mailto:contact@donganhcapital.com" className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all group cursor-pointer"
                             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--gold-border)' }}>
                             <div className="p-2 rounded-lg" style={{ background: 'rgba(201,169,110,0.1)', color: 'var(--gold-primary)' }}>
                                 <Mail size={18} />
                             </div>
                             <div>
                                 <p className="type-caption" style={{ color: 'var(--text-muted)' }}>Get in Touch</p>
-                                <p className="type-body font-medium" style={{ color: 'var(--text-primary)' }}>donganhcapital@gmail.com</p>
+                                <p className="type-body font-medium" style={{ color: 'var(--text-primary)' }}>contact@donganhcapital.com</p>
                             </div>
                         </a>
                     </div>
@@ -1572,7 +1570,7 @@ export const AboutUsSection = () => {
 /* ============================================================
    FOOTER SECTION
    ============================================================ */
-export const FooterSection = () => {
+export const FooterSection = ({ onTabChange }) => {
     return (
         <footer style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--gold-border)' }}>
             <div className="max-w-6xl mx-auto px-4 py-10 sm:py-12">
@@ -1602,8 +1600,11 @@ export const FooterSection = () => {
                     <div>
                         <h4 className="type-label mb-4" style={{ color: 'var(--text-secondary)' }}>Contact</h4>
                         <div className="space-y-2 type-body-sm">
-                            <a href="mailto:donganhcapital@gmail.com" className="block transition-colors hover:text-gold-primary" style={{ color: 'var(--text-muted)' }}>
-                                donganhcapital@gmail.com
+                            <a href="mailto:contact@donganhcapital.com" className="block transition-colors hover:text-gold-primary" style={{ color: 'var(--text-muted)' }}>
+                                contact@donganhcapital.com
+                            </a>
+                            <a href="mailto:support@donganhcapital.com" className="block transition-colors hover:text-gold-primary" style={{ color: 'var(--text-muted)' }}>
+                                support@donganhcapital.com
                             </a>
                             <a href="tel:0813221910" className="block transition-colors" style={{ color: 'var(--text-muted)' }}>
                                 0813 221 910
@@ -1620,6 +1621,15 @@ export const FooterSection = () => {
                                 style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid var(--gold-border)', color: 'var(--text-muted)' }}>
                                 <Facebook size={16} />
                             </a>
+                        </div>
+                        <h4 className="type-label mt-8 mb-4" style={{ color: 'var(--text-secondary)' }}>Legal</h4>
+                        <div className="space-y-2 type-body-sm">
+                            <button onClick={() => onTabChange && onTabChange('privacy')} className="block transition-colors hover:text-gold-primary cursor-pointer text-left" style={{ color: 'var(--text-muted)', background: 'none', border: 'none', padding: 0 }}>
+                                Privacy Policy
+                            </button>
+                            <button onClick={() => onTabChange && onTabChange('terms')} className="block transition-colors hover:text-gold-primary cursor-pointer text-left" style={{ color: 'var(--text-muted)', background: 'none', border: 'none', padding: 0 }}>
+                                Terms of Service
+                            </button>
                         </div>
                     </div>
                 </div>
