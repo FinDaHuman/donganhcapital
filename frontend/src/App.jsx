@@ -231,7 +231,7 @@ function App() {
                         <div className="p-10 text-center text-gray-500">News Feed Coming Soon...</div>
                     )}
 
-                    {activeTab === 'login' && (
+                    {(activeTab === 'login' || activeTab === 'auth/google/callback') && (
                         <AuthPage onTabChange={setActiveTab} initialMode="login" />
                     )}
 
