@@ -9,9 +9,23 @@ import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Search } from 'lucide-react';
 import { BrandedLoader } from './components/BrandedLoader';
+import AuthPage from './pages/AuthPage';
+import ProfilePage from './pages/ProfilePage';
+import CheckoutPage from './pages/CheckoutPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsOfServicePage from './pages/TermsOfServicePage';
 
 function App() {
     const [activeTab, setActiveTab] = useState('home');
+    const [checkoutPlan, setCheckoutPlan] = useState({ plan: 'pro', period: 'monthly' });
+
+    // Handle checkout navigation with plan/period
+    const handleTabChange = (tab, data) => {
+        if (tab === 'checkout' && data) {
+            setCheckoutPlan(data);
+        }
+        setActiveTab(tab);
+    };
     const [selectedTicker, setSelectedTicker] = useState(null);
     const [predictionData, setPredictionData] = useState(null);
     const [error, setError] = useState(null);
@@ -85,14 +99,14 @@ function App() {
 
     return (
         <div className="w-full min-h-screen flex flex-col overflow-hidden text-gray-200 font-sans" style={{ backgroundColor: '#000' }}>
-            {activeTab !== 'home' && <Header activeTab={activeTab} onTabChange={setActiveTab} />}
+            {activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'profile' && activeTab !== 'checkout' && activeTab !== 'privacy' && activeTab !== 'terms' && <Header activeTab={activeTab} onTabChange={handleTabChange} />}
 
             <div className="flex-1 flex flex-col w-full min-h-0 relative">
                 <main className="flex-1 overflow-hidden relative flex flex-col min-h-0" style={{ backgroundColor: '#000' }}>
 
                     {activeTab === 'home' && (
                         <div className="h-full w-full overflow-hidden">
-                            <LandingPage onTabChange={setActiveTab} />
+                        <LandingPage onTabChange={handleTabChange} />
                         </div>
                     )}
 
@@ -207,6 +221,34 @@ function App() {
 
                     {activeTab === 'news' && (
                         <div className="p-10 text-center text-gray-500">News Feed Coming Soon...</div>
+                    )}
+
+                    {activeTab === 'login' && (
+                        <AuthPage onTabChange={setActiveTab} initialMode="login" />
+                    )}
+
+                    {activeTab === 'register' && (
+                        <AuthPage onTabChange={setActiveTab} initialMode="register" />
+                    )}
+
+                    {activeTab === 'profile' && (
+                        <ProfilePage onTabChange={handleTabChange} />
+                    )}
+
+                    {activeTab === 'checkout' && (
+                        <CheckoutPage
+                            onTabChange={handleTabChange}
+                            plan={checkoutPlan.plan}
+                            period={checkoutPlan.period}
+                        />
+                    )}
+
+                    {activeTab === 'privacy' && (
+                        <PrivacyPolicyPage onTabChange={handleTabChange} />
+                    )}
+
+                    {activeTab === 'terms' && (
+                        <TermsOfServicePage onTabChange={handleTabChange} />
                     )}
                 </main>
             </div>
