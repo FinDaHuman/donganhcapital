@@ -129,7 +129,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         value=access_token,
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="none",  # Required for cross-domain requests (Vercel <-> Render)
         max_age=15 * 60,  # 15 minutes
         path="/",
     )
@@ -138,7 +138,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         value=refresh_token,
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="none",  # Required for cross-domain requests
         max_age=7 * 24 * 3600,  # 7 days
         path="/api/auth/refresh",  # Only sent to refresh endpoint
     )

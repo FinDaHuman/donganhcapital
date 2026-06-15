@@ -13,6 +13,7 @@ psycopg2-binary
 xgboost
 vnstock==4.0.2
 vnstock_ezchart==0.0.3
+bcrypt==3.2.2
 passlib[bcrypt]
 python-jose[cryptography]
 httpx
