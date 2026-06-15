@@ -377,7 +377,7 @@ const CheckoutPage = ({ onTabChange, plan = 'pro', period = 'monthly' }) => {
                     {/* Bank Details */}
                     <div className="space-y-2.5">
                         {[
-                            { label: 'Bank', value: payment.bank_name || 'MB Bank', field: 'bank' },
+                            { label: 'Bank', value: payment.bank_name || 'TPBank', field: 'bank' },
                             { label: 'Account Number', value: payment.account_no, field: 'account', copyable: true },
                             { label: 'Account Name', value: payment.account_name, field: 'name' },
                             { label: 'Amount', value: payment.amount_formatted, field: 'amount', copyable: true, copyValue: String(payment.amount) },

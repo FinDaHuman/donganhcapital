@@ -119,7 +119,7 @@ def generate_vietqr_url(
 def get_payment_details(amount: int, order_code: str) -> dict:
     """Get all payment details for display to user."""
     return {
-        "bank_name": "MB Bank (Ngân hàng Quân đội)",
+        "bank_name": "TPBank (Ngân hàng Tiên Phong)",
         "bank_id": BANK_ID,
         "account_no": BANK_ACCOUNT_NO,
         "account_name": BANK_ACCOUNT_NAME,
