@@ -1623,13 +1623,23 @@ export const FooterSection = ({ onTabChange }) => {
                             </a>
                         </div>
                         <h4 className="type-label mt-8 mb-4" style={{ color: 'var(--text-secondary)' }}>Legal</h4>
-                        <div className="space-y-2 type-body-sm">
-                            <button onClick={() => onTabChange && onTabChange('privacy')} className="block transition-colors hover:text-gold-primary cursor-pointer text-left" style={{ color: 'var(--text-muted)', background: 'none', border: 'none', padding: 0 }}>
+                        <div className="space-y-2 type-body-sm flex flex-col items-start">
+                            <a
+                                href="?tab=privacy"
+                                onClick={(e) => { e.preventDefault(); onTabChange && onTabChange('privacy'); }}
+                                className="block transition-colors hover:text-gold-primary text-left"
+                                style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
+                            >
                                 Privacy Policy
-                            </button>
-                            <button onClick={() => onTabChange && onTabChange('terms')} className="block transition-colors hover:text-gold-primary cursor-pointer text-left" style={{ color: 'var(--text-muted)', background: 'none', border: 'none', padding: 0 }}>
+                            </a>
+                            <a
+                                href="?tab=terms"
+                                onClick={(e) => { e.preventDefault(); onTabChange && onTabChange('terms'); }}
+                                className="block transition-colors hover:text-gold-primary text-left"
+                                style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
+                            >
                                 Terms of Service
-                            </button>
+                            </a>
                         </div>
                     </div>
                 </div>

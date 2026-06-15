@@ -16,15 +16,21 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 
 function App() {
-    const [activeTab, setActiveTab] = useState('home');
+    // Read initial tab from URL query params (e.g. ?tab=privacy)
+    const initialTab = new URLSearchParams(window.location.search).get('tab') || 'home';
+    const [activeTab, setActiveTab] = useState(initialTab);
     const [checkoutPlan, setCheckoutPlan] = useState({ plan: 'pro', period: 'monthly' });
 
-    // Handle checkout navigation with plan/period
+    // Handle checkout navigation with plan/period and update URL
     const handleTabChange = (tab, data) => {
         if (tab === 'checkout' && data) {
             setCheckoutPlan(data);
         }
         setActiveTab(tab);
+        // Update URL without reloading page
+        const newUrl = tab === 'home' ? window.location.pathname : `${window.location.pathname}?tab=${tab}`;
+        window.history.pushState({ path: newUrl }, '', newUrl);
+        window.scrollTo(0, 0);
     };
     const [selectedTicker, setSelectedTicker] = useState(null);
     const [predictionData, setPredictionData] = useState(null);
