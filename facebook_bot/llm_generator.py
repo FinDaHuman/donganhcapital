@@ -88,7 +88,7 @@ def generate_facebook_post(action_data):
         1. Giọng văn thu hút, chuyên nghiệp nhưng vẫn gần gũi với nhà đầu tư cá nhân. Không xưng "tôi".
         2. Đảm bảo thông tin chính xác về hệ thống AI: Chúng tôi có 1 Mô hình Public miễn phí (chuyên dự đoán/lọc cổ phiếu Breakout) và 2 Mô hình Pro chuyên sâu dành cho hội viên trả phí.
         3. Thêm các emoji phù hợp.
-        4. BẮT BUỘC chèn Call-to-action (CTA) trỏ về link website: https://dong-anh-capital.vercel.app
+        4. BẮT BUỘC chèn Call-to-action (CTA) trỏ về link website: https://donganhcapital.com
         
         QUY TẮC:
         {system_rules}
@@ -115,7 +115,7 @@ def generate_facebook_post(action_data):
         2. Cấu trúc bài viết mạch lạc: Nêu vấn đề -> Giải thích/Phân tích -> Bài học rút ra.
         3. Liên hệ khéo léo: Nhắc đến việc nhà đầu tư có thể sử dụng các Mô hình AI (như Mô hình Public miễn phí của DongAnh Capital) để tự động hóa việc lọc tín hiệu, giảm bớt khó khăn trong phân tích thủ công.
         4. Dùng bullet points và emoji để bài viết trực quan, dễ đọc.
-        5. BẮT BUỘC chèn Call-to-action (CTA) trỏ về website: https://dong-anh-capital.vercel.app ở cuối bài.
+        5. BẮT BUỘC chèn Call-to-action (CTA) trỏ về website: https://donganhcapital.com ở cuối bài.
         
         QUY TẮC:
         {system_rules}
