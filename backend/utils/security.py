@@ -24,7 +24,16 @@ from passlib.context import CryptContext
 logger = logging.getLogger(__name__)
 
 # ── Configuration ──
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(64))
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    # In production, a missing JWT_SECRET_KEY means sessions will be lost on every restart.
+    # Generate a fallback for local development only.
+    JWT_SECRET_KEY = secrets.token_urlsafe(64)
+    logger.warning(
+        "⚠️  JWT_SECRET_KEY is not set! Using a randomly generated key. "
+        "All user sessions will be lost when the server restarts. "
+        "Set JWT_SECRET_KEY as an environment variable for production."
+    )
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
