@@ -38,6 +38,7 @@ import {
     getSectors,
     readCachedAnalytics,
 } from '../services/stock_api';
+import { SkeletonCard, SkeletonChart } from './SkeletonLoader';
 
 const SECTION_TABS = [
     { id: 'overview', label: 'Overview', icon: Activity, description: 'Key metrics at a glance' },
@@ -97,27 +98,6 @@ const createSectionLoadingState = () => ({
     health: false,
 });
 
-/* ─── Skeleton shimmer block ─── */
-const SkeletonBlock = ({ className = '' }) => (
-    <div className={`relative overflow-hidden rounded-xl bg-[#1a1d22] ${className}`}>
-        <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/[0.04] to-transparent" />
-    </div>
-);
-
-const SkeletonCard = () => (
-    <div className="rounded-2xl border border-[#1e2128] bg-[#0e1015] p-5 space-y-3">
-        <SkeletonBlock className="h-3 w-24" />
-        <SkeletonBlock className="h-8 w-20" />
-        <SkeletonBlock className="h-3 w-32" />
-    </div>
-);
-
-const SkeletonChart = () => (
-    <div className="rounded-2xl border border-[#1e2128] bg-[#0e1015] p-5 space-y-4">
-        <SkeletonBlock className="h-4 w-40" />
-        <SkeletonBlock className="h-[200px] w-full" />
-    </div>
-);
 
 /* ─── Enhanced KPI Card ─── */
 const KpiCard = ({ label, value, tone = 'text-white', subtitle, icon: Icon, accentColor = '#3b82f6' }) => (

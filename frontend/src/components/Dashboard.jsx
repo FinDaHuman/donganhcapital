@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Plot from 'react-plotly.js';
 import { getMarketStatus, getLoadingProgress, getCachedMarketStatus, getSectors } from '../services/stock_api';
+import { SkeletonDashboard } from './SkeletonLoader';
 
 const MIN_STOCKS_TO_SHOW = 15;
 const MIN_VOL_PCT_SECTOR = 0.015; // 1.5% minimum volume inside a sector to show individually
@@ -283,81 +284,57 @@ const Dashboard = ({ onSelectStock }) => {
     if (!gateOpen) {
         const pct = progress.total > 0 ? Math.round((progress.loaded / Math.max(progress.total, MIN_STOCKS_TO_SHOW)) * 100) : 0;
         return (
-            <div
-                className="flex-1 w-full flex flex-col items-center justify-center gap-8 p-8"
-                style={{ background: 'var(--bg-void)' }}
-            >
-                <div className="flex flex-col items-center gap-6 max-w-sm w-full">
-                    {/* Branded gold loader */}
-                    <div className="relative w-16 h-16">
-                        <svg
-                            className="absolute inset-0 w-full h-full animate-spin"
-                            style={{ animationDuration: '2s' }}
-                            viewBox="0 0 64 64"
-                            fill="none"
-                        >
-                            <circle cx="32" cy="32" r="28" stroke="rgba(201,169,110,0.12)" strokeWidth="2" />
-                            <path
-                                d="M32 4 A28 28 0 0 1 60 32"
-                                stroke="url(#goldArcDash)"
-                                strokeWidth="3"
-                                strokeLinecap="round"
-                            />
-                            <defs>
-                                <linearGradient id="goldArcDash" x1="0%" y1="0%" x2="100%" y2="0%">
-                                    <stop offset="0%" stopColor="#E8C97A" />
-                                    <stop offset="100%" stopColor="rgba(201,169,110,0)" />
-                                </linearGradient>
-                            </defs>
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <svg width="22" height="22" viewBox="0 0 16 16" style={{ animation: 'star-rotate 4s linear infinite' }}>
-                                <path d="M8 0 L9 6.5 L16 8 L9 9.5 L8 16 L7 9.5 L0 8 L7 6.5 Z" fill="#C9A96E" />
-                            </svg>
-                        </div>
-                    </div>
-
-                    <div className="text-center">
-                        <h2
-                            style={{
-                                fontFamily: "'Outfit', sans-serif",
-                                fontSize: '18px',
-                                fontWeight: 600,
-                                color: 'var(--text-primary)',
-                                letterSpacing: '0.02em',
-                                marginBottom: '8px',
-                            }}
-                        >
-                            Loading Market Data
-                        </h2>
-                        <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                            Fetching live data from VN stock exchange.{' '}
-                            <br className="hidden sm:block" />
-                            This takes about a minute on cold start.
-                        </p>
-                    </div>
-
-                    {/* Gold progress bar */}
-                    <div className="w-full space-y-2">
-                        <div
-                            className="w-full rounded-full h-1.5 overflow-hidden"
-                            style={{ background: 'var(--bg-elevated)', border: '1px solid rgba(201,169,110,0.1)' }}
-                        >
-                            <div
-                                className="h-full rounded-full transition-all duration-700 ease-out"
+            <div className="flex-1 w-full relative overflow-hidden" style={{ background: 'var(--bg-void)' }}>
+                {/* Background Skeleton */}
+                <div className="absolute inset-0 opacity-40 pointer-events-none">
+                    <SkeletonDashboard className="h-full" />
+                </div>
+                
+                {/* Foreground Overlay */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-8 p-8 z-10 backdrop-blur-sm bg-black/20">
+                    <div className="flex flex-col items-center gap-6 max-w-sm w-full">
+                        <div className="text-center">
+                            <h2
                                 style={{
-                                    width: `${Math.min(pct, 100)}%`,
-                                    background: 'linear-gradient(90deg, #A38550, #C9A96E, #E8C97A)',
+                                    fontFamily: "'Outfit', sans-serif",
+                                    fontSize: '18px',
+                                    fontWeight: 600,
+                                    color: 'var(--text-primary)',
+                                    letterSpacing: '0.02em',
+                                    marginBottom: '8px',
                                 }}
-                            />
+                            >
+                                Loading Market Data
+                            </h2>
+                            <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                                Fetching live data from VN stock exchange.{' '}
+                                <br className="hidden sm:block" />
+                                This takes about a minute on cold start.
+                            </p>
                         </div>
-                        <div className="flex justify-between">
-                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'var(--text-muted)' }}>
-                                {progress.loaded} / {progress.total || '...'} stocks
-                            </span>
-                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'var(--gold-muted)', fontWeight: 500 }}>
-                                {pct}%
-                            </span>
+
+                        {/* Gold progress bar */}
+                        <div className="w-full space-y-2">
+                            <div
+                                className="w-full rounded-full h-1.5 overflow-hidden"
+                                style={{ background: 'var(--bg-elevated)', border: '1px solid rgba(201,169,110,0.1)' }}
+                            >
+                                <div
+                                    className="h-full rounded-full transition-all duration-700 ease-out"
+                                    style={{
+                                        width: `${Math.min(pct, 100)}%`,
+                                        background: 'linear-gradient(90deg, #A38550, #C9A96E, #E8C97A)',
+                                    }}
+                                />
+                            </div>
+                            <div className="flex justify-between">
+                                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'var(--text-muted)' }}>
+                                    {progress.loaded} / {progress.total || '...'} stocks
+                                </span>
+                                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'var(--gold-muted)', fontWeight: 500 }}>
+                                    {pct}%
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>

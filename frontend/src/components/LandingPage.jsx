@@ -15,7 +15,7 @@ import {
     FooterSection,
     MarqueeTicker,
 } from './LandingSections';
-import { BrandedLoader, StarMark } from './BrandedLoader';
+import { StarMark } from './StarMark';
 
 /* ── Animated counter hook ── */
 const useCounter = (end, duration = 2000) => {

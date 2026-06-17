@@ -8,7 +8,7 @@ import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Search } from 'lucide-react';
-import { BrandedLoader } from './components/BrandedLoader';
+import { SkeletonChart } from './components/SkeletonLoader';
 import AuthPage from './pages/AuthPage';
 import ProfilePage from './pages/ProfilePage';
 import CheckoutPage from './pages/CheckoutPage';
@@ -133,8 +133,8 @@ function App() {
                                 {/* Chart Container */}
                                 <div className="flex-1 relative bg-black min-h-0 overflow-hidden">
                                     {loading ? (
-                                        <div className="absolute inset-0 flex items-center justify-center flex-col gap-6 z-10" style={{ background: 'var(--bg-void)' }}>
-                                            <BrandedLoader label={`Loading ${selectedTicker}...`} />
+                                        <div className="absolute inset-0 p-6 z-10 flex flex-col" style={{ background: 'var(--bg-void)' }}>
+                                            <SkeletonChart className="flex-1 w-full h-full" />
                                         </div>
                                     ) : error ? (
                                         <div className="absolute inset-0 flex items-center justify-center flex-col gap-4 z-10" style={{ background: 'var(--bg-void)' }}>
