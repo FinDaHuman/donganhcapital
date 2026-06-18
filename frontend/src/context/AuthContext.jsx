@@ -223,6 +223,18 @@ export const AuthProvider = ({ children }) => {
         setError(null);
     }, []);
 
+    // ── Refresh user from server (e.g. after subscription upgrade) ──
+    const refreshUser = useCallback(async () => {
+        try {
+            const { data } = await authApi.get('/api/auth/me');
+            setUser(data.user);
+            writeCache(data.user);
+            return data.user;
+        } catch {
+            return null;
+        }
+    }, []);
+
     // ── Update profile ──
     const updateProfile = useCallback(async (updates) => {
         try {
@@ -247,6 +259,7 @@ export const AuthProvider = ({ children }) => {
         loginWithGoogle,
         logout,
         updateProfile,
+        refreshUser,
         authApi,
     };
 

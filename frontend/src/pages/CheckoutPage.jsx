@@ -39,7 +39,7 @@ const planInfo = {
 };
 
 const CheckoutPage = ({ onTabChange, plan = 'pro', period = 'monthly' }) => {
-    const { authApi, user, isAuthenticated } = useAuth();
+    const { authApi, user, isAuthenticated, refreshUser } = useAuth();
     const [orderData, setOrderData] = useState(null);
     const [status, setStatus] = useState('loading'); // loading | pending | completed | expired | error
     const [error, setError] = useState('');
@@ -97,6 +97,7 @@ const CheckoutPage = ({ onTabChange, plan = 'pro', period = 'monthly' }) => {
                     setStatus('completed');
                     if (pollRef.current) clearInterval(pollRef.current);
                     if (timerRef.current) clearInterval(timerRef.current);
+                    refreshUser(); // sync subscription tier from server
                 } else if (data.status === 'expired') {
                     setStatus('expired');
                     if (pollRef.current) clearInterval(pollRef.current);
@@ -311,6 +312,24 @@ const CheckoutPage = ({ onTabChange, plan = 'pro', period = 'monthly' }) => {
                             <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>VND</span>
                         </div>
                     </div>
+
+                    {/* Proration breakdown — shown only when upgrading mid-cycle */}
+                    {orderData?.credit_amount > 0 && (
+                        <div className="mb-4 p-3 rounded-xl space-y-1.5" style={{ background: 'rgba(77,184,130,0.05)', border: '1px solid rgba(77,184,130,0.15)' }}>
+                            <div className="flex justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
+                                <span>Full catalogue price</span>
+                                <span style={{ fontFamily: "'DM Mono', monospace" }}>{orderData.full_price?.toLocaleString()} VND</span>
+                            </div>
+                            <div className="flex justify-between text-xs" style={{ color: 'var(--market-up)' }}>
+                                <span>Credit — unused days on current plan{orderData.days_remaining > 0 ? ` (${orderData.days_remaining}d)` : ''}</span>
+                                <span style={{ fontFamily: "'DM Mono', monospace" }}>−{orderData.credit_amount?.toLocaleString()} VND</span>
+                            </div>
+                            <div className="flex justify-between text-xs font-semibold pt-1" style={{ color: 'var(--text-primary)', borderTop: '1px solid rgba(77,184,130,0.15)' }}>
+                                <span>You pay today</span>
+                                <span style={{ fontFamily: "'DM Mono', monospace", color: info.color }}>{orderData.amount?.toLocaleString()} VND</span>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Timer */}
                     {timeLeft !== null && (

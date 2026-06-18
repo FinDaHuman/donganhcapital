@@ -84,12 +84,28 @@ const upgradePlans = [
     },
 ];
 
+const PRICING = {
+    pro:     { monthly: 199_000, yearly: 1_990_000 },
+    premium: { monthly: 499_000, yearly: 4_990_000 },
+};
+
 const getDaysUntilExpiry = (expiresAt) => {
     if (!expiresAt) return null;
     const now = new Date();
     const exp = new Date(expiresAt);
     const diffMs = exp - now;
     return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+};
+
+// Client-side proration estimate (mirrors backend logic for display only)
+const estimateProration = (currentTier, currentPeriod, daysRemaining, newPlan, newPeriod) => {
+    const fullPrice = PRICING[newPlan]?.[newPeriod] ?? 0;
+    if (!daysRemaining || daysRemaining <= 0 || !currentPeriod) return { credit: 0, charge: fullPrice, fullPrice };
+    const currentPrice = PRICING[currentTier]?.[currentPeriod] ?? 0;
+    const periodDays = currentPeriod === 'yearly' ? 365 : 30;
+    const credit = Math.round((currentPrice / periodDays) * daysRemaining);
+    const charge = Math.max(1_000, fullPrice - credit);
+    return { credit, charge, fullPrice };
 };
 
 const formatDate = (dateStr) => {
@@ -117,6 +133,20 @@ const ProfilePage = ({ onTabChange }) => {
 
     const tier = tierConfig[user?.subscription_tier] || tierConfig.free;
     const currentRank = tier.rank;
+    const currentPeriod = user?.subscription_period || 'monthly';
+    const isSubActive = daysUntilExpiry !== null && daysUntilExpiry > 0;
+
+    // "Switch to Yearly" is available when: paid tier, active, currently on monthly
+    const canSwitchToYearly = (
+        user?.subscription_tier !== 'free' &&
+        currentPeriod === 'monthly' &&
+        isSubActive &&
+        !isExpired
+    );
+
+    const yearlySwitch = canSwitchToYearly
+        ? estimateProration(user.subscription_tier, 'monthly', daysUntilExpiry, user.subscription_tier, 'yearly')
+        : null;
 
     const availableUpgrades = upgradePlans.filter(p => {
         const planRank = tierConfig[p.id]?.rank ?? 0;
@@ -160,6 +190,10 @@ const ProfilePage = ({ onTabChange }) => {
 
     const handleUpgrade = (planId) => {
         onTabChange && onTabChange('checkout', { plan: planId, period: upgradeYearly ? 'yearly' : 'monthly' });
+    };
+
+    const handleSwitchToYearly = () => {
+        onTabChange && onTabChange('checkout', { plan: user.subscription_tier, period: 'yearly' });
     };
 
     const sections = [
@@ -441,6 +475,39 @@ const ProfilePage = ({ onTabChange }) => {
                                         )}
                                     </div>
 
+                                    {/* Switch to Yearly — shown for active monthly subscribers */}
+                                    {canSwitchToYearly && yearlySwitch && (
+                                        <div
+                                            className="rounded-2xl p-5 mb-6 flex items-center justify-between gap-4"
+                                            style={{ background: 'rgba(77,184,130,0.05)', border: '1px solid rgba(77,184,130,0.2)' }}
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--market-up)' }}>
+                                                    Switch to Yearly — Save 17%
+                                                </p>
+                                                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                                    Your remaining {daysUntilExpiry}d credited · you pay{' '}
+                                                    <span style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
+                                                        ~{yearlySwitch.charge.toLocaleString()} VND
+                                                    </span>{' '}
+                                                    today for 365 days
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={handleSwitchToYearly}
+                                                className="shrink-0 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer whitespace-nowrap"
+                                                style={{
+                                                    background: 'rgba(77,184,130,0.15)',
+                                                    border: '1px solid rgba(77,184,130,0.3)',
+                                                    color: 'var(--market-up)',
+                                                    fontFamily: "'Outfit', sans-serif",
+                                                }}
+                                            >
+                                                Switch Now →
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {/* Upgrade options */}
                                     {availableUpgrades.length > 0 && (
                                         <div>
@@ -473,7 +540,12 @@ const ProfilePage = ({ onTabChange }) => {
                                             </div>
 
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                {availableUpgrades.map((plan) => (
+                                                {availableUpgrades.map((plan) => {
+                                                    const selectedPeriod = upgradeYearly ? 'yearly' : 'monthly';
+                                                    const proratedEstimate = isSubActive
+                                                        ? estimateProration(user.subscription_tier, currentPeriod, daysUntilExpiry, plan.id, selectedPeriod)
+                                                        : null;
+                                                    return (
                                                     <div
                                                         key={plan.id}
                                                         className="rounded-2xl p-5 relative overflow-hidden"
@@ -485,12 +557,17 @@ const ProfilePage = ({ onTabChange }) => {
                                                             </p>
                                                             <Sparkles size={16} style={{ color: plan.color, opacity: 0.7 }} />
                                                         </div>
-                                                        <p className="text-xl font-medium mb-1" style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
+                                                        <p className="text-xl font-medium mb-0.5" style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
                                                             {upgradeYearly ? plan.priceYearly : plan.priceMonthly}
                                                             <span className="text-xs font-normal ml-1" style={{ color: 'var(--text-muted)' }}>
                                                                 VND/{upgradeYearly ? 'yr' : 'mo'}
                                                             </span>
                                                         </p>
+                                                        {proratedEstimate && proratedEstimate.credit > 0 && (
+                                                            <p className="text-xs mb-3" style={{ color: 'var(--market-up)' }}>
+                                                                ~{proratedEstimate.charge.toLocaleString()} VND today after credit
+                                                            </p>
+                                                        )}
                                                         <ul className="space-y-1.5 mb-4">
                                                             {plan.features.map((f, i) => (
                                                                 <li key={i} className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -513,7 +590,8 @@ const ProfilePage = ({ onTabChange }) => {
                                                             Upgrade to {plan.name}
                                                         </button>
                                                     </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}
@@ -558,7 +636,7 @@ const ProfilePage = ({ onTabChange }) => {
                                             className="rounded-2xl overflow-hidden"
                                             style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.12)' }}
                                         >
-                                            <div className="grid grid-cols-4 px-5 py-3 text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)', letterSpacing: '0.08em', borderBottom: '1px solid rgba(201,169,110,0.08)' }}>
+                                            <div className="grid px-5 py-3 text-xs font-semibold uppercase" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr', color: 'var(--text-muted)', letterSpacing: '0.08em', borderBottom: '1px solid rgba(201,169,110,0.08)' }}>
                                                 <span>Plan</span>
                                                 <span>Date</span>
                                                 <span>Amount</span>
@@ -567,27 +645,41 @@ const ProfilePage = ({ onTabChange }) => {
                                             {paymentHistory.map((p, i) => (
                                                 <div
                                                     key={i}
-                                                    className="grid grid-cols-4 px-5 py-4 text-sm items-center"
+                                                    className="px-5 py-4"
                                                     style={{ borderBottom: i < paymentHistory.length - 1 ? '1px solid rgba(201,169,110,0.06)' : 'none' }}
                                                 >
-                                                    <span className="font-medium capitalize" style={{ color: 'var(--text-primary)' }}>{p.plan}</span>
-                                                    <span style={{ color: 'var(--text-secondary)' }}>{formatDate(p.completed_at)}</span>
-                                                    <span style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
-                                                        {formatAmount(p.amount)} đ
-                                                    </span>
-                                                    <span className="flex items-center gap-1.5">
-                                                        {p.status === 'completed' ? (
-                                                            <>
-                                                                <CheckCircle2 size={13} style={{ color: 'var(--market-up)' }} />
-                                                                <span style={{ color: 'var(--market-up)', fontSize: '12px' }}>Paid</span>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <XCircle size={13} style={{ color: 'var(--text-muted)' }} />
-                                                                <span style={{ color: 'var(--text-muted)', fontSize: '12px', textTransform: 'capitalize' }}>{p.status}</span>
-                                                            </>
-                                                        )}
-                                                    </span>
+                                                    <div className="grid text-sm items-center" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
+                                                        <div>
+                                                            <span className="font-medium capitalize" style={{ color: 'var(--text-primary)' }}>{p.plan}</span>
+                                                            <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded capitalize" style={{ background: 'rgba(201,169,110,0.08)', color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
+                                                                {p.period}
+                                                            </span>
+                                                        </div>
+                                                        <span style={{ color: 'var(--text-secondary)' }}>{formatDate(p.completed_at || p.created_at)}</span>
+                                                        <div>
+                                                            <span style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
+                                                                {formatAmount(p.amount)} đ
+                                                            </span>
+                                                            {p.credit_amount > 0 && (
+                                                                <span className="block text-xs mt-0.5" style={{ color: 'var(--market-up)', fontFamily: "'DM Mono', monospace" }}>
+                                                                    −{formatAmount(p.credit_amount)} credit
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span className="flex items-center gap-1.5">
+                                                            {p.status === 'completed' ? (
+                                                                <>
+                                                                    <CheckCircle2 size={13} style={{ color: 'var(--market-up)' }} />
+                                                                    <span style={{ color: 'var(--market-up)', fontSize: '12px' }}>Paid</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <XCircle size={13} style={{ color: 'var(--text-muted)' }} />
+                                                                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', textTransform: 'capitalize' }}>{p.status}</span>
+                                                                </>
+                                                            )}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>

@@ -37,6 +37,7 @@ def run_user_migration():
                 auth_provider VARCHAR(20) NOT NULL DEFAULT 'email',
                 risk_appetite VARCHAR(20) NOT NULL DEFAULT 'moderate',
                 subscription_tier VARCHAR(20) NOT NULL DEFAULT 'free',
+                subscription_period VARCHAR(20),
                 subscription_expires_at TIMESTAMP WITH TIME ZONE,
                 failed_login_attempts INTEGER NOT NULL DEFAULT 0,
                 locked_until TIMESTAMP WITH TIME ZONE,
@@ -45,6 +46,12 @@ def run_user_migration():
                 created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
             );
+        """))
+
+        # Safe column additions for existing tables
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS subscription_period VARCHAR(20);
         """))
 
         # Create indexes safely (IF NOT EXISTS)

@@ -172,6 +172,7 @@ def downgrade_expired_subscriptions_sync():
             result = conn.execute(text("""
                 UPDATE users
                 SET subscription_tier = 'free',
+                    subscription_period = NULL,
                     subscription_expires_at = NULL,
                     updated_at = NOW()
                 WHERE subscription_tier != 'free'

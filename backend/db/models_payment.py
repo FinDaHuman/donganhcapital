@@ -46,6 +46,12 @@ def run_payment_migration():
             );
         """))
 
+        # Safe column additions for existing tables
+        conn.execute(text("""
+            ALTER TABLE payments
+            ADD COLUMN IF NOT EXISTS credit_amount INTEGER NOT NULL DEFAULT 0;
+        """))
+
         # Create indexes
         conn.execute(text("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_order_code

@@ -188,3 +188,55 @@ def get_subscription_duration_days(period: str) -> int:
         return 365
     else:
         raise ValueError(f"Invalid period: {period}")
+
+
+def calculate_upgrade_proration(
+    current_tier: str,
+    current_period: str,
+    current_expires_at,
+    new_plan: str,
+    new_period: str,
+) -> dict:
+    """Stripe-style immediate proration for mid-cycle upgrades.
+
+    Credit  = (seconds_remaining / period_seconds) × current_plan_price
+    Charge  = new_plan_full_price − credit   (minimum 1 000 VND)
+
+    The new subscription always starts NOW and runs the full new period.
+    The credit compensates for unused time rather than tacking days onto the end.
+
+    Returns:
+        credit_amount   — VND credited for unused current subscription
+        prorated_price  — VND the user should actually pay (already rounded)
+        full_price      — VND at full catalogue price (for display)
+        days_remaining  — whole days left in current subscription (for display)
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    full_price = get_price(new_plan, new_period)
+
+    if not current_expires_at or current_expires_at <= now:
+        return {
+            "credit_amount": 0,
+            "prorated_price": full_price,
+            "full_price": full_price,
+            "days_remaining": 0,
+        }
+
+    remaining_seconds = (current_expires_at - now).total_seconds()
+    remaining_days = remaining_seconds / 86400  # fractional for precision
+
+    current_price = get_price(current_tier, current_period)
+    period_seconds = get_subscription_duration_days(current_period) * 86400
+    daily_rate = current_price / (period_seconds / 86400)
+
+    credit_amount = round(daily_rate * remaining_days)
+    prorated_price = max(1_000, full_price - credit_amount)
+
+    return {
+        "credit_amount": credit_amount,
+        "prorated_price": prorated_price,
+        "full_price": full_price,
+        "days_remaining": int(remaining_days),
+    }

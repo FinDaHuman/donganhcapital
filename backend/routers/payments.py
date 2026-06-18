@@ -28,7 +28,8 @@ from routers.auth import get_current_user
 from utils.sepay import (
     get_price, generate_order_code, get_payment_details,
     verify_webhook_signature, extract_order_code_from_description,
-    get_subscription_duration_days, ORDER_EXPIRY_SECONDS,
+    get_subscription_duration_days, calculate_upgrade_proration,
+    ORDER_EXPIRY_SECONDS,
 )
 from utils.security import check_auth_rate_limit
 
@@ -66,7 +67,15 @@ async def create_order(
     request: Request,
     user: dict = Depends(get_current_user),
 ):
-    """Create a pending payment order and return VietQR payment details."""
+    """Create a pending payment order and return VietQR payment details.
+
+    Upgrade rules (Stripe-style proration):
+    - Tier upgrade (e.g. Pro → Premium): allowed mid-cycle with proration credit.
+    - Period upgrade (Monthly → Yearly, same tier): allowed mid-cycle with proration credit.
+    - Period downgrade (Yearly → Monthly): blocked while subscription is active.
+    - Tier downgrade: blocked always.
+    - Same tier + same period while active: blocked (renew after expiry).
+    """
     client_ip = request.client.host if request.client else "unknown"
     if not check_auth_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests")
@@ -76,40 +85,87 @@ async def create_order(
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     user_id = str(user["id"])
-
-    # Block repurchase of same or lower tier while subscription is still active
-    tier_rank = {"free": 0, "pro": 1, "premium": 2}
     current_tier = user.get("subscription_tier", "free")
     expires_at = user.get("subscription_expires_at")
     now_utc = datetime.now(timezone.utc)
-    if (
-        tier_rank.get(body.plan, 0) <= tier_rank.get(current_tier, 0)
-        and expires_at
-        and expires_at > now_utc
-    ):
+    is_sub_active = bool(expires_at and expires_at > now_utc)
+
+    # ── Resolve current billing period from last completed payment ──
+    current_period = "monthly"
+    with engine.connect() as conn:
+        last_payment = conn.execute(
+            text("""
+                SELECT period FROM payments
+                WHERE user_id = :uid AND status = 'completed'
+                ORDER BY completed_at DESC
+                LIMIT 1
+            """),
+            {"uid": user_id},
+        ).mappings().first()
+    if last_payment:
+        current_period = last_payment["period"]
+
+    # ── Guard: validate upgrade direction ──
+    tier_rank = {"free": 0, "pro": 1, "premium": 2}
+    period_rank = {"monthly": 0, "yearly": 1}
+
+    plan_tier = tier_rank.get(body.plan, 0)
+    curr_tier = tier_rank.get(current_tier, 0)
+    plan_period = period_rank.get(body.period, 0)
+    curr_period = period_rank.get(current_period, 0)
+
+    is_tier_upgrade = plan_tier > curr_tier
+    is_tier_same = plan_tier == curr_tier
+    is_tier_downgrade = plan_tier < curr_tier
+    is_period_upgrade = plan_period > curr_period
+    is_period_downgrade = plan_period < curr_period
+
+    if is_tier_downgrade:
         raise HTTPException(
             status_code=400,
-            detail=f"You already have an active {current_tier.title()} subscription until {expires_at.strftime('%d/%m/%Y')}. "
-                   f"You can only upgrade to a higher plan or renew after it expires.",
+            detail="Cannot downgrade to a lower tier. Your current subscription remains active until it expires.",
         )
 
-    # Check for existing pending orders (prevent duplicate orders)
+    if is_sub_active:
+        if is_period_downgrade:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"You are on a yearly plan active until {expires_at.strftime('%d/%m/%Y')}. "
+                    "Switching to a monthly cycle is not allowed while it is active."
+                ),
+            )
+        if is_tier_same and not is_period_upgrade:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"You already have an active {current_tier.title()} {current_period} subscription "
+                    f"until {expires_at.strftime('%d/%m/%Y')}. Renew after it expires."
+                ),
+            )
+
+    # ── Return existing pending order to prevent duplicates ──
     with engine.connect() as conn:
         existing = conn.execute(
             text("""
-                SELECT id, order_code, amount, plan, period, expires_at
+                SELECT id, order_code, amount, plan, period, expires_at, credit_amount
                 FROM payments
                 WHERE user_id = :uid AND status = 'pending'
                   AND expires_at > NOW()
                 ORDER BY created_at DESC
                 LIMIT 1
             """),
-            {"uid": user_id}
+            {"uid": user_id},
         ).mappings().first()
 
         if existing:
             existing = dict(existing)
-            # Return existing pending order instead of creating a new one
+            credit_amount = existing.get("credit_amount", 0)
+            full_price = get_price(existing["plan"], existing["period"])
+            # Recalculate days_remaining so the checkout proration breakdown stays accurate
+            days_remaining = 0
+            if credit_amount > 0 and is_sub_active and expires_at:
+                days_remaining = max(0, int((expires_at - now_utc).total_seconds() / 86400))
             return {
                 "order_code": existing["order_code"],
                 "amount": existing["amount"],
@@ -117,28 +173,37 @@ async def create_order(
                 "period": existing["period"],
                 "payment": get_payment_details(existing["amount"], existing["order_code"]),
                 "expires_at": existing["expires_at"].isoformat(),
+                "credit_amount": credit_amount,
+                "full_price": full_price,
+                "days_remaining": days_remaining,
                 "status": "pending",
                 "message": "You have an existing pending order.",
             }
 
-    # Calculate price
-    try:
-        amount = get_price(body.plan, body.period)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    # ── Proration: calculate what the user actually pays ──
+    proration = calculate_upgrade_proration(
+        current_tier=current_tier,
+        current_period=current_period,
+        current_expires_at=expires_at if is_sub_active else None,
+        new_plan=body.plan,
+        new_period=body.period,
+    )
+    amount = proration["prorated_price"]
+    credit_amount = proration["credit_amount"]
 
-    # Generate unique order code
+    # ── Create new order ──
     order_code = generate_order_code(user_id)
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=ORDER_EXPIRY_SECONDS)
+    order_expires_at = now_utc + timedelta(seconds=ORDER_EXPIRY_SECONDS)
 
-    # Insert order
     with engine.begin() as conn:
         conn.execute(
             text("""
                 INSERT INTO payments
-                    (user_id, order_code, amount, plan, period, status, expires_at, description)
+                    (user_id, order_code, amount, plan, period, status,
+                     expires_at, description, credit_amount)
                 VALUES
-                    (:uid, :code, :amount, :plan, :period, 'pending', :expires, :desc)
+                    (:uid, :code, :amount, :plan, :period, 'pending',
+                     :expires, :desc, :credit)
             """),
             {
                 "uid": user_id,
@@ -146,20 +211,22 @@ async def create_order(
                 "amount": amount,
                 "plan": body.plan,
                 "period": body.period,
-                "expires": expires_at,
+                "expires": order_expires_at,
                 "desc": f"DongAnh Capital {body.plan.title()} - {body.period.title()}",
-            }
+                "credit": credit_amount,
+            },
         )
-
-    payment_details = get_payment_details(amount, order_code)
 
     return {
         "order_code": order_code,
         "amount": amount,
         "plan": body.plan,
         "period": body.period,
-        "payment": payment_details,
-        "expires_at": expires_at.isoformat(),
+        "payment": get_payment_details(amount, order_code),
+        "expires_at": order_expires_at.isoformat(),
+        "credit_amount": credit_amount,
+        "full_price": proration["full_price"],
+        "days_remaining": proration["days_remaining"],
         "status": "pending",
     }
 
@@ -240,17 +307,12 @@ async def sepay_webhook(request: Request):
             )
             return {"success": True, "message": "Amount mismatch"}
 
-        # Calculate subscription period
+        # Subscription starts NOW — prorated price was already charged upfront.
+        # Never extend from the old expiry date; that double-counts unused days.
         now = datetime.now(timezone.utc)
         duration_days = get_subscription_duration_days(order["period"])
-
-        # If user already has active subscription, extend from current end date
-        current_end = order.get("subscription_expires_at")
-        if current_end and current_end > now:
-            sub_start = current_end
-        else:
-            sub_start = now
-        sub_end = sub_start + timedelta(days=duration_days)
+        sub_start = now
+        sub_end = now + timedelta(days=duration_days)
 
         # Update payment status
         conn.execute(
@@ -273,17 +335,19 @@ async def sepay_webhook(request: Request):
             }
         )
 
-        # Update user subscription
+        # Update user subscription (tier + period + expiry)
         conn.execute(
             text("""
                 UPDATE users SET
                     subscription_tier = :tier,
+                    subscription_period = :period,
                     subscription_expires_at = :expires,
                     updated_at = NOW()
                 WHERE id = :uid
             """),
             {
                 "tier": order["plan"],
+                "period": order["period"],
                 "expires": sub_end,
                 "uid": order["user_id"],
             }
@@ -360,7 +424,7 @@ async def payment_history(user: dict = Depends(get_current_user)):
     with engine.connect() as conn:
         results = conn.execute(
             text("""
-                SELECT order_code, amount, plan, period, status,
+                SELECT order_code, amount, credit_amount, plan, period, status,
                        created_at, completed_at, subscription_start, subscription_end
                 FROM payments
                 WHERE user_id = :uid
@@ -376,6 +440,7 @@ async def payment_history(user: dict = Depends(get_current_user)):
                 "order_code": p["order_code"],
                 "amount": p["amount"],
                 "amount_formatted": f"{p['amount']:,.0f} VND",
+                "credit_amount": p.get("credit_amount", 0) or 0,
                 "plan": p["plan"],
                 "period": p["period"],
                 "status": p["status"],

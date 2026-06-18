@@ -47,8 +47,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # ── Constants ──
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
 DANGEROUS_CHARS = re.compile(r"[<>'\";]")
-COOKIE_DOMAIN = None  # Let browser handle it automatically
 IS_PRODUCTION = True  # Set based on environment
+COOKIE_DOMAIN = ".donganhcapital.com" if IS_PRODUCTION else None
 
 ACCESS_COOKIE = "dac_access_token"
 REFRESH_COOKIE = "dac_refresh_token"
@@ -125,9 +125,10 @@ class UserResponse(BaseModel):
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     """Set httpOnly, Secure, SameSite auth cookies.
 
-    Both frontend (donganhcapital.com) and API (api.donganhcapital.com) share
-    the same eTLD+1, so SameSite=Lax is sufficient and avoids third-party
-    cookie blocking in browsers like Brave/Safari.
+    domain=".donganhcapital.com" marks these as first-party cookies valid
+    across all *.donganhcapital.com subdomains, which prevents Brave and
+    Safari from classifying frontend→API requests as cross-site and blocking
+    cookie transmission.
     """
     response.set_cookie(
         key=ACCESS_COOKIE,
@@ -137,6 +138,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         samesite="lax",
         max_age=15 * 60,  # 15 minutes
         path="/",
+        domain=COOKIE_DOMAIN,
     )
     response.set_cookie(
         key=REFRESH_COOKIE,
@@ -146,13 +148,14 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         samesite="lax",
         max_age=7 * 24 * 3600,  # 7 days
         path="/api/auth/refresh",  # Only sent to refresh endpoint
+        domain=COOKIE_DOMAIN,
     )
 
 
 def _clear_auth_cookies(response: Response):
-    """Clear auth cookies — attributes must match set_cookie for browsers to honor the deletion."""
-    response.delete_cookie(key=ACCESS_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
-    response.delete_cookie(key=REFRESH_COOKIE, path="/api/auth/refresh", secure=True, httponly=True, samesite="lax")
+    """Clear auth cookies — all attributes must match set_cookie exactly for deletion to work."""
+    response.delete_cookie(key=ACCESS_COOKIE, path="/", secure=True, httponly=True, samesite="lax", domain=COOKIE_DOMAIN)
+    response.delete_cookie(key=REFRESH_COOKIE, path="/api/auth/refresh", secure=True, httponly=True, samesite="lax", domain=COOKIE_DOMAIN)
 
 
 # ── Current User Dependency ──
@@ -209,6 +212,7 @@ def _format_user(user: dict) -> dict:
         "auth_provider": user.get("auth_provider", "email"),
         "risk_appetite": user.get("risk_appetite", "moderate"),
         "subscription_tier": user.get("subscription_tier", "free"),
+        "subscription_period": user.get("subscription_period"),  # "monthly" | "yearly" | None
         "subscription_expires_at": user["subscription_expires_at"].isoformat() if user.get("subscription_expires_at") else None,
         "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
     }

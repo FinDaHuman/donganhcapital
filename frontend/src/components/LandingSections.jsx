@@ -1269,7 +1269,7 @@ export const PricingSection = ({ onTabChange }) => {
                 </motion.p>
 
                 {/* Monthly / Yearly Toggle */}
-                <motion.div variants={itemVariants} className="flex items-center justify-center gap-3 mb-2">
+                <motion.div variants={itemVariants} className="flex items-center justify-center gap-3 mb-3">
                     <span className="text-sm font-medium" style={{ color: !isYearly ? 'var(--gold-primary)' : 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>Monthly</span>
                     <button
                         onClick={() => setIsYearly(v => !v)}
@@ -1290,6 +1290,9 @@ export const PricingSection = ({ onTabChange }) => {
                         <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)' }}>Save 17%</span>
                     </span>
                 </motion.div>
+                <motion.p variants={itemVariants} className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
+                    Already subscribed? Unused days are credited when you upgrade or switch to yearly.
+                </motion.p>
             </div>
 
             {/* Pricing Cards */}
