@@ -40,6 +40,7 @@ from utils.security import (
     check_auth_rate_limit,
     is_account_locked, get_lockout_until,
     LOCKOUT_THRESHOLD,
+    get_client_ip,
 )
 from utils.mailer import (
     send_password_reset_email,
@@ -257,7 +258,7 @@ def _format_user(user: dict) -> dict:
 @router.post("/register")
 async def register(body: RegisterRequest, request: Request, response: Response):
     """Register a new user with email and password."""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if not check_auth_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
 
@@ -312,7 +313,7 @@ async def register(body: RegisterRequest, request: Request, response: Response):
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response):
     """Login with email and password."""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if not check_auth_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
 
@@ -399,8 +400,30 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
 
 @router.post("/logout")
-async def logout(response: Response):
-    """Clear auth cookies and invalidate refresh token."""
+async def logout(request: Request, response: Response):
+    """Clear auth cookies and revoke the server-side refresh token.
+
+    The refresh cookie is path-scoped to /api/auth/refresh and so isn't sent
+    here, but the access cookie (path "/") is. We recover the user id from its
+    signature — even if the access token has expired — and null
+    refresh_token_hash so a stolen refresh token can't outlive logout. This is
+    best-effort: a failure must never block the logout itself.
+    """
+    token = request.cookies.get(ACCESS_COOKIE)
+    if token:
+        payload = decode_token(token, verify_exp=False)
+        if payload and payload.get("type") == "access" and payload.get("sub"):
+            try:
+                engine = get_engine()
+                if engine is not None:
+                    with engine.begin() as conn:
+                        conn.execute(
+                            text("UPDATE users SET refresh_token_hash = NULL WHERE id = :id"),
+                            {"id": payload["sub"]},
+                        )
+            except Exception as e:
+                logger.warning(f"Logout token revocation failed: {e}")
+
     _clear_auth_cookies(response)
     return {"message": "Logged out successfully"}
 
@@ -487,7 +510,7 @@ async def forgot_password(
     "sign in with Google" notice instead. Email is sent in the background so the
     network call never holds a request slot.
     """
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if not check_auth_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
 
@@ -552,7 +575,7 @@ async def reset_password(
     revokes all existing sessions by clearing the refresh token hash. Also clears
     any account lockout. Does NOT log the user in — they sign in fresh afterwards.
     """
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if not check_auth_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
 
@@ -668,7 +691,7 @@ async def google_oauth_callback(
     response: Response,
 ):
     """Handle Google OAuth callback — exchange code, find/create user, issue JWT."""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if not check_auth_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests")
 

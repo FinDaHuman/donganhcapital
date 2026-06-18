@@ -32,7 +32,7 @@ from utils.sepay import (
     get_subscription_duration_days, calculate_upgrade_proration,
     ORDER_EXPIRY_SECONDS,
 )
-from utils.security import check_auth_rate_limit
+from utils.security import check_auth_rate_limit, get_client_ip
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/payments", tags=["payments"])
@@ -77,7 +77,7 @@ async def create_order(
     - Tier downgrade: blocked always.
     - Same tier + same period while active: blocked (renew after expiry).
     """
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if not check_auth_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests")
 

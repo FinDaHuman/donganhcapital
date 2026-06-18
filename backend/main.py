@@ -24,6 +24,7 @@ from db.queries import (
     validate_stock_id, validate_limit,
     insert_subscriber,
 )
+from utils.security import get_client_ip
 from db.analytics import (
     get_market_intelligence_bootstrap,
     get_market_intelligence_overview,
@@ -514,7 +515,7 @@ async def subscribe_email(body: SubscribeRequest, request: Request):
       6. Opaque response (never reveal if email existed)
     """
     # Layer 4: Rate limiting
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if not _check_subscribe_rate(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
 

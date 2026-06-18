@@ -86,10 +86,20 @@ def create_refresh_token(data: dict) -> str:
     return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def decode_token(token: str) -> Optional[dict]:
-    """Decode and verify a JWT token. Returns None if invalid/expired."""
+def decode_token(token: str, verify_exp: bool = True) -> Optional[dict]:
+    """Decode and verify a JWT token. Returns None if invalid/expired.
+
+    Set ``verify_exp=False`` to accept an expired (but signature-valid) token —
+    used only to recover the subject for server-side revocation at logout, never
+    to authorize a request.
+    """
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+            options={"verify_exp": verify_exp},
+        )
         return payload
     except JWTError:
         return None
@@ -203,6 +213,24 @@ def generate_csrf_token() -> str:
 def verify_csrf_token(token: str, stored_token: str) -> bool:
     """Constant-time comparison of CSRF tokens."""
     return secrets.compare_digest(token, stored_token)
+
+
+# ── Client IP Resolution ──
+def get_client_ip(request) -> str:
+    """Resolve the real client IP behind the Cloudflare/Render proxy chain.
+
+    When the app is proxied through Cloudflare, the originating client IP is in
+    the ``CF-Connecting-IP`` header (``request.client.host`` would otherwise be a
+    proxy address, making per-IP rate limiting useless). Falls back to the first
+    hop of ``X-Forwarded-For``, then to the direct peer.
+    """
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 # ── Rate Limiting (Auth Endpoints) ──
