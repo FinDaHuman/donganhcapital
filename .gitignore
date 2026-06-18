@@ -33,6 +33,8 @@ PRODUCTION_CONSTRAINTS.md
 .antigravitycli
 donganhcapital_theme_rules.md
 Context.md
+CLAUDE.md
+.claude
 
 #Reference model
 xgb_model.ipynb

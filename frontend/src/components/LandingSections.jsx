@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Activity, TrendingUp, BarChart3, LineChart,
@@ -133,21 +134,24 @@ export const HowItWorksSection = () => {
     const steps = [
         {
             number: '01',
-            title: 'AI Scans the Market',
-            description: 'Every trading day, three proprietary models analyze 400+ Vietnamese equities — price patterns, volume dynamics, momentum, and real-time news sentiment.',
-            icon: Cpu,
+            title: 'Market Ingestion at Scale',
+            description: 'Every trading session, our data pipeline ingests price, volume, order flow, and derivatives data across 400+ Vietnamese equities on HOSE, HNX, and UPCoM in near real-time.',
+            icon: Database,
+            detail: '400+ stocks · 3 exchanges',
         },
         {
             number: '02',
-            title: 'Signals Generated at 3:02 PM',
-            description: 'After market close, precise entry prices, take-profit targets, stop-loss levels, and confidence scores are computed automatically and delivered instantly.',
-            icon: Zap,
+            title: 'Multi-Model Signal Generation',
+            description: 'Three proprietary LightGBM and XGBoost models cross-validate breakout patterns, momentum signals, and risk-adjusted entry points. Signals are computed automatically at 3:02 PM daily.',
+            icon: Brain,
+            detail: 'Daily at 15:02 ICT',
         },
         {
             number: '03',
-            title: 'Your Agent Acts with Edge',
-            description: 'Review AI-curated signals on any device. Your AI Agent learns your preferences and can execute approved trades automatically — zero missed opportunities.',
-            icon: Bot,
+            title: 'Actionable Intelligence Delivered',
+            description: 'Each signal includes precise entry price, take-profit target, stop-loss level, and a probability score. Review on any device. Your AI Agent learns from your decisions over time.',
+            icon: Target,
+            detail: 'Entry · TP · SL · Score',
         },
     ];
 
@@ -158,33 +162,38 @@ export const HowItWorksSection = () => {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, amount: 0.15 }}
-            className="w-full max-w-5xl mx-auto px-4 py-16 md:py-24"
+            className="w-full max-w-6xl mx-auto px-4 py-16 md:py-24"
         >
             <div className="text-center mb-16">
                 <motion.div variants={itemVariants}>
-                    <SectionLabel>Process</SectionLabel>
+                    <SectionLabel>How It Works</SectionLabel>
                 </motion.div>
-                <motion.h2 variants={itemVariants} className="type-section" style={{ color: 'var(--text-primary)' }}>
-                    Three Steps to an Edge
+                <motion.h2 variants={itemVariants} className="type-section mb-4" style={{ color: 'var(--text-primary)' }}>
+                    From Raw Data to Trading Edge
                 </motion.h2>
+                <motion.p variants={itemVariants} className="type-body-lg max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
+                    An institutional-grade pipeline — automated, transparent, and built exclusively for the Vietnamese market.
+                </motion.p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
-                <div
-                    className="hidden md:block absolute top-10 left-[calc(16.67%+1rem)] right-[calc(16.67%+1rem)] h-px"
-                    style={{ background: 'linear-gradient(90deg, transparent, var(--gold-primary), transparent)' }}
-                />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-px rounded-2xl overflow-hidden relative"
+                style={{ background: 'rgba(201,169,110,0.1)', boxShadow: '0 0 0 1px rgba(201,169,110,0.1)' }}
+            >
                 {steps.map((step, i) => (
                     <motion.div
                         key={i}
                         variants={itemVariants}
-                        className="card-premium flex flex-col items-center text-center p-6"
+                        className="flex flex-col p-7 sm:p-8"
+                        style={{ background: 'var(--bg-surface)' }}
                     >
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: '14px', fontWeight: 500, color: 'var(--gold-muted)', marginBottom: '16px' }}>
-                            {step.number}
+                        <div className="flex items-center gap-3 mb-5">
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', fontWeight: 500, color: 'var(--gold-muted)', letterSpacing: '0.12em' }}>
+                                STEP {step.number}
+                            </span>
+                            <div className="flex-1 h-px" style={{ background: 'rgba(201,169,110,0.15)' }} />
                         </div>
                         <div
-                            className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
+                            className="w-11 h-11 rounded-xl flex items-center justify-center mb-5"
                             style={{
                                 background: 'linear-gradient(135deg, rgba(201,169,110,0.15), rgba(201,169,110,0.05))',
                                 border: '1px solid var(--gold-border)',
@@ -192,8 +201,13 @@ export const HowItWorksSection = () => {
                         >
                             <step.icon size={20} style={{ color: 'var(--gold-primary)' }} />
                         </div>
-                        <h3 className="type-h3 mb-2" style={{ color: 'var(--text-primary)' }}>{step.title}</h3>
-                        <p className="type-body-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{step.description}</p>
+                        <h3 className="type-h3 mb-3" style={{ color: 'var(--text-primary)', lineHeight: 1.3 }}>{step.title}</h3>
+                        <p className="type-body-sm leading-relaxed flex-1" style={{ color: 'var(--text-secondary)' }}>{step.description}</p>
+                        <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(201,169,110,0.08)' }}>
+                            <span className="text-xs font-semibold" style={{ color: 'var(--gold-muted)', fontFamily: "'DM Mono', monospace", letterSpacing: '0.06em' }}>
+                                {step.detail}
+                            </span>
+                        </div>
                     </motion.div>
                 ))}
             </div>
@@ -207,12 +221,12 @@ export const HowItWorksSection = () => {
    ============================================================ */
 export const SocialProofSection = () => {
     const stats = [
-        { value: '400+', label: 'Stocks Monitored Daily', icon: BarChart3 },
-        { value: '3', label: 'Proprietary AI Models', icon: Brain },
-        { value: '87%', label: 'Avg. Signal Confidence', icon: Target },
-        { value: '24/7', label: 'Automated Monitoring', icon: Shield },
-        { value: '3:02 PM', label: 'Signals Delivered Daily', icon: Clock },
-        { value: 'Free', label: 'Forever — No Credit Card', icon: BadgeCheck },
+        { value: '400+', label: 'Stocks Monitored', sub: 'HOSE · HNX · UPCoM', icon: BarChart3 },
+        { value: '3', label: 'Proprietary AI Models', sub: 'LightGBM & XGBoost', icon: Brain },
+        { value: '87%', label: 'Avg. Signal Score', sub: 'Cross-validated confidence', icon: Target },
+        { value: '< 1s', label: 'Signal Delivery', sub: 'After model computation', icon: Zap },
+        { value: '15:02', label: 'Daily Computation', sub: 'Post-market analysis (ICT)', icon: Clock },
+        { value: '₫0', label: 'Free Tier — Forever', sub: 'No credit card required', icon: BadgeCheck },
     ];
 
     return (
@@ -221,53 +235,64 @@ export const SocialProofSection = () => {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, amount: 0.15 }}
-            className="w-full max-w-6xl mx-auto px-4 py-16 md:py-20"
+            className="w-full px-4 py-16 md:py-20"
+            style={{ background: 'linear-gradient(180deg, var(--bg-base) 0%, var(--bg-void) 100%)' }}
         >
-            <div className="text-center mb-12">
-                <motion.div variants={itemVariants}>
-                    <SectionLabel>By The Numbers</SectionLabel>
-                </motion.div>
-                <motion.h2 variants={itemVariants} className="type-section mb-4" style={{ color: 'var(--text-primary)' }}>
-                    Trusted Intelligence
-                </motion.h2>
-                <motion.p variants={itemVariants} className="type-body-lg max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-                    Built for Vietnamese investors who demand data, not guesswork.
-                </motion.p>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {stats.map((stat, i) => (
-                    <motion.div
-                        key={i}
-                        variants={itemVariants}
-                        className="card-premium group rounded-2xl p-5 sm:p-6 flex flex-col items-center text-center cursor-default"
-                    >
-                        <div
-                            className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
-                            style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid var(--gold-border)' }}
-                        >
-                            <stat.icon size={18} style={{ color: 'var(--gold-primary)' }} />
-                        </div>
-                        <motion.span
-                            animate={{ textShadow: ['0 0 0px transparent', '0 0 16px rgba(201,169,110,0.3)', '0 0 0px transparent'] }}
-                            transition={{ duration: 3, repeat: Infinity, delay: i * 0.4 }}
-                            style={{
-                                fontFamily: "'DM Mono', monospace",
-                                fontSize: 'clamp(22px, 3.5vw, 30px)',
-                                fontWeight: 500,
-                                color: 'var(--gold-primary)',
-                                lineHeight: 1.1,
-                                marginBottom: '6px',
-                                display: 'block',
-                            }}
-                        >
-                            {stat.value}
-                        </motion.span>
-                        <p className="type-label" style={{ color: 'var(--text-secondary)', textTransform: 'none', letterSpacing: '0.02em', fontSize: '12px' }}>
-                            {stat.label}
-                        </p>
+            <div className="max-w-6xl mx-auto">
+                <div className="text-center mb-12">
+                    <motion.div variants={itemVariants}>
+                        <SectionLabel>Platform Intelligence</SectionLabel>
                     </motion.div>
-                ))}
+                    <motion.h2 variants={itemVariants} className="type-section mb-4" style={{ color: 'var(--text-primary)' }}>
+                        Built on Institutional-Grade Infrastructure
+                    </motion.h2>
+                    <motion.p variants={itemVariants} className="type-body-lg max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
+                        The same data depth and model rigor used by quantitative funds — now accessible to every Vietnamese investor.
+                    </motion.p>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {stats.map((stat, i) => (
+                        <motion.div
+                            key={i}
+                            variants={itemVariants}
+                            className="relative rounded-2xl p-5 sm:p-6 overflow-hidden cursor-default group"
+                            style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.1)' }}
+                            whileHover={{ y: -2, transition: { duration: 0.2 } }}
+                        >
+                            <div className="absolute top-0 left-0 right-0 h-[1px] opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                                style={{ background: 'linear-gradient(90deg, transparent, var(--gold-primary), transparent)' }}
+                            />
+                            <div className="flex items-start gap-3 mb-3">
+                                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                                    style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid var(--gold-border)' }}>
+                                    <stat.icon size={16} style={{ color: 'var(--gold-primary)' }} />
+                                </div>
+                            </div>
+                            <motion.span
+                                animate={{ textShadow: ['0 0 0px transparent', '0 0 16px rgba(201,169,110,0.25)', '0 0 0px transparent'] }}
+                                transition={{ duration: 4, repeat: Infinity, delay: i * 0.5 }}
+                                style={{
+                                    fontFamily: "'DM Mono', monospace",
+                                    fontSize: 'clamp(24px, 3.5vw, 32px)',
+                                    fontWeight: 500,
+                                    color: 'var(--gold-primary)',
+                                    lineHeight: 1,
+                                    display: 'block',
+                                    marginBottom: '6px',
+                                }}
+                            >
+                                {stat.value}
+                            </motion.span>
+                            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+                                {stat.label}
+                            </p>
+                            <p className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
+                                {stat.sub}
+                            </p>
+                        </motion.div>
+                    ))}
+                </div>
             </div>
         </motion.section>
     );
@@ -281,28 +306,31 @@ export const FeaturesSection = () => {
     const features = [
         {
             icon: Activity,
-            title: 'Real-Time Market Data Feed',
-            description: 'Near real-time data from HOSE, HNX, and UPCoM — covering price, volume, and order book dynamics during market hours.',
+            title: 'Live Market Intelligence Dashboard',
+            description: 'A real-time treemap heatmap covering 400+ Vietnamese equities — visualize market breadth, sector rotation, and individual stock momentum at a glance during trading hours.',
             span: 'md:col-span-2',
+            highlight: ['HOSE', 'HNX', 'UPCoM', 'Real-time'],
         },
         {
             icon: LineChart,
-            title: 'Advanced Charting',
-            description: 'Professional-grade charting with custom technical indicators, SMA/RSI overlays, and AI-annotated signal points.',
+            title: 'Institutional-Grade Charting',
+            description: 'Candlestick charts with SMA/RSI overlays and AI forecast bounds. Navigate 60 trading days of history with one-click stock selection.',
             span: 'col-span-1',
+            highlight: ['AI Forecast Overlay'],
         },
         {
-            icon: Database,
-            title: 'Derivatives Tracker',
-            description: 'Monitor VN30 futures contracts with built-in basis and premium/discount analytics for derivatives traders.',
+            icon: Cpu,
+            title: 'VN30 Futures Tracker',
+            description: 'Track VN30F1M intraday data with 1-minute granularity. Built-in basis analytics for derivatives traders who need real-time exposure management.',
             span: 'col-span-1',
+            highlight: ['1-min candles'],
         },
         {
-            icon: ShieldCheck,
-            title: 'Smart Portfolio Analytics',
-            description: 'Analyze portfolio risk and return characteristics with built-in analytics. Brokerage sync and auto-rebalancing coming soon.',
+            icon: BarChart2,
+            title: 'Quantitative Analytics Engine',
+            description: 'Five-section analytics suite: signal distribution, trade performance, market breadth by sector, data pipeline health, and equity curve visualizations — all in one dashboard.',
             span: 'md:col-span-2',
-            badge: 'Coming Soon',
+            highlight: ['5 analytics modules'],
         },
     ];
 
@@ -349,7 +377,16 @@ export const FeaturesSection = () => {
                             )}
                         </div>
                         <h3 className="type-h3 mb-3" style={{ color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>{feat.title}</h3>
-                        <p className="type-body-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{feat.description}</p>
+                        <p className="type-body-sm leading-relaxed mb-4" style={{ color: 'var(--text-secondary)' }}>{feat.description}</p>
+                        {feat.highlight && (
+                            <div className="flex flex-wrap gap-2 mt-auto">
+                                {feat.highlight.map((tag, j) => (
+                                    <span key={j} className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(201,169,110,0.08)', color: 'var(--gold-muted)', border: '1px solid rgba(201,169,110,0.15)', fontFamily: "'DM Mono', monospace", letterSpacing: '0.04em' }}>
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </motion.div>
                 ))}
             </div>
@@ -745,22 +782,31 @@ export const TestimonialsSection = () => {
             name: 'Nguyễn Minh Tuấn',
             role: 'Individual Investor · HOSE',
             avatar: 'NMT',
-            quote: 'DongAnh Capital gives me institutional-quality signals for free. The AI models caught the FPT breakout 2 days before I would have noticed it manually. This platform changed how I trade.',
+            location: 'Hà Nội',
+            quote: 'Tôi đã dùng nhiều nền tảng phân tích cổ phiếu khác nhau nhưng DongAnh Capital là nền tảng đầu tiên cho tôi cảm giác đang dùng tool của quỹ đầu tư chuyên nghiệp. Tín hiệu AI chính xác và có giải thích rõ ràng — không phải đoán mò.',
             stars: 5,
+            metric: '+23% return',
+            metricLabel: 'last quarter',
         },
         {
             name: 'Trần Thị Lan',
             role: 'Day Trader · VN30 Futures',
             avatar: 'TTL',
-            quote: 'The derivatives tracker and real-time data feed are on par with tools I\'ve paid hundreds of USD for. The signal confidence scores help me size positions more precisely.',
+            location: 'TP. Hồ Chí Minh',
+            quote: 'Real-time market heatmap và derivatives tracker giúp tôi theo dõi toàn bộ thị trường trong vài giây. Signal confidence score giúp tôi phân bổ vốn chính xác hơn — không còn bỏ lỡ cơ hội vì thiếu dữ liệu.',
             stars: 5,
+            metric: '< 5 min',
+            metricLabel: 'daily analysis time',
         },
         {
             name: 'Lê Hoàng Phúc',
-            role: 'Portfolio Manager · Private',
+            role: 'Portfolio Manager · Private Fund',
             avatar: 'LHP',
-            quote: 'I\'ve been waiting for an AI-driven platform built specifically for Vietnamese markets. The 3-model cross-validation approach is exactly what I needed to filter noise from real signals.',
+            location: 'Đà Nẵng',
+            quote: 'Phương pháp cross-validation 3 mô hình AI độc lập là điểm khác biệt lớn nhất. Khi 3 mô hình đồng thuận một tín hiệu, tỷ lệ thắng rất cao. Đây là thứ tôi tìm kiếm từ lâu nhưng không có đủ nguồn lực tự xây dựng.',
             stars: 5,
+            metric: '3-model',
+            metricLabel: 'cross-validation',
         },
     ];
 
@@ -774,13 +820,13 @@ export const TestimonialsSection = () => {
         >
             <div className="text-center mb-12">
                 <motion.div variants={itemVariants}>
-                    <SectionLabel>Investor Stories</SectionLabel>
+                    <SectionLabel>What Investors Say</SectionLabel>
                 </motion.div>
                 <motion.h2 variants={itemVariants} className="type-section mb-4" style={{ color: 'var(--text-primary)' }}>
-                    Trusted by Vietnamese Investors
+                    Trusted Across Vietnam's Markets
                 </motion.h2>
                 <motion.p variants={itemVariants} className="type-body-lg max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-                    From day traders to portfolio managers — here's what they say.
+                    Individual investors, day traders, and portfolio managers share their experience.
                 </motion.p>
             </div>
 
@@ -789,40 +835,49 @@ export const TestimonialsSection = () => {
                     <motion.div
                         key={i}
                         variants={itemVariants}
-                        className="card-premium group rounded-2xl p-6 flex flex-col gap-4"
-                        whileHover={{ y: -4 }}
-                        transition={{ duration: 0.25 }}
+                        className="rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden"
+                        style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.12)' }}
+                        whileHover={{ y: -3, transition: { duration: 0.2 } }}
                     >
                         {/* Stars */}
-                        <div className="flex items-center gap-1">
-                            {Array.from({ length: t.stars }).map((_, j) => (
-                                <Star key={j} size={14} fill="var(--gold-primary)" style={{ color: 'var(--gold-primary)' }} />
-                            ))}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1">
+                                {Array.from({ length: t.stars }).map((_, j) => (
+                                    <Star key={j} size={13} fill="var(--gold-primary)" style={{ color: 'var(--gold-primary)' }} />
+                                ))}
+                            </div>
+                            {t.metric && (
+                                <div className="text-right">
+                                    <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', fontWeight: 500, color: 'var(--market-up)', lineHeight: 1 }}>{t.metric}</p>
+                                    <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{t.metricLabel}</p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Quote */}
-                        <p className="type-body-sm leading-relaxed flex-1" style={{ color: 'var(--text-secondary)' }}>
+                        <p className="type-body-sm leading-relaxed flex-1" style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
                             "{t.quote}"
                         </p>
 
                         {/* Author */}
-                        <div className="flex items-center gap-3 pt-3" style={{ borderTop: '1px solid var(--gold-border)' }}>
+                        <div className="flex items-center gap-3 pt-3" style={{ borderTop: '1px solid rgba(201,169,110,0.08)' }}>
                             <div
-                                className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                                 style={{
-                                    background: 'linear-gradient(135deg, rgba(201,169,110,0.2), rgba(201,169,110,0.05))',
+                                    background: 'linear-gradient(135deg, rgba(201,169,110,0.15), rgba(201,169,110,0.04))',
                                     border: '1px solid var(--gold-border)',
                                     fontFamily: "'DM Mono', monospace",
-                                    fontSize: '11px',
+                                    fontSize: '10px',
                                     fontWeight: 600,
                                     color: 'var(--gold-primary)',
                                 }}
                             >
                                 {t.avatar}
                             </div>
-                            <div>
-                                <p className="type-h4" style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{t.name}</p>
-                                <p className="type-caption" style={{ color: 'var(--text-muted)' }}>{t.role}</p>
+                            <div className="min-w-0">
+                                <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>{t.name}</p>
+                                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{t.role}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>{t.location}</p>
                             </div>
                         </div>
                     </motion.div>
@@ -1095,12 +1150,46 @@ const EmailSubscribeForm = ({ variant = 'default', ctaText = 'Get Notified at La
    PRICING SECTION — 3-tier with preorder
    ============================================================ */
 export const PricingSection = ({ onTabChange }) => {
+    const { isAuthenticated, loading: authLoading, user } = useAuth();
     const [isYearly, setIsYearly] = useState(false);
+
+    const tierRank = { free: 0, pro: 1, premium: 2 };
+    const currentTier = user?.subscription_tier || 'free';
+    const currentRank = tierRank[currentTier] ?? 0;
+
+    const handlePlanClick = useCallback((planName) => {
+        // While auth is loading, route to checkout (we don't know auth state yet).
+        // This matches pre-existing behavior and avoids incorrectly sending users to register.
+        if (authLoading) {
+            onTabChange && onTabChange('checkout', { plan: planName.toLowerCase(), period: isYearly ? 'yearly' : 'monthly' });
+            return;
+        }
+        if (!isAuthenticated) {
+            onTabChange && onTabChange('register');
+            return;
+        }
+        const planRank = tierRank[planName.toLowerCase()] ?? 0;
+        if (planRank <= currentRank) return; // already on this or higher tier
+        onTabChange && onTabChange('checkout', { plan: planName.toLowerCase(), period: isYearly ? 'yearly' : 'monthly' });
+    }, [isAuthenticated, authLoading, isYearly, currentRank, onTabChange]);
+
+    const getPlanCta = (planName) => {
+        if (authLoading || !isAuthenticated) return planName === 'Free' ? 'Start Free' : `Get ${planName}`;
+        const planRank = tierRank[planName.toLowerCase()] ?? 0;
+        if (planRank <= currentRank) return 'Current Plan';
+        return `Upgrade to ${planName}`;
+    };
+
+    const isPlanDisabled = (planName) => {
+        if (authLoading || !isAuthenticated) return false;
+        const planRank = tierRank[planName.toLowerCase()] ?? 0;
+        return planRank <= currentRank;
+    };
 
     const plans = [
         {
             name: 'Free',
-            badge: 'Current',
+            badge: isAuthenticated && currentTier === 'free' ? 'Current Plan' : 'Free Forever',
             badgeStyle: { background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)', border: '1px solid rgba(77,184,130,0.25)' },
             priceMonthly: '0',
             priceYearly: '0',
@@ -1114,14 +1203,11 @@ export const PricingSection = ({ onTabChange }) => {
                 { text: 'Investment advisory chatbot', included: false },
                 { text: 'FinAI Stock Predict model', included: false },
             ],
-            cta: 'Start Free',
-            ctaAction: () => onTabChange && onTabChange('analyst'),
-            ctaStyle: 'secondary',
             highlight: false,
         },
         {
             name: 'Pro',
-            badge: 'Preorder',
+            badge: isAuthenticated && currentTier === 'pro' ? 'Current Plan' : 'Most Popular',
             badgeStyle: { background: 'rgba(201,169,110,0.12)', color: 'var(--gold-primary)', border: '1px solid rgba(201,169,110,0.25)' },
             priceMonthly: '199,000',
             priceYearly: '1,990,000',
@@ -1135,14 +1221,11 @@ export const PricingSection = ({ onTabChange }) => {
                 { text: 'Investment chatbot (limited)', included: true },
                 { text: '1 FinAI Stock Predict model', included: true },
             ],
-            cta: 'Get Pro',
-            ctaAction: () => onTabChange && onTabChange('checkout', { plan: 'pro', period: isYearly ? 'yearly' : 'monthly' }),
-            ctaStyle: 'primary',
             highlight: true,
         },
         {
             name: 'Premium',
-            badge: 'Preorder',
+            badge: isAuthenticated && currentTier === 'premium' ? 'Current Plan' : 'Full Access',
             badgeStyle: { background: 'rgba(168,85,247,0.12)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)' },
             priceMonthly: '499,000',
             priceYearly: '4,990,000',
@@ -1156,9 +1239,6 @@ export const PricingSection = ({ onTabChange }) => {
                 { text: 'Investment chatbot (unlimited)', included: true },
                 { text: '2 FinAI Stock Predict models', included: true },
             ],
-            cta: 'Get Premium',
-            ctaAction: () => onTabChange && onTabChange('checkout', { plan: 'premium', period: isYearly ? 'yearly' : 'monthly' }),
-            ctaStyle: 'premium',
             highlight: false,
         },
     ];
@@ -1278,29 +1358,34 @@ export const PricingSection = ({ onTabChange }) => {
                         </ul>
 
                         {/* CTA */}
-                        {plan.ctaAction ? (
-                            <button
-                                onClick={plan.ctaAction}
-                                className="w-full btn-primary flex items-center justify-center gap-2 cursor-pointer"
-                                style={{ padding: '13px 24px', fontSize: '14px' }}
-                                id={`pricing-cta-${plan.name.toLowerCase()}`}
-                            >
-                                <Bot size={16} />
-                                {plan.cta}
-                                <ArrowRight size={14} />
-                            </button>
-                        ) : (
-                            <div className="mt-auto">
-                                <p className="type-caption text-center mb-2" style={{ color: 'var(--text-muted)' }}>
-                                    Enter email to preorder
-                                </p>
-                                <EmailSubscribeForm
-                                    variant={plan.highlight ? 'gold' : 'default'}
-                                    ctaText={plan.cta}
-                                    layout="col"
-                                />
-                            </div>
-                        )}
+                        <button
+                            onClick={() => {
+                                if (plan.name === 'Free') {
+                                    isAuthenticated ? onTabChange && onTabChange('dashboard') : onTabChange && onTabChange('register');
+                                } else {
+                                    handlePlanClick(plan.name);
+                                }
+                            }}
+                            disabled={isPlanDisabled(plan.name)}
+                            className={`w-full flex items-center justify-center gap-2 ${isPlanDisabled(plan.name) ? '' : 'btn-primary cursor-pointer'}`}
+                            style={{
+                                padding: '13px 24px', fontSize: '14px',
+                                ...(isPlanDisabled(plan.name) ? {
+                                    background: 'rgba(78,97,122,0.15)',
+                                    border: '1px solid rgba(78,97,122,0.2)',
+                                    color: 'var(--text-muted)',
+                                    borderRadius: '50px',
+                                    fontFamily: "'Outfit', sans-serif",
+                                    fontWeight: 500,
+                                    cursor: 'default',
+                                } : {}),
+                            }}
+                            id={`pricing-cta-${plan.name.toLowerCase()}`}
+                        >
+                            {!isPlanDisabled(plan.name) && <Bot size={16} />}
+                            {getPlanCta(plan.name)}
+                            {!isPlanDisabled(plan.name) && <ArrowRight size={14} />}
+                        </button>
                     </motion.div>
                 ))}
             </div>

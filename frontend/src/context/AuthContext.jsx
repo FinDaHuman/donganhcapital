@@ -1,12 +1,14 @@
 /**
  * AuthContext — Global authentication state for DongAnh Capital.
- * 
- * Features:
- * - Cookie-based JWT auth (httpOnly cookies, no localStorage tokens)
- * - Google OAuth support
- * - Auto-refresh on mount (check /api/auth/me)
- * - Token refresh on 401 responses
- * - Provides: user, isAuthenticated, loading, login, register, loginWithGoogle, logout
+ *
+ * Auth model:
+ * - httpOnly cookies are the source of truth (never expose tokens to JS)
+ * - sessionStorage holds a non-sensitive user profile cache (email, name, tier)
+ *   as a stale-while-revalidate hint to survive Render.com cold starts (~50s)
+ * - Background /api/auth/me always runs on mount to verify the cookie is still valid
+ * - On real 401: clear cache + treat as logged out
+ * - On network error / timeout (cold start): keep cached user — cookie is still valid,
+ *   server just hasn't finished waking up yet
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
@@ -14,7 +16,6 @@ import axios from 'axios';
 
 const API_BASE = (() => {
     let url = import.meta.env.VITE_API_URL || 'https://donganhcapital.onrender.com/api';
-    // Strip /api suffix since our auth endpoints already include /api prefix
     url = url.replace(/\/api\/?$/, '');
     return url;
 })();
@@ -45,7 +46,7 @@ authApi.interceptors.response.use(
         const originalRequest = error.config;
 
         if (error.response?.status === 401 && !originalRequest._retry) {
-            if (originalRequest.url?.includes('/auth/refresh') || 
+            if (originalRequest.url?.includes('/auth/refresh') ||
                 originalRequest.url?.includes('/auth/login') ||
                 originalRequest.url?.includes('/auth/register')) {
                 return Promise.reject(error);
@@ -77,6 +78,26 @@ authApi.interceptors.response.use(
 );
 
 
+// ── Session cache helpers (non-sensitive profile data only, never tokens) ──
+const CACHE_KEY = 'dac_user_profile';
+
+const readCache = () => {
+    try {
+        const raw = sessionStorage.getItem(CACHE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+};
+
+const writeCache = (user) => {
+    try {
+        if (user) sessionStorage.setItem(CACHE_KEY, JSON.stringify(user));
+        else sessionStorage.removeItem(CACHE_KEY);
+    } catch {}
+};
+
+
 // ── Context ──
 const AuthContext = createContext(null);
 
@@ -90,12 +111,18 @@ export const useAuth = () => {
 
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    // Initialize immediately from sessionStorage so logged-in users never see
+    // "Sign In" buttons — even while the background /api/auth/me is running or
+    // the Render server is cold-starting.
+    const cachedUser = readCache();
+    const [user, setUser] = useState(cachedUser);
+    // Skip loading state entirely if we already have cached data
+    const [loading, setLoading] = useState(!cachedUser);
     const [error, setError] = useState(null);
     const initialCheckDone = useRef(false);
 
-    // Check auth status on mount
+    // Check auth status on mount — always runs in the background to verify the
+    // httpOnly cookie is still valid and refresh subscription/tier data.
     useEffect(() => {
         if (initialCheckDone.current) return;
         initialCheckDone.current = true;
@@ -104,8 +131,20 @@ export const AuthProvider = ({ children }) => {
             try {
                 const { data } = await authApi.get('/api/auth/me');
                 setUser(data.user);
-            } catch {
-                setUser(null);
+                writeCache(data.user);
+            } catch (err) {
+                const isRealAuthError =
+                    err.response?.status === 401 || err.response?.status === 403;
+
+                if (isRealAuthError) {
+                    // Cookie expired or invalid — really logged out
+                    setUser(null);
+                    writeCache(null);
+                }
+                // Network error / timeout (Render cold start): keep the cached
+                // user shown in the UI. The cookie is still valid; the server
+                // just hasn't woken up yet. The next real API call will succeed
+                // once the server is warm.
             } finally {
                 setLoading(false);
             }
@@ -120,6 +159,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const { data } = await authApi.post('/api/auth/login', { email, password });
             setUser(data.user);
+            writeCache(data.user);
             return { success: true, user: data.user };
         } catch (err) {
             const message = err.response?.data?.detail || 'Login failed. Please try again.';
@@ -138,6 +178,7 @@ export const AuthProvider = ({ children }) => {
                 full_name: fullName || null,
             });
             setUser(data.user);
+            writeCache(data.user);
             return { success: true, user: data.user };
         } catch (err) {
             const message = err.response?.data?.detail || 'Registration failed. Please try again.';
@@ -161,6 +202,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const { data } = await authApi.post('/api/auth/google/callback', { code });
             setUser(data.user);
+            writeCache(data.user);
             return { success: true, user: data.user };
         } catch (err) {
             const message = err.response?.data?.detail || 'Google sign-in failed.';
@@ -177,6 +219,7 @@ export const AuthProvider = ({ children }) => {
             // Logout should always succeed on client side
         }
         setUser(null);
+        writeCache(null);
         setError(null);
     }, []);
 
@@ -185,6 +228,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const { data } = await authApi.put('/api/auth/me', updates);
             setUser(data.user);
+            writeCache(data.user);
             return { success: true, user: data.user };
         } catch (err) {
             const message = err.response?.data?.detail || 'Update failed.';
@@ -203,7 +247,7 @@ export const AuthProvider = ({ children }) => {
         loginWithGoogle,
         logout,
         updateProfile,
-        authApi, // Expose for other components that need authenticated requests
+        authApi,
     };
 
     return (

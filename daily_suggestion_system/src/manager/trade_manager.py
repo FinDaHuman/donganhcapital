@@ -23,6 +23,9 @@ def _to_native(val):
     return val
 
 
+MIN_HOLD_DAYS = 2
+
+
 class TradeManager:
 
     def __init__(self, engine=None):
@@ -95,11 +98,15 @@ class TradeManager:
 
             df = df[df["Ngay"] >= trade["entry_date"]]
 
+            entry_dt = datetime.strptime(trade["entry_date"], "%Y-%m-%d")
+
             for _, row in df.iterrows():
 
                 high = row["high"]
                 low = row["low"]
                 date = str(row["Ngay"]).split(" ")[0]
+                date_dt = datetime.strptime(date, "%Y-%m-%d")
+                days_held = (date_dt - entry_dt).days
 
                 if high >= trade["tp_price"]:
 
@@ -108,7 +115,7 @@ class TradeManager:
                     trade["exit_date"] = date
                     break
 
-                if low <= trade["sl_price"]:
+                if low <= trade["sl_price"] and days_held >= MIN_HOLD_DAYS:
 
                     trade["status"] = "SL"
                     trade["exit_price"] = trade["sl_price"]
@@ -117,10 +124,9 @@ class TradeManager:
 
             if trade["status"] == "HOLD":
 
-                entry_date = datetime.strptime(trade["entry_date"], "%Y-%m-%d")
                 today_dt = datetime.strptime(str(today).split(" ")[0], "%Y-%m-%d")
 
-                holding = (today_dt - entry_date).days
+                holding = (today_dt - entry_dt).days
 
                 if holding >= 30:
 

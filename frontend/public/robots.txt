@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+Allow: /dashboard
+Allow: /analyst
+Allow: /chart
+Allow: /data-analyst
+Allow: /privacy
+Allow: /terms
+
+# Block authenticated/personal pages from indexing
+Disallow: /profile
+Disallow: /checkout
+Disallow: /login
+Disallow: /register
+
+Sitemap: https://donganhcapital.com/sitemap.xml

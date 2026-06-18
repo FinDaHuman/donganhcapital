@@ -159,11 +159,44 @@ async def realtime_vn30f1m():
             print(f"Background task error: {e}")
         await asyncio.sleep(60)
 
+
+def downgrade_expired_subscriptions_sync():
+    """Downgrade users whose subscription has expired back to free tier."""
+    try:
+        from db.connection import get_engine
+        from sqlalchemy import text
+        engine = get_engine()
+        if engine is None:
+            return
+        with engine.begin() as conn:
+            result = conn.execute(text("""
+                UPDATE users
+                SET subscription_tier = 'free',
+                    subscription_expires_at = NULL,
+                    updated_at = NOW()
+                WHERE subscription_tier != 'free'
+                  AND subscription_expires_at IS NOT NULL
+                  AND subscription_expires_at < NOW()
+            """))
+            if result.rowcount:
+                print(f"Downgraded {result.rowcount} expired subscription(s) to free tier.")
+    except Exception as e:
+        print(f"Subscription downgrade task error: {e}")
+
+
+async def subscription_expiry_checker():
+    """Run every 6 hours to downgrade expired subscriptions."""
+    while True:
+        await asyncio.to_thread(downgrade_expired_subscriptions_sync)
+        await asyncio.sleep(6 * 3600)
+
+
 # --- Lifespan for Model Loading ---
 poll_task = None
+expiry_task = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global predictor, poll_task
+    global predictor, poll_task, expiry_task
     
     try:
         from models.xgb_predictor import XGBPredictor
@@ -195,10 +228,13 @@ async def lifespan(app: FastAPI):
         print(f"Payment migration warning: {e}")
 
     poll_task = asyncio.create_task(realtime_vn30f1m())
-    
+    expiry_task = asyncio.create_task(subscription_expiry_checker())
+
     yield
     if poll_task:
         poll_task.cancel()
+    if expiry_task:
+        expiry_task.cancel()
     print("Shutting down...")
 
 app = FastAPI(title="DongAnh Capital AI API", lifespan=lifespan)

@@ -204,6 +204,7 @@ def _format_user(user: dict) -> dict:
         "auth_provider": user.get("auth_provider", "email"),
         "risk_appetite": user.get("risk_appetite", "moderate"),
         "subscription_tier": user.get("subscription_tier", "free"),
+        "subscription_expires_at": user["subscription_expires_at"].isoformat() if user.get("subscription_expires_at") else None,
         "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
     }
 

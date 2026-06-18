@@ -385,8 +385,9 @@ def _trade_kpis(trades_df: pd.DataFrame):
         }
     closed = trades_df[trades_df["status"].isin(["TP", "SL", "TIMEOUT"])].copy()
     returns = closed["return_pct"].dropna()
-    wins = closed[closed["status"] == "TP"]
-    losses = closed[closed["status"].isin(["SL", "TIMEOUT"])]
+    # TIMEOUT with return > 0 counts as a win
+    wins = closed[(closed["status"] == "TP") | ((closed["status"] == "TIMEOUT") & (closed["return_pct"] > 0))]
+    losses = closed[(closed["status"] == "SL") | ((closed["status"] == "TIMEOUT") & (closed["return_pct"] <= 0))]
     gross_profit = wins["return_pct"].dropna().sum()
     gross_loss = abs(losses["return_pct"].dropna().sum())
     return {

@@ -332,11 +332,19 @@ def get_trade_history(status_filter: str = None):
     if not engine:
         return []
 
+    live_price_subquery = """
+        CASE WHEN t.status = 'HOLD' THEN (
+            SELECT s.close FROM stock_ohlc s
+            WHERE s.stock_id = t.stock_id
+            ORDER BY s."Ngay" DESC LIMIT 1
+        ) END
+    """
     if status_filter:
-        query = text("""
+        query = text(f"""
         SELECT t.stock_id, t.entry_date, t.entry_price, t.tp_price, t.sl_price,
                t.exit_date, t.exit_price, t.status, t.return_pct, t.holding_days,
-               a.prob
+               a.prob,
+               {live_price_subquery} AS live_price
         FROM trade_history t
         LEFT JOIN ai_signals a ON t.stock_id = a.stock_id AND t.entry_date = a.date
         WHERE t.status = :status
@@ -344,10 +352,11 @@ def get_trade_history(status_filter: str = None):
         """)
         params = {"status": status_filter}
     else:
-        query = text("""
+        query = text(f"""
         SELECT t.stock_id, t.entry_date, t.entry_price, t.tp_price, t.sl_price,
                t.exit_date, t.exit_price, t.status, t.return_pct, t.holding_days,
-               a.prob
+               a.prob,
+               {live_price_subquery} AS live_price
         FROM trade_history t
         LEFT JOIN ai_signals a ON t.stock_id = a.stock_id AND t.entry_date = a.date
         ORDER BY t.entry_date DESC
@@ -373,6 +382,16 @@ def get_trade_history(status_filter: str = None):
             df['prob'] = df['prob'].apply(lambda x: _safe_round(x, 4))
         if 'holding_days' in df.columns:
             df['holding_days'] = df['holding_days'].apply(lambda x: int(x) if pd.notnull(x) and _safe_float(x) is not None else None)
+
+        # Compute live_return_pct for HOLD trades from the fetched live_price
+        df['live_return_pct'] = None
+        if 'live_price' in df.columns:
+            hold_mask = (df['status'] == 'HOLD') & df['live_price'].notna() & df['entry_price'].notna()
+            if hold_mask.any():
+                ep = df.loc[hold_mask, 'entry_price'].apply(_safe_float)
+                lp = df.loc[hold_mask, 'live_price'].apply(_safe_float)
+                df.loc[hold_mask, 'live_return_pct'] = ((lp - ep) / ep).apply(lambda x: _safe_round(x, 6))
+            df = df.drop(columns=['live_price'])
 
         # Replace any remaining NaN/inf with None
         df = df.where(df.notnull(), None)
@@ -406,8 +425,12 @@ def get_trade_history_stats():
         timeout_count = len(df[df['status'] == 'TIMEOUT'])
         hold_count = len(df[df['status'] == 'HOLD'])
 
-        # Win rate (TP / closed trades)
-        win_rate = (tp_count / len(closed) * 100) if len(closed) > 0 else 0
+        # Win rate: TP always wins; TIMEOUT wins if return_pct > 0
+        win_count = len(df[
+            (df['status'] == 'TP') |
+            ((df['status'] == 'TIMEOUT') & (df['return_pct'] > 0))
+        ])
+        win_rate = (win_count / len(closed) * 100) if len(closed) > 0 else 0
 
         # Avg return on closed trades
         closed_returns = closed['return_pct'].dropna()

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Menu, X, ChevronUp, Bot } from 'lucide-react';
+import { ArrowRight, Menu, X, ChevronUp, Bot, LogIn } from 'lucide-react';
 import {
     HowItWorksSection,
     FeaturesSection,
@@ -16,6 +16,7 @@ import {
     MarqueeTicker,
 } from './LandingSections';
 import { StarMark } from './StarMark';
+import { useAuth } from '../context/AuthContext';
 
 /* ── Animated counter hook ── */
 const useCounter = (end, duration = 2000) => {
@@ -107,6 +108,7 @@ const FloatingParticles = () => {
    LANDING PAGE
    ============================================================ */
 const LandingPage = ({ onTabChange }) => {
+    const { isAuthenticated, loading: authLoading } = useAuth();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [activeSection, setActiveSection] = useState('hero');
     const [navScrolled, setNavScrolled] = useState(false);
@@ -322,16 +324,38 @@ const LandingPage = ({ onTabChange }) => {
                         ))}
                     </div>
 
-                    {/* CTA + Hamburger */}
-                    <div className="flex items-center gap-3 shrink-0">
-                        <button
-                            className="hidden md:flex items-center gap-2 whitespace-nowrap btn-primary cursor-pointer"
-                            style={{ padding: '10px 22px', fontSize: '13px' }}
-                            onClick={() => onTabChange && onTabChange('analyst')}
-                        >
-                            <Bot size={14} />
-                            View AI Signals
-                        </button>
+                    {/* CTA + Auth + Hamburger */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        {!authLoading && (
+                            isAuthenticated ? (
+                                <button
+                                    className="hidden md:flex items-center gap-2 whitespace-nowrap btn-primary cursor-pointer"
+                                    style={{ padding: '10px 22px', fontSize: '13px' }}
+                                    onClick={() => onTabChange && onTabChange('analyst')}
+                                >
+                                    <Bot size={14} />
+                                    View AI Signals
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        className="hidden md:flex items-center gap-2 whitespace-nowrap btn-ghost cursor-pointer"
+                                        style={{ padding: '9px 18px', fontSize: '13px' }}
+                                        onClick={() => onTabChange && onTabChange('login')}
+                                    >
+                                        <LogIn size={14} />
+                                        Sign In
+                                    </button>
+                                    <button
+                                        className="hidden md:flex items-center gap-2 whitespace-nowrap btn-primary cursor-pointer"
+                                        style={{ padding: '10px 20px', fontSize: '13px' }}
+                                        onClick={() => onTabChange && onTabChange('register')}
+                                    >
+                                        Start Free
+                                    </button>
+                                </>
+                            )
+                        )}
                         <button
                             className="md:hidden flex items-center justify-center w-10 h-10 rounded-full cursor-pointer"
                             style={{
@@ -380,14 +404,34 @@ const LandingPage = ({ onTabChange }) => {
                                     {link.label}
                                 </button>
                             ))}
-                            <button
-                                onClick={() => { onTabChange && onTabChange('analyst'); setIsMobileMenuOpen(false); }}
-                                className="mt-2 w-full py-3.5 px-5 rounded-full font-semibold flex items-center justify-center gap-2 btn-primary cursor-pointer"
-                                style={{ fontSize: '15px' }}
-                            >
-                                <Bot size={16} />
-                                View AI Signals
-                            </button>
+                            {authLoading ? null : isAuthenticated ? (
+                                <button
+                                    onClick={() => { onTabChange && onTabChange('analyst'); setIsMobileMenuOpen(false); }}
+                                    className="mt-2 w-full py-3.5 px-5 rounded-full font-semibold flex items-center justify-center gap-2 btn-primary cursor-pointer"
+                                    style={{ fontSize: '15px' }}
+                                >
+                                    <Bot size={16} />
+                                    View AI Signals
+                                </button>
+                            ) : (
+                                <div className="mt-2 flex flex-col gap-2">
+                                    <button
+                                        onClick={() => { onTabChange && onTabChange('register'); setIsMobileMenuOpen(false); }}
+                                        className="w-full py-3.5 px-5 rounded-full font-semibold flex items-center justify-center gap-2 btn-primary cursor-pointer"
+                                        style={{ fontSize: '15px' }}
+                                    >
+                                        Start Free
+                                    </button>
+                                    <button
+                                        onClick={() => { onTabChange && onTabChange('login'); setIsMobileMenuOpen(false); }}
+                                        className="w-full py-3 px-5 rounded-full font-medium flex items-center justify-center gap-2 btn-ghost cursor-pointer"
+                                        style={{ fontSize: '14px' }}
+                                    >
+                                        <LogIn size={16} />
+                                        Sign In
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </motion.div>
                 )}
@@ -511,28 +555,40 @@ const LandingPage = ({ onTabChange }) => {
                         </motion.p>
 
                         {/* ── Dual CTA ── */}
-                        <motion.div variants={itemVariants} className="flex flex-wrap items-center justify-center gap-3 mb-14">
-                            <motion.button
-                                whileHover={{ scale: 1.03 }}
-                                whileTap={{ scale: 0.97 }}
-                                onClick={() => onTabChange && onTabChange('analyst')}
-                                className="group flex items-center gap-2.5 btn-primary cursor-pointer"
-                                style={{ padding: '14px 32px', fontSize: '15px' }}
-                            >
-                                <Bot size={16} />
-                                Meet Your AI Agent
-                                <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-                            </motion.button>
+                        <motion.div variants={itemVariants} className="flex flex-col items-center gap-3 mb-14">
+                            <div className="flex flex-wrap items-center justify-center gap-3">
+                                <motion.button
+                                    whileHover={{ scale: 1.03 }}
+                                    whileTap={{ scale: 0.97 }}
+                                    onClick={() => onTabChange && onTabChange(isAuthenticated ? 'analyst' : 'register')}
+                                    className="group flex items-center gap-2.5 btn-primary cursor-pointer"
+                                    style={{ padding: '14px 32px', fontSize: '15px' }}
+                                >
+                                    <Bot size={16} />
+                                    {(!authLoading && isAuthenticated) ? 'Meet Your AI Agent' : 'Start Free — No Card'}
+                                    <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                                </motion.button>
 
-                            <motion.button
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.97 }}
-                                onClick={() => scrollToSection('how-it-works')}
-                                className="flex items-center gap-2 btn-secondary cursor-pointer"
-                                style={{ padding: '13px 28px', fontSize: '14px' }}
-                            >
-                                How It Works ↓
-                            </motion.button>
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.97 }}
+                                    onClick={() => scrollToSection('how-it-works')}
+                                    className="flex items-center gap-2 btn-secondary cursor-pointer"
+                                    style={{ padding: '13px 28px', fontSize: '14px' }}
+                                >
+                                    How It Works ↓
+                                </motion.button>
+                            </div>
+                            {!authLoading && !isAuthenticated && (
+                                <button
+                                    onClick={() => onTabChange && onTabChange('login')}
+                                    className="cursor-pointer transition-colors"
+                                    style={{ background: 'none', border: 'none', fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: 'var(--text-muted)' }}
+                                >
+                                    Already have an account?{' '}
+                                    <span style={{ color: 'var(--gold-primary)', fontWeight: 500 }}>Sign In →</span>
+                                </button>
+                            )}
                         </motion.div>
 
                         {/* ── Stats row ── */}

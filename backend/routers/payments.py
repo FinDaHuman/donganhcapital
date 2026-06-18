@@ -77,6 +77,22 @@ async def create_order(
 
     user_id = str(user["id"])
 
+    # Block repurchase of same or lower tier while subscription is still active
+    tier_rank = {"free": 0, "pro": 1, "premium": 2}
+    current_tier = user.get("subscription_tier", "free")
+    expires_at = user.get("subscription_expires_at")
+    now_utc = datetime.now(timezone.utc)
+    if (
+        tier_rank.get(body.plan, 0) <= tier_rank.get(current_tier, 0)
+        and expires_at
+        and expires_at > now_utc
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"You already have an active {current_tier.title()} subscription until {expires_at.strftime('%d/%m/%Y')}. "
+                   f"You can only upgrade to a higher plan or renew after it expires.",
+        )
+
     # Check for existing pending orders (prevent duplicate orders)
     with engine.connect() as conn:
         existing = conn.execute(

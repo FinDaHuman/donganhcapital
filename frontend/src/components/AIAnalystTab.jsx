@@ -138,8 +138,13 @@ const AIAnalystTab = ({ onSelectStock }) => {
         if (!sortConfig) return sorted;
 
         sorted.sort((a, b) => {
-            let aVal = a[sortConfig.key];
-            let bVal = b[sortConfig.key];
+            // For return_pct, HOLD trades sort by live_return_pct
+            let aVal = (sortConfig.key === 'return_pct' && a.status === 'HOLD')
+                ? (a.live_return_pct ?? a.return_pct)
+                : a[sortConfig.key];
+            let bVal = (sortConfig.key === 'return_pct' && b.status === 'HOLD')
+                ? (b.live_return_pct ?? b.return_pct)
+                : b[sortConfig.key];
 
             if (aVal == null && bVal == null) return 0;
             if (aVal == null) return sortConfig.direction === 'asc' ? 1 : -1;
@@ -161,8 +166,11 @@ const AIAnalystTab = ({ onSelectStock }) => {
 
     const dynamicStats = useMemo(() => {
         const closedTrades = filteredTrades.filter(t => ['TP', 'SL', 'TIMEOUT'].includes(t.status));
-        const tpCount = filteredTrades.filter(t => t.status === 'TP').length;
-        const winRate = closedTrades.length > 0 ? ((tpCount / closedTrades.length) * 100).toFixed(1) : 0;
+        // TIMEOUT with return > 0 is a win, TIMEOUT with return <= 0 is a loss
+        const winCount = filteredTrades.filter(t =>
+            t.status === 'TP' || (t.status === 'TIMEOUT' && t.return_pct != null && t.return_pct > 0)
+        ).length;
+        const winRate = closedTrades.length > 0 ? ((winCount / closedTrades.length) * 100).toFixed(1) : 0;
 
         const validReturns = closedTrades.map(t => t.return_pct).filter(r => r != null);
         const avgReturn = validReturns.length > 0 ? ((validReturns.reduce((a, b) => a + b, 0) / validReturns.length) * 100).toFixed(2) : 0;
@@ -398,7 +406,10 @@ const AIAnalystTab = ({ onSelectStock }) => {
                             <div className="bg-[#111213] border border-gray-800 rounded-xl overflow-hidden">
                                 {/* ── Mobile card list (< md) ── */}
                                 <div className="md:hidden space-y-2 p-2">
-                                    {sortedTrades.map((trade, idx) => (
+                                    {sortedTrades.map((trade, idx) => {
+                                        const mobileDisplayReturn = trade.status === 'HOLD' ? trade.live_return_pct : trade.return_pct;
+                                        const mobileIsLive = trade.status === 'HOLD' && mobileDisplayReturn != null;
+                                        return (
                                         <div
                                             key={idx}
                                             onClick={() => onSelectStock(trade.stock_id)}
@@ -434,8 +445,8 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                             </div>
                                             {/* Return / Win Rate / Days */}
                                             <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-800/50">
-                                                <span className={`font-bold ${trade.return_pct == null ? 'text-gray-500' : trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                    {trade.return_pct != null ? `${(trade.return_pct * 100).toFixed(2)}%` : '—'}
+                                                <span className={`font-bold ${mobileDisplayReturn == null ? 'text-gray-500' : mobileDisplayReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                    {mobileDisplayReturn != null ? `${mobileIsLive ? '~' : ''}${(mobileDisplayReturn * 100).toFixed(2)}%` : '—'}
                                                 </span>
                                                 {trade.prob != null && (
                                                     <span className="text-blue-400 text-xs">WR {(trade.prob * 100).toFixed(1)}%</span>
@@ -445,7 +456,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                 </span>
                                             </div>
                                         </div>
-                                    ))}
+                                        );})}
                                 </div>
 
                                 {/* ── Desktop table (≥ md) ── */}
@@ -467,7 +478,10 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {sortedTrades.map((trade, idx) => (
+                                            {sortedTrades.map((trade, idx) => {
+                                            const displayReturn = trade.status === 'HOLD' ? trade.live_return_pct : trade.return_pct;
+                                            const isLive = trade.status === 'HOLD' && displayReturn != null;
+                                            return (
                                                 <tr
                                                     key={idx}
                                                     onClick={() => onSelectStock(trade.stock_id)}
@@ -489,14 +503,14 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                     <td className="px-5 py-4 text-gray-400 text-xs">{trade.exit_date || '—'}</td>
                                                     <td className="px-5 py-4 text-right text-gray-200 font-medium">{trade.exit_price?.toFixed(2) || '—'}</td>
                                                     <td className="px-5 py-4 text-center"><StatusBadge status={trade.status} /></td>
-                                                    <td className={`px-5 py-4 text-right font-bold ${trade.return_pct == null ? 'text-gray-500' :
-                                                        trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'
+                                                    <td className={`px-5 py-4 text-right font-bold ${displayReturn == null ? 'text-gray-500' :
+                                                        displayReturn >= 0 ? 'text-green-400' : 'text-red-400'
                                                         }`}>
-                                                        {trade.return_pct != null ? `${(trade.return_pct * 100).toFixed(2)}%` : '—'}
+                                                        {displayReturn != null ? `${isLive ? '~' : ''}${(displayReturn * 100).toFixed(2)}%` : '—'}
                                                     </td>
                                                     <td className="px-5 py-4 text-right text-gray-400">{trade.holding_days ?? '—'}</td>
                                                 </tr>
-                                            ))}
+                                            );})}
                                         </tbody>
                                     </table>
                                 </div>

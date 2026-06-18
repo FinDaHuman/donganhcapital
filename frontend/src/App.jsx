@@ -7,15 +7,27 @@ import DataAnalystTab from './components/DataAnalystTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
-import { Search } from 'lucide-react';
+import { Search, AlertTriangle, X } from 'lucide-react';
 import { SkeletonChart } from './components/SkeletonLoader';
 import AuthPage from './pages/AuthPage';
 import ProfilePage from './pages/ProfilePage';
 import CheckoutPage from './pages/CheckoutPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
+import { useAuth } from './context/AuthContext';
 
 function App() {
+    const { user } = useAuth();
+    const [dismissedExpiry, setDismissedExpiry] = useState(false);
+
+    // Compute expiry warning
+    const expiryWarning = (() => {
+        if (!user?.subscription_expires_at || !user?.subscription_tier || user.subscription_tier === 'free') return null;
+        const daysLeft = Math.ceil((new Date(user.subscription_expires_at) - new Date()) / (1000 * 60 * 60 * 24));
+        if (daysLeft <= 3 && daysLeft >= 0) return { daysLeft, tier: user.subscription_tier };
+        return null;
+    })();
+
     // Read initial tab from URL path (e.g. /privacy) or query param fallback
     const path = window.location.pathname.replace('/', '');
     const queryTab = new URLSearchParams(window.location.search).get('tab');
@@ -107,6 +119,38 @@ function App() {
 
     return (
         <div className="w-full min-h-screen flex flex-col overflow-hidden text-gray-200 font-sans" style={{ backgroundColor: '#000' }}>
+            {/* Subscription expiry warning banner */}
+            {expiryWarning && !dismissedExpiry && activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && (
+                <div
+                    className="w-full flex items-center justify-center gap-3 px-4 py-2.5 text-sm"
+                    style={{
+                        background: 'rgba(234,179,8,0.08)',
+                        borderBottom: '1px solid rgba(234,179,8,0.2)',
+                        fontFamily: "'Outfit', sans-serif",
+                    }}
+                >
+                    <AlertTriangle size={14} style={{ color: '#eab308', flexShrink: 0 }} />
+                    <span style={{ color: '#eab308' }}>
+                        Your <strong style={{ textTransform: 'capitalize' }}>{expiryWarning.tier}</strong> plan expires in{' '}
+                        <strong>{expiryWarning.daysLeft} day{expiryWarning.daysLeft !== 1 ? 's' : ''}</strong>.{' '}
+                        <button
+                            onClick={() => handleTabChange('profile')}
+                            className="cursor-pointer underline"
+                            style={{ background: 'none', border: 'none', color: '#eab308', fontFamily: "'Outfit', sans-serif" }}
+                        >
+                            Renew now →
+                        </button>
+                    </span>
+                    <button
+                        onClick={() => setDismissedExpiry(true)}
+                        className="ml-auto cursor-pointer"
+                        style={{ background: 'none', border: 'none', color: '#eab308', opacity: 0.6, flexShrink: 0 }}
+                        aria-label="Dismiss"
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
             {activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'profile' && activeTab !== 'checkout' && activeTab !== 'privacy' && activeTab !== 'terms' && <Header activeTab={activeTab} onTabChange={handleTabChange} />}
 
             <div className="flex-1 flex flex-col w-full min-h-0 relative">
