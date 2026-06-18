@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Activity, TrendingUp, BarChart3, LineChart,
     Lock, Calendar, Globe, Server, Database,
-    ChevronDown, ChevronUp, MapPin, Users, Mail, Phone, Facebook, ShieldCheck,
+    ChevronDown, ChevronUp, MapPin, Users, Mail, Phone, Facebook, Youtube, ShieldCheck,
     CheckCircle2, Clock, Sparkles, Send, ArrowRight,
     Bot, Brain, Target, Shield, Zap, BarChart2, Eye, Cpu,
     XCircle, TrendingDown, AlertTriangle, BarChart,
@@ -1004,7 +1004,7 @@ export const FutureSection = () => {
             <motion.div variants={itemVariants} className="text-center mt-12">
                 <p className="type-body-sm" style={{ color: 'var(--text-muted)' }}>
                     Want to shape our roadmap?{' '}
-                    <a href="mailto:contact@donganhcapital.com" className="underline underline-offset-2 transition-colors" style={{ color: 'var(--gold-primary)' }}>
+                    <a href="https://www.facebook.com/profile.php?id=61590323739631" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 transition-colors" style={{ color: 'var(--gold-primary)' }}>
                         Join our community
                     </a>.
                 </p>
@@ -1644,6 +1644,11 @@ export const AboutUsSection = () => {
                             style={{ background: 'rgba(201,169,110,0.1)', border: '1px solid var(--gold-border)', color: 'var(--text-secondary)' }}>
                             <Facebook size={18} />
                         </a>
+                        <a href="https://www.youtube.com/@DongAnhCapital" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer"
+                            title="YouTube"
+                            style={{ background: 'rgba(201,169,110,0.1)', border: '1px solid var(--gold-border)', color: 'var(--text-secondary)' }}>
+                            <Youtube size={18} />
+                        </a>
                     </div>
                 </motion.div>
             </div>
@@ -1705,6 +1710,11 @@ export const FooterSection = ({ onTabChange }) => {
                                 title="Facebook"
                                 style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid var(--gold-border)', color: 'var(--text-muted)' }}>
                                 <Facebook size={16} />
+                            </a>
+                            <a href="https://www.youtube.com/@DongAnhCapital" target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer"
+                                title="YouTube"
+                                style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid var(--gold-border)', color: 'var(--text-muted)' }}>
+                                <Youtube size={16} />
                             </a>
                         </div>
                         <h4 className="type-label mt-8 mb-4" style={{ color: 'var(--text-secondary)' }}>Legal</h4>

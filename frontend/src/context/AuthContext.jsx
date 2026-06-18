@@ -15,7 +15,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import axios from 'axios';
 
 const API_BASE = (() => {
-    let url = import.meta.env.VITE_API_URL || 'https://donganhcapital.onrender.com/api';
+    let url = import.meta.env.VITE_API_URL || 'https://api.donganhcapital.com/api';
     url = url.replace(/\/api\/?$/, '');
     return url;
 })();

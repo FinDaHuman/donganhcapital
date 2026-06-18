@@ -123,13 +123,18 @@ class UserResponse(BaseModel):
 
 # ── Cookie Helpers ──
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str):
-    """Set httpOnly, Secure, SameSite auth cookies."""
+    """Set httpOnly, Secure, SameSite auth cookies.
+
+    Both frontend (donganhcapital.com) and API (api.donganhcapital.com) share
+    the same eTLD+1, so SameSite=Lax is sufficient and avoids third-party
+    cookie blocking in browsers like Brave/Safari.
+    """
     response.set_cookie(
         key=ACCESS_COOKIE,
         value=access_token,
         httponly=True,
         secure=True,
-        samesite="none",  # Required for cross-domain requests (Vercel <-> Render)
+        samesite="lax",
         max_age=15 * 60,  # 15 minutes
         path="/",
     )
@@ -138,16 +143,16 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         value=refresh_token,
         httponly=True,
         secure=True,
-        samesite="none",  # Required for cross-domain requests
+        samesite="lax",
         max_age=7 * 24 * 3600,  # 7 days
         path="/api/auth/refresh",  # Only sent to refresh endpoint
     )
 
 
 def _clear_auth_cookies(response: Response):
-    """Clear auth cookies."""
-    response.delete_cookie(key=ACCESS_COOKIE, path="/")
-    response.delete_cookie(key=REFRESH_COOKIE, path="/api/auth/refresh")
+    """Clear auth cookies — attributes must match set_cookie for browsers to honor the deletion."""
+    response.delete_cookie(key=ACCESS_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+    response.delete_cookie(key=REFRESH_COOKIE, path="/api/auth/refresh", secure=True, httponly=True, samesite="lax")
 
 
 # ── Current User Dependency ──

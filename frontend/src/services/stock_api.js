@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Use environment variable if available, otherwise fallback to production URL
-const baseUrl = import.meta.env.VITE_API_URL || 'https://donganhcapital.onrender.com/api';
+const baseUrl = import.meta.env.VITE_API_URL || 'https://api.donganhcapital.com/api';
 // Remove trailing slash if present to avoid // in requests
 let API_Base_URL = baseUrl.replace(/\/$/, '');
 
