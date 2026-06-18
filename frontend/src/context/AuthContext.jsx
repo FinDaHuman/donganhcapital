@@ -211,6 +211,30 @@ export const AuthProvider = ({ children }) => {
         }
     }, []);
 
+    // ── Forgot password (request reset link) ──
+    // Backend returns an opaque success regardless of whether the email exists,
+    // so the UI shows the same confirmation either way.
+    const forgotPassword = useCallback(async (email) => {
+        try {
+            const { data } = await authApi.post('/api/auth/forgot-password', { email });
+            return { success: true, message: data.message };
+        } catch (err) {
+            const message = err.response?.data?.detail || 'Something went wrong. Please try again.';
+            return { success: false, error: message };
+        }
+    }, []);
+
+    // ── Reset password (consume token, set new password) ──
+    const resetPassword = useCallback(async (token, password) => {
+        try {
+            const { data } = await authApi.post('/api/auth/reset-password', { token, password });
+            return { success: true, message: data.message };
+        } catch (err) {
+            const message = err.response?.data?.detail || 'Could not reset password. The link may have expired.';
+            return { success: false, error: message };
+        }
+    }, []);
+
     // ── Logout ──
     const logout = useCallback(async () => {
         try {
@@ -257,6 +281,8 @@ export const AuthProvider = ({ children }) => {
         register,
         getGoogleAuthUrl,
         loginWithGoogle,
+        forgotPassword,
+        resetPassword,
         logout,
         updateProfile,
         refreshUser,

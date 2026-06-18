@@ -21,11 +21,12 @@ Security:
 """
 
 import re
+import secrets
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, Response, Depends
+from fastapi import APIRouter, HTTPException, Request, Response, Depends, BackgroundTasks
 from pydantic import BaseModel, Field, field_validator
 
 from db.connection import get_engine
@@ -40,6 +41,11 @@ from utils.security import (
     is_account_locked, get_lockout_until,
     LOCKOUT_THRESHOLD,
 )
+from utils.mailer import (
+    send_password_reset_email,
+    send_google_account_notice_email,
+    FRONTEND_URL,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -52,6 +58,21 @@ COOKIE_DOMAIN = ".donganhcapital.com" if IS_PRODUCTION else None
 
 ACCESS_COOKIE = "dac_access_token"
 REFRESH_COOKIE = "dac_refresh_token"
+
+RESET_TOKEN_EXPIRE_MINUTES = 60
+
+
+def _validate_password_strength(v: str) -> str:
+    """Shared password policy — used by registration and password reset."""
+    if len(v) < 8:
+        raise ValueError("Password must be at least 8 characters")
+    if not re.search(r'[A-Z]', v):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not re.search(r'[a-z]', v):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not re.search(r'[0-9]', v):
+        raise ValueError("Password must contain at least one number")
+    return v
 
 
 # ── Request/Response Models ──
@@ -73,15 +94,7 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, v):
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if not re.search(r'[A-Z]', v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not re.search(r'[a-z]', v):
-            raise ValueError("Password must contain at least one lowercase letter")
-        if not re.search(r'[0-9]', v):
-            raise ValueError("Password must contain at least one number")
-        return v
+        return _validate_password_strength(v)
 
 
 class LoginRequest(BaseModel):
@@ -96,6 +109,25 @@ class LoginRequest(BaseModel):
 
 class GoogleCallbackRequest(BaseModel):
     code: str = Field(..., min_length=10, max_length=2048)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v):
+        return v.strip().lower()
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=20, max_length=256)
+    password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v):
+        return _validate_password_strength(v)
 
 
 class UpdateProfileRequest(BaseModel):
@@ -429,6 +461,143 @@ async def refresh_token(request: Request, response: Response):
     _set_auth_cookies(response, new_access, new_refresh)
 
     return {"user": _format_user(user)}
+
+
+# ══════════════════════════════════════
+#   PASSWORD RESET ENDPOINTS
+# ══════════════════════════════════════
+
+# Opaque response — identical whether or not the email exists, so the endpoint
+# can't be used to enumerate registered accounts.
+_FORGOT_OPAQUE_MESSAGE = (
+    "If an account exists for that email, a password reset link has been sent."
+)
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
+    """Begin a password reset. Always returns the same opaque message.
+
+    For an email/password account: generates a single-use token (60 min), stores
+    only its hash, and emails the reset link. For a Google-only account: emails a
+    "sign in with Google" notice instead. Email is sent in the background so the
+    network call never holds a request slot.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_auth_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+
+    engine = get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    with engine.connect() as conn:
+        user = conn.execute(
+            text("""
+                SELECT id, email, full_name, hashed_password, is_active
+                FROM users WHERE email = :email
+            """),
+            {"email": body.email},
+        ).mappings().first()
+
+    # No such (active) user — return opaque success without sending anything.
+    if not user or not user.get("is_active"):
+        return {"message": _FORGOT_OPAQUE_MESSAGE}
+
+    user = dict(user)
+
+    # Google-only account (no password to reset) — guide them to Google sign-in.
+    if not user.get("hashed_password"):
+        background_tasks.add_task(
+            send_google_account_notice_email, user["email"], user.get("full_name")
+        )
+        return {"message": _FORGOT_OPAQUE_MESSAGE}
+
+    # Issue a single-use reset token; store only its hash.
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hash_token(raw_token)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("""
+                UPDATE users
+                SET reset_token_hash = :hash, reset_token_expires_at = :expires
+                WHERE id = :id
+            """),
+            {"hash": token_hash, "expires": expires_at, "id": user["id"]},
+        )
+
+    reset_url = f"{FRONTEND_URL}/reset-password?token={raw_token}"
+    background_tasks.add_task(
+        send_password_reset_email, user["email"], reset_url, user.get("full_name")
+    )
+
+    return {"message": _FORGOT_OPAQUE_MESSAGE}
+
+
+@router.post("/reset-password")
+async def reset_password(
+    body: ResetPasswordRequest,
+    request: Request,
+    response: Response,
+):
+    """Complete a password reset with a valid, unexpired token.
+
+    On success: sets the new password, consumes the token (single use), and
+    revokes all existing sessions by clearing the refresh token hash. Also clears
+    any account lockout. Does NOT log the user in — they sign in fresh afterwards.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_auth_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+
+    engine = get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    token_hash = hash_token(body.token)
+
+    with engine.begin() as conn:
+        user = conn.execute(
+            text("""
+                SELECT id FROM users
+                WHERE reset_token_hash = :hash
+                  AND reset_token_expires_at > NOW()
+                  AND is_active = TRUE
+            """),
+            {"hash": token_hash},
+        ).mappings().first()
+
+        if not user:
+            raise HTTPException(
+                status_code=400,
+                detail="This password reset link is invalid or has expired. Please request a new one.",
+            )
+
+        conn.execute(
+            text("""
+                UPDATE users SET
+                    hashed_password = :pw,
+                    reset_token_hash = NULL,
+                    reset_token_expires_at = NULL,
+                    refresh_token_hash = NULL,
+                    failed_login_attempts = 0,
+                    locked_until = NULL,
+                    updated_at = NOW()
+                WHERE id = :id
+            """),
+            {"pw": hash_password(body.password), "id": user["id"]},
+        )
+
+    # Defensively clear any auth cookies on this device so the old session can't linger.
+    _clear_auth_cookies(response)
+
+    return {"message": "Your password has been reset. Please sign in with your new password."}
 
 
 # ══════════════════════════════════════

@@ -38,9 +38,9 @@ const itemVariants = {
 };
 
 const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
-    const { login, register, getGoogleAuthUrl, loginWithGoogle, isAuthenticated, loading: authLoading } = useAuth();
+    const { login, register, getGoogleAuthUrl, loginWithGoogle, forgotPassword, isAuthenticated, loading: authLoading } = useAuth();
 
-    const [mode, setMode] = useState(initialMode); // 'login' | 'register'
+    const [mode, setMode] = useState(initialMode); // 'login' | 'register' | 'forgot'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -141,8 +141,32 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
         }
     };
 
+    const handleForgotSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+        setLoading(true);
+        const result = await forgotPassword(email);
+        setLoading(false);
+        if (result.success) {
+            // Opaque message — same whether or not the email is registered.
+            setSuccess(result.message || 'If an account exists for that email, a reset link is on its way.');
+        } else {
+            setError(result.error);
+        }
+    };
+
     const switchMode = () => {
         setMode(mode === 'login' ? 'register' : 'login');
+        setError('');
+        setSuccess('');
+        setPassword('');
+        setConfirmPassword('');
+        setLoginFailed(false);
+    };
+
+    const goToMode = (next) => {
+        setMode(next);
         setError('');
         setSuccess('');
         setPassword('');
@@ -241,16 +265,105 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                                     color: 'var(--text-primary)',
                                 }}
                             >
-                                {mode === 'login' ? 'Welcome Back' : 'Create Account'}
+                                {mode === 'login' ? 'Welcome Back' : mode === 'register' ? 'Create Account' : 'Reset Password'}
                             </h1>
                             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                                 {mode === 'login'
                                     ? 'Sign in to access your AI trading dashboard.'
-                                    : 'Join to unlock AI-powered market intelligence.'}
+                                    : mode === 'register'
+                                        ? 'Join to unlock AI-powered market intelligence.'
+                                        : "Enter your email and we'll send you a reset link."}
                             </p>
                         </motion.div>
                     </AnimatePresence>
 
+                    {/* Forgot-password form (email only) */}
+                    {mode === 'forgot' && (
+                        <form onSubmit={handleForgotSubmit} className="space-y-3.5">
+                            <div>
+                                <label className="block mb-1.5 text-xs font-medium" style={{ color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
+                                    Email
+                                </label>
+                                <div className="relative">
+                                    <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                                        placeholder="you@example.com"
+                                        required
+                                        maxLength={254}
+                                        className="w-full pl-10 pr-4 py-3 rounded-xl text-sm focus:outline-none transition-all"
+                                        style={{
+                                            background: 'var(--bg-void)',
+                                            border: `1px solid ${error ? 'rgba(239,68,68,0.4)' : 'rgba(201,169,110,0.15)'}`,
+                                            color: 'var(--text-primary)',
+                                            fontFamily: "'Outfit', sans-serif",
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            <AnimatePresence>
+                                {error && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0 }}
+                                        className="flex items-start gap-2 p-3 rounded-xl"
+                                        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
+                                    >
+                                        <AlertCircle size={14} className="shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
+                                        <span className="text-xs" style={{ color: '#ef4444' }}>{error}</span>
+                                    </motion.div>
+                                )}
+                                {success && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0 }}
+                                        className="flex items-start gap-2 p-3 rounded-lg"
+                                        style={{ background: 'rgba(77,184,130,0.08)', border: '1px solid rgba(77,184,130,0.2)' }}
+                                    >
+                                        <CheckCircle2 size={14} className="shrink-0 mt-0.5" style={{ color: 'var(--market-up)' }} />
+                                        <span className="text-xs" style={{ color: 'var(--market-up)' }}>{success}</span>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            <motion.button
+                                type="submit"
+                                disabled={loading}
+                                whileHover={!loading ? { scale: 1.01 } : {}}
+                                whileTap={!loading ? { scale: 0.98 } : {}}
+                                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm transition-all cursor-pointer"
+                                style={{
+                                    background: 'linear-gradient(135deg, var(--gold-primary), var(--gold-bright, #E8C97A))',
+                                    color: 'var(--bg-void)',
+                                    border: 'none',
+                                    fontFamily: "'Outfit', sans-serif",
+                                    opacity: loading ? 0.7 : 1,
+                                }}
+                            >
+                                {loading ? <Loader2 size={16} className="animate-spin" /> : (<>Send Reset Link <ArrowRight size={16} /></>)}
+                            </motion.button>
+
+                            <div className="text-center mt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => goToMode('login')}
+                                    className="text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5"
+                                    style={{ color: 'var(--gold-primary)', background: 'none', border: 'none', fontFamily: "'Outfit', sans-serif" }}
+                                >
+                                    <ArrowLeft size={12} /> Back to Sign In
+                                </button>
+                            </div>
+                        </form>
+                    )}
+
+                    {/* Google + email/password (login & register only) */}
+                    {mode !== 'forgot' && (
+                    <>
                     {/* Google Sign In */}
                     <motion.button
                         variants={itemVariants}
@@ -375,6 +488,19 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                                 </button>
                             </div>
                         </div>
+
+                        {mode === 'login' && (
+                            <div className="flex justify-end -mt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => goToMode('forgot')}
+                                    className="text-xs font-medium cursor-pointer"
+                                    style={{ color: 'var(--gold-primary)', background: 'none', border: 'none', fontFamily: "'Outfit', sans-serif" }}
+                                >
+                                    Forgot password?
+                                </button>
+                            </div>
+                        )}
 
                         {mode === 'register' && (
                             <motion.div
@@ -526,6 +652,8 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                             {mode === 'login' ? 'Sign Up' : 'Sign In'}
                         </button>
                     </div>
+                    </>
+                    )}
                 </motion.div>
 
                 {/* Security badge */}

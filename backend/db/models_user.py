@@ -54,6 +54,18 @@ def run_user_migration():
             ADD COLUMN IF NOT EXISTS subscription_period VARCHAR(20);
         """))
 
+        # Password reset: store only the SHA-256 hash of the token (never the token
+        # itself), mirroring the refresh_token_hash convention. Ephemeral — cleared
+        # on use — so it lives on the users row rather than a separate table.
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);
+        """))
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP WITH TIME ZONE;
+        """))
+
         # Create indexes safely (IF NOT EXISTS)
         conn.execute(text("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
@@ -63,6 +75,12 @@ def run_user_migration():
             CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id
             ON users(google_id)
             WHERE google_id IS NOT NULL;
+        """))
+        # Partial index: only the handful of rows with an active reset token.
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_users_reset_token_hash
+            ON users(reset_token_hash)
+            WHERE reset_token_hash IS NOT NULL;
         """))
 
     logger.info("User migration completed successfully")

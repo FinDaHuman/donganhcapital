@@ -18,13 +18,14 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, Response, Depends
+from fastapi import APIRouter, HTTPException, Request, Response, Depends, BackgroundTasks
 from pydantic import BaseModel, Field, field_validator
 
 from db.connection import get_engine
 from sqlalchemy import text
 
 from routers.auth import get_current_user
+from utils.mailer import send_purchase_confirmation_email
 from utils.sepay import (
     get_price, generate_order_code, get_payment_details,
     verify_webhook_signature, extract_order_code_from_description,
@@ -236,7 +237,7 @@ async def create_order(
 # ══════════════════════════════════════
 
 @router.post("/webhook")
-async def sepay_webhook(request: Request):
+async def sepay_webhook(request: Request, background_tasks: BackgroundTasks):
     """Handle SePay webhook for payment confirmation.
     
     SePay sends POST with transaction data when a payment is received.
@@ -285,7 +286,8 @@ async def sepay_webhook(request: Request):
         # Find the pending order
         result = conn.execute(
             text("""
-                SELECT p.*, u.subscription_tier, u.subscription_expires_at
+                SELECT p.*, u.subscription_tier, u.subscription_expires_at,
+                       u.email AS user_email, u.full_name AS user_name
                 FROM payments p
                 JOIN users u ON p.user_id = u.id
                 WHERE p.order_code = :code AND p.status = 'pending'
@@ -356,6 +358,21 @@ async def sepay_webhook(request: Request):
         logger.info(
             f"Payment completed: {order_code} | User: {order['user_id']} | "
             f"Plan: {order['plan']} | Amount: {amount} VND | Until: {sub_end}"
+        )
+
+    # Send the confirmation/receipt in the background — never block the webhook
+    # ack (SePay retries on slow/failed responses) and never let a mail failure
+    # roll back a completed payment.
+    if order.get("user_email"):
+        background_tasks.add_task(
+            send_purchase_confirmation_email,
+            order["user_email"],
+            order["plan"],
+            order["period"],
+            float(order["amount"]),
+            sub_end.strftime("%d/%m/%Y"),
+            order_code,
+            order.get("user_name"),
         )
 
     return {"success": True}
