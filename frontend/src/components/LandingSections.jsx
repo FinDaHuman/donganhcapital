@@ -1265,7 +1265,7 @@ export const PricingSection = ({ onTabChange }) => {
                     Choose Your Plan
                 </motion.h2>
                 <motion.p variants={itemVariants} className="type-body-lg max-w-xl mx-auto mb-6" style={{ color: 'var(--text-secondary)' }}>
-                    Start free. Upgrade when you're ready. Pro & Premium are available for preorder — products launching soon.
+                    Start free. Upgrade when you're ready. Pro & Premium plans are live — cancel anytime.
                 </motion.p>
 
                 {/* Monthly / Yearly Toggle */}
@@ -1412,7 +1412,7 @@ export const PricingSection = ({ onTabChange }) => {
                     ))}
                 </div>
                 <p className="type-caption mt-4" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>
-                    * Pro & Premium plans are preorder only. You will be charged when the product launches. Cancel anytime before launch for a full refund.
+                    Payments are processed securely via bank transfer through SePay. Subscriptions renew monthly or yearly.
                 </p>
             </motion.div>
         </motion.section>
@@ -1449,7 +1449,7 @@ export const QAndASection = () => {
         },
         {
             q: "Is DongAnh Capital really free?",
-            a: "Yes, the core platform is completely free. No credit card required, no hidden fees. Our mission is to democratize financial analytics for the Vietnamese market. We also offer Pro and Premium preorder plans with advanced AI features — pricing starts at 199,000 VND/month. The core platform will always remain free."
+            a: "Yes, the core platform is completely free. No credit card required, no hidden fees. Our mission is to democratize financial analytics for the Vietnamese market. We also offer Pro and Premium paid plans with advanced AI features — pricing starts at 199,000 VND/month. The core platform will always remain free."
         },
         {
             q: "How accurate are the AI predictions?",
@@ -1460,8 +1460,8 @@ export const QAndASection = () => {
             a: "The AI Agent is currently in development (Q3 2026 target). Subscribe with your email to be notified at launch. Early adopters will receive priority access and help shape the product through beta testing."
         },
         {
-            q: "How does preorder pricing work?",
-            a: "Pro (199,000 VND/mo) and Premium (499,000 VND/mo) plans are available for preorder. You won't be charged until the product officially launches. You can cancel your preorder anytime before launch for a full refund. Preorder now to lock in early-bird pricing and get priority access."
+            q: "Can I upgrade or switch plans later?",
+            a: "Yes. You can upgrade from Pro to Premium at any time. When you upgrade mid-cycle, unused days on your current plan are credited toward the new plan — so you only pay the difference. Switching from monthly to yearly is also supported with the same credit logic."
         },
     ];
 
