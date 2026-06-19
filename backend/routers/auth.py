@@ -459,10 +459,32 @@ async def refresh_token(request: Request, response: Response):
 
     user = dict(user)
 
-    # Verify refresh token hash (one-time use)
+    # Verify refresh token hash (one-time use with concurrent-tab grace period).
     stored_hash = user.get("refresh_token_hash")
-    if not stored_hash or stored_hash != hash_token(token):
-        # Token reuse detected — possible theft, invalidate all sessions
+    presented_hash = hash_token(token)
+
+    if not stored_hash or stored_hash != presented_hash:
+        # Before treating this as token theft, check whether it's just a concurrent
+        # request from another tab that used the same refresh token a moment ago.
+        # If this token matches the PREVIOUS hash and rotation happened within the
+        # grace window, the winning tab already refreshed; the browser already has
+        # the new cookies. Return the user profile so the interceptor can retry the
+        # original request using those fresh cookies — no new tokens needed here.
+        prev_hash = user.get("refresh_token_prev_hash")
+        rotated_at = user.get("refresh_rotated_at")
+        _GRACE_SECONDS = 30
+
+        is_concurrent = (
+            prev_hash is not None
+            and prev_hash == presented_hash
+            and rotated_at is not None
+            and (datetime.now(timezone.utc) - rotated_at).total_seconds() < _GRACE_SECONDS
+        )
+
+        if is_concurrent:
+            return {"user": _format_user(user)}
+
+        # Genuine reuse / mismatch — possible token theft. Wipe all sessions.
         with engine.begin() as conn:
             conn.execute(
                 text("UPDATE users SET refresh_token_hash = NULL WHERE id = :id"),
@@ -471,13 +493,21 @@ async def refresh_token(request: Request, response: Response):
         _clear_auth_cookies(response)
         raise HTTPException(status_code=401, detail="Refresh token revoked")
 
-    # Issue new tokens
+    # Issue new tokens and rotate: stash the old hash so concurrent tabs have a
+    # grace window (see above) instead of triggering a false-positive revocation.
     new_access = create_access_token({"sub": str(user["id"]), "email": user["email"]})
     new_refresh = create_refresh_token({"sub": str(user["id"])})
 
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE users SET refresh_token_hash = :hash, updated_at = NOW() WHERE id = :id"),
+            text("""
+                UPDATE users
+                SET refresh_token_prev_hash = refresh_token_hash,
+                    refresh_token_hash = :hash,
+                    refresh_rotated_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = :id
+            """),
             {"hash": hash_token(new_refresh), "id": user["id"]}
         )
 

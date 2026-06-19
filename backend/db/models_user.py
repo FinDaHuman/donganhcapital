@@ -54,6 +54,18 @@ def run_user_migration():
             ADD COLUMN IF NOT EXISTS subscription_period VARCHAR(20);
         """))
 
+        # Refresh token rotation — keep one previous hash so concurrent-tab
+        # requests that present the just-rotated-away token aren't mis-classified
+        # as theft and don't trigger a full session wipe.
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS refresh_token_prev_hash VARCHAR(255);
+        """))
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS refresh_rotated_at TIMESTAMP WITH TIME ZONE;
+        """))
+
         # Password reset: store only the SHA-256 hash of the token (never the token
         # itself), mirroring the refresh_token_hash convention. Ephemeral — cleared
         # on use — so it lives on the users row rather than a separate table.

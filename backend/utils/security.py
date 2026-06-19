@@ -26,16 +26,14 @@ logger = logging.getLogger(__name__)
 # ── Configuration ──
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 if not JWT_SECRET_KEY:
-    # In production, a missing JWT_SECRET_KEY means sessions will be lost on every restart.
-    # Generate a fallback for local development only.
     JWT_SECRET_KEY = secrets.token_urlsafe(64)
-    logger.warning(
-        "⚠️  JWT_SECRET_KEY is not set! Using a randomly generated key. "
-        "All user sessions will be lost when the server restarts. "
-        "Set JWT_SECRET_KEY as an environment variable for production."
+    logger.critical(
+        "FATAL: JWT_SECRET_KEY is not set. Using a randomly generated key — "
+        "ALL user sessions will be invalidated on every server restart. "
+        "Set JWT_SECRET_KEY in Render environment variables immediately."
     )
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
+ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 60 min > Render free-tier sleep window (15 min)
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")

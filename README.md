@@ -39,6 +39,22 @@ An autonomous, scheduled system responsible for data ingestion, feature engineer
 *   **Operational Execution:** Triggered daily via GitHub Actions (`.github/workflows/daily-pipeline.yml`).
 *   **Fail-Safe Mechanisms:** Designed to fail closed. If upstream data acquisition (via the VCI source) fails or returns anomalous data, the pipeline halts execution immediately, preventing the generation of signals based on stale or corrupted data.
 
+### 1.4. Platform Services: Auth, Payments & Email
+Layered on top of the FastAPI backend (`backend/routers/`, `backend/utils/`):
+*   **Authentication (`routers/auth.py`):** Email/password and Google OAuth sign-in with password reset. JWTs are issued as **httpOnly + Secure + SameSite cookies** scoped to `.donganhcapital.com`, so they are shared transparently between the SPA (`donganhcapital.com`) and the API (`api.donganhcapital.com`). Refresh tokens are rotated on every use; only SHA-256 hashes of refresh and reset tokens are persisted. Hardening: per-IP rate limiting (5 req / 5 min) on auth routes and account lockout (15 min after 5 failed attempts).
+*   **Payments (`routers/payments.py`, `utils/sepay.py`):** Subscriptions are paid via **SePay / VietQR** bank transfer. The user creates an order (returning a VietQR code), SePay confirms via a webhook whose HMAC-SHA256 signature is verified before the subscription is activated, and a Stripe-style proration credit is applied on upgrades. A background task downgrades expired subscriptions back to the free tier.
+*   **Transactional Email (`utils/mailer.py`):** Password-reset links and purchase receipts are sent through the **Resend HTTP API** (not SMTP — Render blocks outbound SMTP), fired via FastAPI `BackgroundTasks` so a slow send never holds a concurrency slot. **Cloudflare hosts DNS only** (SPF/DKIM/DMARC authorising Resend, plus inbound Email Routing); it does not send mail. See `EMAIL_SETUP.md`.
+
+### 1.5. Hosting Topology
+| Layer | Service | Role |
+| :--- | :--- | :--- |
+| Frontend | **Vercel** | Static SPA hosting at `donganhcapital.com` |
+| Backend API | **Render** (free tier) | FastAPI container, reached at `api.donganhcapital.com` |
+| Database | **NeonDB** | Managed PostgreSQL (scales to zero) |
+| DNS / Email auth | **Cloudflare** | DNS for the `api` subdomain + SPF/DKIM/DMARC + inbound Email Routing |
+| Outbound email | **Resend** | Transactional email HTTP API |
+| Cron / CI | **GitHub Actions** | Daily signal pipeline + automation |
+
 ---
 
 ## 2. Data Flow & Operational Lifecycle
@@ -67,6 +83,9 @@ The platform relies on a normalized PostgreSQL database hosted on NeonDB.
 | `ai_signals` | Daily generated algorithmic trading recommendations. | `date`, `stock_id`, `entry_price`, `tp_price`, `sl_price`, `probability` |
 | `trade_history` | Ledger of simulated trades and outcome analysis. | `entry_date`, `exit_date`, `stock_id`, `realized_pnl`, `duration` |
 | `daily_signal_summary`| Aggregated metrics of daily signal generation activity. | `date`, `total_signals`, `sector_breakdown` |
+| `users` | Authentication profiles. | `id` (UUID), `email`, `hashed_password`, `google_id`, `subscription_tier`, `subscription_expires_at`, `failed_login_attempts` |
+| `payments` | Subscription payment orders and outcomes. | `order_code`, `amount`, `plan`, `period`, `status`, `sepay_ref`, `subscription_start`, `subscription_end` |
+| `subscribers` | Email newsletter sign-ups. | `email`, `subscribed_at`, `source` |
 
 ---
 
@@ -138,6 +157,12 @@ pip install -r requirements.txt
 **Environment Variables (`backend/.env`):**
 *   `DATABASE_URL`: Connection string for NeonDB (Must use `sslmode=require`).
 *   `USE_XGB`: `true` (default) or `false`.
+*   `JWT_SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`: Authentication.
+*   `ALLOWED_ORIGINS`: Comma-separated CORS whitelist (defaults to `*` in dev).
+*   `RESEND_API_KEY`, `EMAIL_FROM`, `FRONTEND_URL`, `SUPPORT_EMAIL`: Transactional email — see `EMAIL_SETUP.md`.
+*   `SEPAY_API_TOKEN`, `SEPAY_WEBHOOK_SECRET`, `SEPAY_BANK_ID`, `SEPAY_BANK_ACCOUNT_NO`, `SEPAY_BANK_ACCOUNT_NAME`: SePay / VietQR payments.
+
+> The full list with descriptions lives in `CLAUDE.md`.
 
 **Run Server:**
 ```bash
@@ -170,5 +195,6 @@ python run_daily_pipeline.py
 
 *   **Database Connection Exhaustion:** The backend mitigates this via `NullPool` in SQLAlchemy. If connection limits are reached locally, ensure no rogue Python processes are holding connections open.
 *   **Missing Market Data / Pipeline Failures:** The `vnstock` library relies on third-party APIs (VCI). If the daily pipeline fails, check the GitHub Actions logs. Failures are typically caused by upstream guest limits or API changes. The pipeline is designed to halt to prevent data corruption.
-*   **CORS Violations:** Ensure `VITE_API_URL` exactly matches the backend's address. The FastAPI backend employs `CORSMiddleware` configured to allow all origins by default in development.
-*   **Empty VN30F1M Charts:** Intraday derivative data is only polled during active trading hours (GMT+7). The charts will naturally be empty during weekends or overnight hours.s.
+*   **CORS Violations:** Ensure `VITE_API_URL` exactly matches the backend's address. In development the backend defaults `ALLOWED_ORIGINS` to `*` (no credentials). In production `ALLOWED_ORIGINS` must list the exact SPA origins (e.g. `https://donganhcapital.com,https://www.donganhcapital.com`); this is what enables credentialed CORS so httpOnly auth cookies are accepted. Because the SPA and API live on different subdomains, CORS is required even though both share the `.donganhcapital.com` cookie domain.
+*   **Auth Cookies Rejected / 401 Loops:** Confirm the API is reached at `https://api.donganhcapital.com` (same registrable domain as the SPA) and that `ALLOWED_ORIGINS` is set — cookies scoped to `.donganhcapital.com` will not attach to a bare `*.onrender.com` host.
+*   **Empty VN30F1M Charts:** Intraday derivative data is only polled during active trading sessions (GMT+7: 08:50–11:45 and 12:45–16:30). The charts will naturally be empty during weekends, the lunch break, or overnight hours.

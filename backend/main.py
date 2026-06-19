@@ -199,7 +199,15 @@ expiry_task = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global predictor, poll_task, expiry_task
-    
+
+    # Validate critical secrets before accepting traffic.
+    if not os.getenv("JWT_SECRET_KEY"):
+        print(
+            "FATAL: JWT_SECRET_KEY env var is not set. "
+            "Every server restart will invalidate all user sessions. "
+            "Set it in Render → Environment → JWT_SECRET_KEY."
+        )
+
     try:
         from models.xgb_predictor import XGBPredictor
         model_path = os.path.join(os.path.dirname(__file__), "models", "xgb_model")

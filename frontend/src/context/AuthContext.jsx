@@ -28,6 +28,11 @@ const authApi = axios.create({
     timeout: 15000,
 });
 
+// Cross-tab refresh coordination: when one tab rotates the tokens, broadcast
+// so other tabs know to skip their own refresh and re-check /me instead.
+let _broadcastChannel = null;
+try { _broadcastChannel = new BroadcastChannel('dac_auth'); } catch { /* Safari <15.4 */ }
+
 // Interceptor: auto-refresh on 401
 let isRefreshing = false;
 let failedQueue = [];
@@ -63,6 +68,7 @@ authApi.interceptors.response.use(
 
             try {
                 await authApi.post('/api/auth/refresh');
+                _broadcastChannel?.postMessage({ type: 'tokens_refreshed' });
                 processQueue(null);
                 return authApi(originalRequest);
             } catch (refreshError) {
@@ -151,6 +157,22 @@ export const AuthProvider = ({ children }) => {
         };
 
         checkAuth();
+    }, []);
+
+    // Listen for token rotations from other tabs. When a sibling tab refreshes,
+    // re-validate /me using the fresh cookies it set so this tab stays logged in
+    // without needing its own (now-stale) refresh attempt.
+    useEffect(() => {
+        if (!_broadcastChannel) return;
+        const handleMessage = (event) => {
+            if (event.data?.type !== 'tokens_refreshed') return;
+            authApi.get('/api/auth/me').then(({ data }) => {
+                setUser(data.user);
+                writeCache(data.user);
+            }).catch(() => {});
+        };
+        _broadcastChannel.addEventListener('message', handleMessage);
+        return () => _broadcastChannel.removeEventListener('message', handleMessage);
     }, []);
 
     // ── Login with email/password ──
