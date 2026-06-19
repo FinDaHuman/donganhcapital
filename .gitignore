@@ -49,3 +49,8 @@ xgb_model.ipynb
 docs/
 implementation_plan.md
 EMAIL_SETUP.md
+LTR_MODEL_PLAN.md
+
+# Log files
+*.log
+job-logs.txt
