@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard';
 import StockChart from './components/StockChart';
 import AIAnalystTab from './components/AIAnalystTab';
 import DataAnalystTab from './components/DataAnalystTab';
+import LTRSignalsTab from './components/LTRSignalsTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -275,6 +276,14 @@ function App() {
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <DataAnalystTab onSelectStock={handleSelectStock} stockList={stockList} />
+                            </ErrorBoundary>
+                        </div>
+                    )}
+
+                    {activeTab === 'ltr-signals' && (
+                        <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
+                            <ErrorBoundary>
+                                <LTRSignalsTab onSelectStock={handleSelectStock} onTabChange={handleTabChange} />
                             </ErrorBoundary>
                         </div>
                     )}

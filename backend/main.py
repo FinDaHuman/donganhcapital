@@ -16,13 +16,14 @@ from typing import Any, Optional
 import time
 
 from db.queries import (
-    get_stocks_from_db, get_stock_ohlc, 
+    get_stocks_from_db, get_stock_ohlc,
     get_market_status_from_db, get_vnindex_from_db,
     get_ai_signals_dates, get_ai_signals,
     get_daily_signal_summary,
     get_trade_history, get_trade_history_stats,
     validate_stock_id, validate_limit,
     insert_subscriber,
+    get_ltr_signals, get_ltr_signals_dates,
 )
 from utils.security import get_client_ip
 from db.analytics import (
@@ -237,6 +238,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Payment migration warning: {e}")
 
+    # Auto-migrate ltr_signals table
+    try:
+        from db.ltr_signals_migration import run_ltr_migration
+        run_ltr_migration()
+    except Exception as e:
+        print(f"LTR migration warning: {e}")
+
     poll_task = asyncio.create_task(realtime_vn30f1m())
     expiry_task = asyncio.create_task(subscription_expiry_checker())
 
@@ -390,6 +398,81 @@ async def get_ai_signals_summary_endpoint(concurrency: Any = Depends(limit_concu
     def compute():
         return get_daily_signal_summary()
     return get_cached("ai_signals_summary", 120, compute)
+
+
+@app.get("/api/ltr-signals")
+async def get_ltr_signals_endpoint(
+    request: Request,
+    date: Optional[str] = None,
+    latest: bool = False,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    """Pro-gated LTR ranked signals. Requires Pro or Premium subscription."""
+    from routers.auth import get_current_user as _get_current_user
+    from datetime import timezone as _tz
+
+    user = await _get_current_user(request)  # raises 401 if unauthenticated
+
+    # Tier check with inline expiry to close the ~6h background-task gap
+    tier = user.get("subscription_tier", "free")
+    expires_at = user.get("subscription_expires_at")
+    if tier != "free" and expires_at is not None:
+        try:
+            now_utc = datetime.now(_tz.utc)
+            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=_tz.utc)
+            if exp < now_utc:
+                tier = "free"
+        except Exception:
+            pass
+
+    if tier not in ("pro", "premium"):
+        raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
+
+    if date and not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
+
+    cache_key = f"ltr_signals_{date}_{latest}"
+
+    def compute():
+        return get_ltr_signals(date, latest)
+
+    return get_cached(cache_key, 120, compute)
+
+
+@app.get("/api/ltr-signals/dates")
+async def get_ltr_signals_dates_endpoint(
+    request: Request,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    """Pro-gated list of dates that have LTR signals."""
+    from routers.auth import get_current_user as _get_current_user
+    from datetime import timezone as _tz
+
+    user = await _get_current_user(request)  # raises 401 if unauthenticated
+
+    tier = user.get("subscription_tier", "free")
+    expires_at = user.get("subscription_expires_at")
+    if tier != "free" and expires_at is not None:
+        try:
+            now_utc = datetime.now(_tz.utc)
+            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=_tz.utc)
+            if exp < now_utc:
+                tier = "free"
+        except Exception:
+            pass
+
+    if tier not in ("pro", "premium"):
+        raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
+
+    def compute():
+        return get_ltr_signals_dates()
+
+    return get_cached("ltr_signals_dates", 120, compute)
+
 
 @app.get("/api/trade-history")
 async def get_trade_history_endpoint(status: Optional[str] = None, concurrency: Any = Depends(limit_concurrency)):

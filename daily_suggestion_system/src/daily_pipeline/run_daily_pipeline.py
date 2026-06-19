@@ -93,6 +93,22 @@ def run():
         exit_code = 1
 
     # ==============================
+    # STEP 4: LTR RANKING SIGNALS
+    # ==============================
+
+    logger.info("=" * 50)
+    logger.info("STEP 4: LTR RANKING SIGNALS")
+    logger.info("=" * 50)
+
+    try:
+        from ltr_daily_predict import score_all_stocks
+        result = score_all_stocks()
+        logger.info(f"LTR: {len(result) if result is not None else 0} stocks ranked")
+    except Exception as e:
+        logger.error(f"LTR step failed (non-fatal): {e}")
+        exit_code = 1
+
+    # ==============================
     # DONE
     # ==============================
 

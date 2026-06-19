@@ -18,6 +18,7 @@ const Header = ({ activeTab, onTabChange }) => {
         { id: 'chart',        label: 'Chart' },
         { id: 'analyst',      label: 'AI Analyst' },
         { id: 'data-analyst', label: 'Data Analyst' },
+        { id: 'ltr-signals',  label: 'Pro Signals', pro: true },
     ];
 
     return (
@@ -73,7 +74,7 @@ const Header = ({ activeTab, onTabChange }) => {
                             <button
                                 key={tab.id}
                                 onClick={() => onTabChange(tab.id)}
-                                className="relative h-full px-4 text-sm font-medium transition-all duration-200 cursor-pointer"
+                                className="relative h-full px-4 text-sm font-medium transition-all duration-200 cursor-pointer flex items-center gap-1.5"
                                 style={{
                                     fontFamily: "'Outfit', sans-serif",
                                     color: isActive ? '#C9A96E' : '#94A3BC',
@@ -82,6 +83,14 @@ const Header = ({ activeTab, onTabChange }) => {
                                 }}
                             >
                                 {tab.label}
+                                {tab.pro && (
+                                    <span
+                                        className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase leading-none"
+                                        style={{ background: 'rgba(201,169,110,0.15)', color: '#C9A96E', border: '1px solid rgba(201,169,110,0.25)' }}
+                                    >
+                                        PRO
+                                    </span>
+                                )}
                                 {/* Gold underline indicator */}
                                 <span
                                     className="absolute bottom-0 left-3 right-3 h-[2px] rounded-t transition-all duration-300"
@@ -203,7 +212,7 @@ const Header = ({ activeTab, onTabChange }) => {
                             <button
                                 key={tab.id}
                                 onClick={() => handleTabChange(tab.id)}
-                                className="text-left px-6 py-3.5 text-base font-medium transition-colors cursor-pointer"
+                                className="text-left px-6 py-3.5 text-base font-medium transition-colors cursor-pointer flex items-center gap-2"
                                 style={{
                                     fontFamily: "'Outfit', sans-serif",
                                     color: isActive ? '#C9A96E' : '#94A3BC',
@@ -212,6 +221,14 @@ const Header = ({ activeTab, onTabChange }) => {
                                 }}
                             >
                                 {tab.label}
+                                {tab.pro && (
+                                    <span
+                                        className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase leading-none"
+                                        style={{ background: 'rgba(201,169,110,0.15)', color: '#C9A96E', border: '1px solid rgba(201,169,110,0.25)' }}
+                                    >
+                                        PRO
+                                    </span>
+                                )}
                             </button>
                         );
                     })}

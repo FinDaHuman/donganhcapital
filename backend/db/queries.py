@@ -501,3 +501,54 @@ def get_subscriber_count() -> int:
     except Exception as e:
         print(f"Error counting subscribers: {e}")
         return 0
+
+
+# ── LTR signals ──────────────────────────────────────────────────────────────
+
+def get_ltr_signals_dates() -> list:
+    """Return distinct dates that have LTR signals, newest first."""
+    engine = get_engine()
+    if not engine:
+        return []
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT DISTINCT date FROM ltr_signals ORDER BY date DESC")
+            )
+            return [row[0].isoformat() for row in result if row[0] is not None]
+    except Exception as e:
+        print(f"Error fetching ltr_signals dates: {e}")
+        return []
+
+
+def get_ltr_signals(date_str: str = None, latest: bool = False) -> dict:
+    """Return LTR ranked signals for a given date."""
+    engine = get_engine()
+    if not engine:
+        return {"date": None, "signal_count": 0, "signals": []}
+
+    if latest:
+        dates = get_ltr_signals_dates()
+        if not dates:
+            return {"date": None, "signal_count": 0, "signals": []}
+        date_str = dates[0]
+
+    if not date_str:
+        return {"date": None, "signal_count": 0, "signals": []}
+
+    query = text("""
+        SELECT date, stock_id, rank, score
+        FROM ltr_signals
+        WHERE date = :date_str
+        ORDER BY rank ASC
+    """)
+    try:
+        df = pd.read_sql(query, engine, params={"date_str": date_str})
+        if df.empty:
+            return {"date": date_str, "signal_count": 0, "signals": []}
+        df["date"] = df["date"].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
+        signals = df.to_dict(orient="records")
+        return {"date": date_str, "signal_count": len(signals), "signals": _sanitize_records(signals)}
+    except Exception as e:
+        print(f"Error fetching ltr_signals: {e}")
+        return {"date": date_str, "signal_count": 0, "signals": []}
