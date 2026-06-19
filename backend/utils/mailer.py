@@ -247,3 +247,40 @@ async def send_purchase_confirmation_email(
         _wrap("Subscription confirmed", body),
         text,
     )
+
+
+async def send_trial_started_email(
+    to: str,
+    expires_at: str,
+    full_name: str | None = None,
+) -> bool:
+    """Welcome email after a user claims the free 1-week Pro trial."""
+    name = html.escape(full_name.strip()) if full_name else "there"
+    dashboard_url = f"{FRONTEND_URL}/dashboard"
+    body = f"""
+      <p style="margin:0 0 12px 0;font-size:15px;line-height:24px;color:#3f3f46;">Hi {name},</p>
+      <p style="margin:0 0 4px 0;font-size:15px;line-height:24px;color:#3f3f46;">
+        Your free <strong>1-week Pro trial</strong> is now active. You have full
+        access to every Pro feature until <strong>{html.escape(expires_at)}</strong>
+        — no card required.
+      </p>
+      {_button("Explore Pro features", dashboard_url)}
+      <p style="margin:16px 0 0 0;font-size:13px;line-height:20px;color:#71717a;">
+        When the trial ends, your account returns to the Free plan automatically —
+        you won't be charged. Upgrade any time to keep your Pro access.
+      </p>
+    """
+    text = (
+        f"Hi {full_name or 'there'},\n\n"
+        "Your free 1-week Pro trial is now active! You have full access to every "
+        f"Pro feature until {expires_at} — no card required.\n\n"
+        f"Explore Pro: {dashboard_url}\n\n"
+        "When the trial ends, your account returns to the Free plan automatically. "
+        "You won't be charged. Upgrade any time to keep Pro."
+    )
+    return await send_email(
+        to,
+        "Your free DongAnh Capital Pro trial is active",
+        _wrap("Welcome to Pro", body),
+        text,
+    )

@@ -136,6 +136,12 @@ const ProfilePage = ({ onTabChange }) => {
     const currentPeriod = user?.subscription_period || 'monthly';
     const isSubActive = daysUntilExpiry !== null && daysUntilExpiry > 0;
 
+    // A free Pro trial grants Pro access without a paid plan. For billing it
+    // behaves like the free tier (no proration credit; can buy any paid plan),
+    // so conversion is handled by a dedicated "Keep Pro" block rather than the
+    // rank-gated upgrade cards — which still truthfully show Pro as the current plan.
+    const isTrial = user?.subscription_tier === 'pro' && user?.subscription_period === 'trial';
+
     // "Switch to Yearly" is available when: paid tier, active, currently on monthly
     const canSwitchToYearly = (
         user?.subscription_tier !== 'free' &&
@@ -196,6 +202,11 @@ const ProfilePage = ({ onTabChange }) => {
         onTabChange && onTabChange('checkout', { plan: user.subscription_tier, period: 'yearly' });
     };
 
+    // Convert a free trial into a paid Pro plan (no proration — trial days don't carry over).
+    const handleKeepPro = (period) => {
+        onTabChange && onTabChange('checkout', { plan: 'pro', period });
+    };
+
     const sections = [
         { id: 'account', label: 'Account', icon: User },
         { id: 'subscription', label: 'Subscription', icon: Crown },
@@ -242,9 +253,13 @@ const ProfilePage = ({ onTabChange }) => {
                         >
                             <AlertTriangle size={16} style={{ color: isExpired ? '#ef4444' : '#eab308', flexShrink: 0 }} />
                             <p className="text-sm flex-1" style={{ color: isExpired ? '#ef4444' : '#eab308' }}>
-                                {isExpired
-                                    ? `Your ${tier.label} subscription has expired. Renew to restore access.`
-                                    : `Your ${tier.label} plan expires in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}. Renew to keep access.`
+                                {isTrial
+                                    ? (isExpired
+                                        ? 'Your free Pro trial has ended. Subscribe to restore Pro access.'
+                                        : `Your free Pro trial ends in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}. Subscribe to keep Pro access.`)
+                                    : (isExpired
+                                        ? `Your ${tier.label} subscription has expired. Renew to restore access.`
+                                        : `Your ${tier.label} plan expires in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}. Renew to keep access.`)
                                 }
                             </p>
                             <button
@@ -252,7 +267,7 @@ const ProfilePage = ({ onTabChange }) => {
                                 className="text-xs font-semibold cursor-pointer shrink-0"
                                 style={{ background: 'none', border: 'none', color: isExpired ? '#ef4444' : '#eab308' }}
                             >
-                                Renew →
+                                {isTrial ? 'Keep Pro →' : 'Renew →'}
                             </button>
                         </motion.div>
                     )}
@@ -440,7 +455,14 @@ const ProfilePage = ({ onTabChange }) => {
                                         <div className="flex items-start justify-between mb-4">
                                             <div>
                                                 <p className="text-xs font-semibold uppercase mb-1" style={{ color: 'var(--text-muted)', letterSpacing: '0.1em' }}>Current Plan</p>
-                                                <p className="text-2xl font-bold" style={{ color: tier.color, fontFamily: "'Cormorant Garamond', serif" }}>{tier.label}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-2xl font-bold" style={{ color: tier.color, fontFamily: "'Cormorant Garamond', serif" }}>{tier.label}</p>
+                                                    {isTrial && (
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ background: 'rgba(201,169,110,0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(201,169,110,0.3)', letterSpacing: '0.08em' }}>
+                                                            Free Trial
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                             <Crown size={28} style={{ color: tier.color, opacity: 0.3 }} />
                                         </div>
@@ -474,6 +496,53 @@ const ProfilePage = ({ onTabChange }) => {
                                             </p>
                                         )}
                                     </div>
+
+                                    {/* Keep Pro — convert a free trial into a paid Pro plan, any time */}
+                                    {isTrial && (
+                                        <div
+                                            className="rounded-2xl p-6 mb-6 relative overflow-hidden"
+                                            style={{ background: 'linear-gradient(135deg, rgba(201,169,110,0.1) 0%, var(--bg-surface) 100%)', border: '1px solid rgba(201,169,110,0.25)' }}
+                                        >
+                                            <div className="flex items-start gap-3 mb-4">
+                                                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(201,169,110,0.15)' }}>
+                                                    <Crown size={20} style={{ color: 'var(--gold-primary)' }} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>
+                                                        Keep your Pro access
+                                                    </p>
+                                                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                                        You're on a free Pro trial{daysUntilExpiry > 0 ? ` — ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''} left` : ''}.
+                                                        Subscribe to stay on Pro after it ends. Your trial days won't carry over.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <button
+                                                    onClick={() => handleKeepPro('monthly')}
+                                                    className="rounded-xl p-4 text-left cursor-pointer transition-all"
+                                                    style={{ background: 'var(--bg-elevated)', border: '1px solid rgba(201,169,110,0.2)' }}
+                                                >
+                                                    <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Monthly</p>
+                                                    <p className="text-lg font-medium" style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
+                                                        199,000 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>VND/mo</span>
+                                                    </p>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleKeepPro('yearly')}
+                                                    className="rounded-xl p-4 text-left cursor-pointer transition-all relative"
+                                                    style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid rgba(201,169,110,0.35)' }}
+                                                >
+                                                    <p className="text-xs mb-1 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                                                        Yearly <span className="font-semibold" style={{ color: 'var(--market-up)' }}>Save 17%</span>
+                                                    </p>
+                                                    <p className="text-lg font-medium" style={{ color: 'var(--gold-primary)', fontFamily: "'DM Mono', monospace" }}>
+                                                        1,990,000 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>VND/yr</span>
+                                                    </p>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Switch to Yearly — shown for active monthly subscribers */}
                                     {canSwitchToYearly && yearlySwitch && (

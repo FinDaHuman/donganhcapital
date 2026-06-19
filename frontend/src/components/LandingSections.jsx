@@ -9,7 +9,7 @@ import {
     Bot, Brain, Target, Shield, Zap, BarChart2, Eye, Cpu,
     XCircle, TrendingDown, AlertTriangle, BarChart,
     Star, Newspaper, Settings, Play, BadgeCheck, Infinity, Rocket,
-    CreditCard, Building2, Loader2
+    CreditCard, Building2, Loader2, Crown
 } from 'lucide-react';
 import { subscribeEmail } from '../services/stock_api';
 
@@ -1150,12 +1150,44 @@ const EmailSubscribeForm = ({ variant = 'default', ctaText = 'Get Notified at La
    PRICING SECTION — 3-tier with preorder
    ============================================================ */
 export const PricingSection = ({ onTabChange }) => {
-    const { isAuthenticated, loading: authLoading, user } = useAuth();
+    const { isAuthenticated, loading: authLoading, user, claimProTrial } = useAuth();
     const [isYearly, setIsYearly] = useState(false);
+    const [trialClaiming, setTrialClaiming] = useState(false);
+    const [trialMsg, setTrialMsg] = useState(null);
 
     const tierRank = { free: 0, pro: 1, premium: 2 };
     const currentTier = user?.subscription_tier || 'free';
     const currentRank = tierRank[currentTier] ?? 0;
+
+    // Trial users have Pro access without a paid plan. The pricing cards still
+    // (truthfully) show Pro as their "Current Plan"; a separate banner offers
+    // conversion to a paid plan so we never have to special-case the rank logic.
+    const isTrial = currentTier === 'pro' && user?.subscription_period === 'trial';
+    const trialDaysLeft = user?.subscription_expires_at
+        ? Math.max(0, Math.ceil((new Date(user.subscription_expires_at) - Date.now()) / 86400000))
+        : null;
+
+    // Limited-time free Pro trial — offer closes end of 2026-07-07 (VN, UTC+7).
+    // Server enforces eligibility; this only controls whether the CTA is shown.
+    const trialOfferOpen = Date.now() < new Date('2026-07-08T00:00:00+07:00').getTime();
+    const trialEligible =
+        isAuthenticated && !authLoading &&
+        currentTier === 'free' &&
+        !user?.pro_trial_claimed &&
+        trialOfferOpen;
+
+    const handleClaimTrial = async () => {
+        if (trialClaiming) return;
+        setTrialClaiming(true);
+        setTrialMsg(null);
+        const res = await claimProTrial();
+        setTrialClaiming(false);
+        setTrialMsg(
+            res.success
+                ? { type: 'success', text: res.message || 'Your free 1-week Pro trial is now active!' }
+                : { type: 'error', text: res.error }
+        );
+    };
 
     const handlePlanClick = useCallback((planName) => {
         // While auth is loading, route to checkout (we don't know auth state yet).
@@ -1290,10 +1322,111 @@ export const PricingSection = ({ onTabChange }) => {
                         <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)' }}>Save 17%</span>
                     </span>
                 </motion.div>
-                <motion.p variants={itemVariants} className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
-                    Already subscribed? Unused days are credited when you upgrade or switch to yearly.
-                </motion.p>
+                {!isTrial && (
+                    <motion.p variants={itemVariants} className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
+                        Already subscribed? Unused days are credited when you upgrade or switch to yearly.
+                    </motion.p>
+                )}
             </div>
+
+            {/* Limited-time free Pro trial banner */}
+            {trialEligible && (
+                <motion.div variants={itemVariants} className="max-w-3xl mx-auto mb-8">
+                    <div
+                        className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(201,169,110,0.14), rgba(201,169,110,0.04))',
+                            border: '1px solid rgba(201,169,110,0.3)',
+                        }}
+                    >
+                        <div className="shrink-0 w-12 h-12 rounded-full flex items-center justify-center" style={{ background: 'rgba(201,169,110,0.15)' }}>
+                            <Sparkles size={22} style={{ color: 'var(--gold-primary)' }} />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="mb-1" style={{ fontFamily: "'Outfit', sans-serif", fontWeight: 600, fontSize: '18px', color: 'var(--text-primary)' }}>
+                                Try Pro free for 1 week
+                            </h3>
+                            <p className="type-body-sm" style={{ color: 'var(--text-secondary)' }}>
+                                Unlock every Pro feature for 7 days — no card required. Offer ends Jul 7.
+                            </p>
+                        </div>
+                        <button
+                            onClick={handleClaimTrial}
+                            disabled={trialClaiming}
+                            className="btn-primary cursor-pointer flex items-center justify-center gap-2 shrink-0"
+                            style={{ padding: '12px 24px', fontSize: '14px', opacity: trialClaiming ? 0.7 : 1 }}
+                            id="pricing-claim-trial"
+                        >
+                            {trialClaiming ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                            {trialClaiming ? 'Activating…' : 'Claim free week'}
+                        </button>
+                    </div>
+                </motion.div>
+            )}
+
+            {/* Trial claim result message */}
+            {trialMsg && (
+                <motion.div variants={itemVariants} className="max-w-3xl mx-auto mb-8 text-center">
+                    <p
+                        className="type-body-sm inline-block px-4 py-3 rounded-xl"
+                        style={trialMsg.type === 'success'
+                            ? { background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)', border: '1px solid rgba(77,184,130,0.25)' }
+                            : { background: 'rgba(229,115,115,0.12)', color: '#e57373', border: '1px solid rgba(229,115,115,0.25)' }}
+                    >
+                        {trialMsg.text}
+                    </p>
+                </motion.div>
+            )}
+
+            {/* Trial → paid conversion banner (shown while a free trial is active) */}
+            {isTrial && (
+                <motion.div variants={itemVariants} className="max-w-3xl mx-auto mb-8">
+                    <div
+                        className="rounded-2xl p-5 sm:p-6 flex flex-col gap-4"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(201,169,110,0.14), rgba(201,169,110,0.04))',
+                            border: '1px solid rgba(201,169,110,0.3)',
+                        }}
+                    >
+                        <div className="flex items-center gap-4 text-center sm:text-left flex-col sm:flex-row">
+                            <div className="shrink-0 w-12 h-12 rounded-full flex items-center justify-center" style={{ background: 'rgba(201,169,110,0.15)' }}>
+                                <Crown size={22} style={{ color: 'var(--gold-primary)' }} />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="mb-1" style={{ fontFamily: "'Outfit', sans-serif", fontWeight: 600, fontSize: '18px', color: 'var(--text-primary)' }}>
+                                    Keep your Pro access
+                                </h3>
+                                <p className="type-body-sm" style={{ color: 'var(--text-secondary)' }}>
+                                    You're on a free Pro trial{trialDaysLeft !== null ? ` — ${trialDaysLeft} day${trialDaysLeft !== 1 ? 's' : ''} left` : ''}.
+                                    Subscribe any time to stay on Pro after it ends. Trial days don't carry over.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <button
+                                onClick={() => onTabChange && onTabChange('checkout', { plan: 'pro', period: 'monthly' })}
+                                className="cursor-pointer rounded-xl px-5 py-3 flex items-center justify-between gap-2"
+                                style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.2)' }}
+                                id="pricing-keep-pro-monthly"
+                            >
+                                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Keep Pro · Monthly</span>
+                                <span className="text-sm" style={{ color: 'var(--gold-primary)', fontFamily: "'DM Mono', monospace" }}>199,000<span className="text-xs" style={{ color: 'var(--text-muted)' }}>/mo</span></span>
+                            </button>
+                            <button
+                                onClick={() => onTabChange && onTabChange('checkout', { plan: 'pro', period: 'yearly' })}
+                                className="cursor-pointer rounded-xl px-5 py-3 flex items-center justify-between gap-2"
+                                style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid rgba(201,169,110,0.35)' }}
+                                id="pricing-keep-pro-yearly"
+                            >
+                                <span className="text-sm font-medium flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                                    Keep Pro · Yearly <span className="text-xs font-semibold" style={{ color: 'var(--market-up)' }}>-17%</span>
+                                </span>
+                                <span className="text-sm" style={{ color: 'var(--gold-primary)', fontFamily: "'DM Mono', monospace" }}>1,990,000<span className="text-xs" style={{ color: 'var(--text-muted)' }}>/yr</span></span>
+                            </button>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
 
             {/* Pricing Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">

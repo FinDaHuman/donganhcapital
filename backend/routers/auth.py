@@ -247,6 +247,9 @@ def _format_user(user: dict) -> dict:
         "subscription_tier": user.get("subscription_tier", "free"),
         "subscription_period": user.get("subscription_period"),  # "monthly" | "yearly" | None
         "subscription_expires_at": user["subscription_expires_at"].isoformat() if user.get("subscription_expires_at") else None,
+        # Limited-time free Pro trial: True once the account has claimed it (ever).
+        # Lets the UI hide the offer for users who've already used it.
+        "pro_trial_claimed": bool(user.get("pro_trial_claimed_at")),
         "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
     }
 
@@ -325,7 +328,9 @@ async def login(body: LoginRequest, request: Request, response: Response):
         result = conn.execute(
             text("""
                 SELECT id, email, hashed_password, full_name, avatar_url,
-                       auth_provider, risk_appetite, subscription_tier, created_at,
+                       auth_provider, risk_appetite, subscription_tier,
+                       subscription_period, subscription_expires_at,
+                       pro_trial_claimed_at, created_at,
                        failed_login_attempts, locked_until, is_active
                 FROM users WHERE email = :email
             """),

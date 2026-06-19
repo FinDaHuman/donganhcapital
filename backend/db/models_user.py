@@ -78,6 +78,15 @@ def run_user_migration():
             ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP WITH TIME ZONE;
         """))
 
+        # Free Pro trial offer (limited-time, 1 week). One claim per account,
+        # enforced naturally by the unique users.email row: NULL = never claimed,
+        # a timestamp = claimed (never cleared, so the trial can't be re-claimed
+        # even after it expires and the user returns to the free tier).
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS pro_trial_claimed_at TIMESTAMP WITH TIME ZONE;
+        """))
+
         # Create indexes safely (IF NOT EXISTS)
         conn.execute(text("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email

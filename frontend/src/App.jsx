@@ -25,7 +25,10 @@ function App() {
     const expiryWarning = (() => {
         if (!user?.subscription_expires_at || !user?.subscription_tier || user.subscription_tier === 'free') return null;
         const daysLeft = Math.ceil((new Date(user.subscription_expires_at) - new Date()) / (1000 * 60 * 60 * 24));
-        if (daysLeft <= 3 && daysLeft >= 0) return { daysLeft, tier: user.subscription_tier };
+        if (daysLeft <= 3 && daysLeft >= 0) {
+            const isTrial = user.subscription_tier === 'pro' && user.subscription_period === 'trial';
+            return { daysLeft, tier: user.subscription_tier, isTrial };
+        }
         return null;
     })();
 
@@ -132,14 +135,18 @@ function App() {
                 >
                     <AlertTriangle size={14} style={{ color: '#eab308', flexShrink: 0 }} />
                     <span style={{ color: '#eab308' }}>
-                        Your <strong style={{ textTransform: 'capitalize' }}>{expiryWarning.tier}</strong> plan expires in{' '}
+                        {expiryWarning.isTrial ? (
+                            <>Your <strong>free Pro trial</strong> ends in </>
+                        ) : (
+                            <>Your <strong style={{ textTransform: 'capitalize' }}>{expiryWarning.tier}</strong> plan expires in </>
+                        )}
                         <strong>{expiryWarning.daysLeft} day{expiryWarning.daysLeft !== 1 ? 's' : ''}</strong>.{' '}
                         <button
                             onClick={() => handleTabChange('profile')}
                             className="cursor-pointer underline"
                             style={{ background: 'none', border: 'none', color: '#eab308', fontFamily: "'Outfit', sans-serif" }}
                         >
-                            Renew now →
+                            {expiryWarning.isTrial ? 'Keep Pro →' : 'Renew now →'}
                         </button>
                     </span>
                     <button

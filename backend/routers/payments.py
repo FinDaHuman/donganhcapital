@@ -25,7 +25,7 @@ from db.connection import get_engine
 from sqlalchemy import text
 
 from routers.auth import get_current_user
-from utils.mailer import send_purchase_confirmation_email
+from utils.mailer import send_purchase_confirmation_email, send_trial_started_email
 from utils.sepay import (
     get_price, generate_order_code, get_payment_details,
     verify_webhook_signature, extract_order_code_from_description,
@@ -36,6 +36,16 @@ from utils.security import check_auth_rate_limit, get_client_ip
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/payments", tags=["payments"])
+
+
+# ── Free Pro Trial Offer (limited-time) ──
+# Free-tier users can claim Pro for 1 week, once per account. The offer closes at
+# the end of 2026-07-07 (Vietnam time, UTC+7). A claimed trial is stored with
+# period='trial' so create_order can recognise it and treat it as non-creditable
+# (a free trial must never earn proration credit toward a paid upgrade).
+PRO_TRIAL_DURATION_DAYS = 7
+PRO_TRIAL_PERIOD = "trial"
+PRO_TRIAL_OFFER_END = datetime(2026, 7, 8, 0, 0, 0, tzinfo=timezone(timedelta(hours=7)))
 
 
 # ── Request/Response Models ──
@@ -89,6 +99,15 @@ async def create_order(
     current_tier = user.get("subscription_tier", "free")
     expires_at = user.get("subscription_expires_at")
     now_utc = datetime.now(timezone.utc)
+
+    # A free Pro trial is not a paid subscription: it must grant no proration
+    # credit and must never block a real purchase. Treat it as free-tier for all
+    # billing logic below, so a trial user pays full price and the paid plan
+    # simply replaces the remaining trial days.
+    if user.get("subscription_period") == PRO_TRIAL_PERIOD:
+        current_tier = "free"
+        expires_at = None
+
     is_sub_active = bool(expires_at and expires_at > now_utc)
 
     # ── Resolve current billing period from last completed payment ──
@@ -145,7 +164,14 @@ async def create_order(
                 ),
             )
 
-    # ── Return existing pending order to prevent duplicates ──
+    # ── Reuse an existing pending order ONLY when it's for the SAME plan+period ──
+    # This dedups genuine repeats (double-click, status polling, back-navigation)
+    # without trapping a user who switches plan/period: a different selection falls
+    # through and gets a fresh order. We deliberately do NOT expire the old order —
+    # on a bank-transfer rail, marking it 'expired' can't stop an in-flight transfer
+    # from landing, so expiring a possibly-paid order would orphan the money. The
+    # stale order simply lives out its 30-min TTL; the webhook matches by order_code
+    # and nothing assumes a single pending order per user.
     with engine.connect() as conn:
         existing = conn.execute(
             text("""
@@ -153,10 +179,11 @@ async def create_order(
                 FROM payments
                 WHERE user_id = :uid AND status = 'pending'
                   AND expires_at > NOW()
+                  AND plan = :plan AND period = :period
                 ORDER BY created_at DESC
                 LIMIT 1
             """),
-            {"uid": user_id},
+            {"uid": user_id, "plan": body.plan, "period": body.period},
         ).mappings().first()
 
         if existing:
@@ -229,6 +256,98 @@ async def create_order(
         "full_price": proration["full_price"],
         "days_remaining": proration["days_remaining"],
         "status": "pending",
+    }
+
+
+# ══════════════════════════════════════
+#   FREE PRO TRIAL CLAIM
+# ══════════════════════════════════════
+
+@router.post("/claim-trial")
+async def claim_pro_trial(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+):
+    """Claim the limited-time free 1-week Pro trial.
+
+    Eligibility (all enforced server-side):
+      - The offer window is still open (closes end of 2026-07-07, VN time).
+      - The account has never claimed the trial before (one per email — enforced
+        by the unique users row and a race-proof conditional UPDATE).
+      - The account is currently on the free tier with no active paid plan.
+
+    On success the user is moved to Pro for 7 days with period='trial'. The
+    existing subscription_expiry_checker downgrades it back to free on expiry,
+    and pro_trial_claimed_at permanently blocks a second claim.
+    """
+    client_ip = get_client_ip(request)
+    if not check_auth_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests")
+
+    now_utc = datetime.now(timezone.utc)
+    if now_utc >= PRO_TRIAL_OFFER_END:
+        raise HTTPException(status_code=410, detail="This offer has ended.")
+
+    if user.get("pro_trial_claimed_at"):
+        raise HTTPException(status_code=409, detail="You've already used your free Pro trial.")
+
+    # Only free-tier accounts with no active paid plan are eligible.
+    current_tier = user.get("subscription_tier", "free")
+    expires_at = user.get("subscription_expires_at")
+    has_active_sub = bool(expires_at and expires_at > now_utc)
+    if current_tier != "free" or has_active_sub:
+        raise HTTPException(
+            status_code=409,
+            detail="The free Pro trial is only available to free-tier accounts.",
+        )
+
+    engine = get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    trial_end = now_utc + timedelta(days=PRO_TRIAL_DURATION_DAYS)
+
+    # Atomic claim: the WHERE guard makes the one-per-account rule race-proof —
+    # two concurrent requests can't both flip a NULL pro_trial_claimed_at.
+    with engine.begin() as conn:
+        result = conn.execute(
+            text("""
+                UPDATE users SET
+                    subscription_tier = 'pro',
+                    subscription_period = :period,
+                    subscription_expires_at = :expires,
+                    pro_trial_claimed_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = :uid
+                  AND pro_trial_claimed_at IS NULL
+                  AND subscription_tier = 'free'
+                RETURNING email, full_name
+            """),
+            {"period": PRO_TRIAL_PERIOD, "expires": trial_end, "uid": str(user["id"])},
+        ).mappings().first()
+
+    if not result:
+        # Lost the race or state changed between the checks above and the UPDATE.
+        raise HTTPException(status_code=409, detail="You've already used your free Pro trial.")
+
+    # Best-effort welcome email — never blocks or fails the claim.
+    if result.get("email"):
+        background_tasks.add_task(
+            send_trial_started_email,
+            result["email"],
+            trial_end.strftime("%d/%m/%Y"),
+            result.get("full_name"),
+        )
+
+    logger.info(f"Pro trial claimed: user={user['id']} until {trial_end}")
+
+    return {
+        "success": True,
+        "subscription_tier": "pro",
+        "subscription_period": PRO_TRIAL_PERIOD,
+        "subscription_expires_at": trial_end.isoformat(),
+        "message": "Your free 1-week Pro trial is now active!",
     }
 
 
