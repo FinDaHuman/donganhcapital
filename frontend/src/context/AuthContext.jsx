@@ -105,6 +105,31 @@ const writeCache = (user) => {
 };
 
 
+// ── Error normalization ──
+// FastAPI returns error bodies in two shapes:
+//   • HTTPException     → detail is a string  ("Invalid email or password")
+//   • 422 validation    → detail is an ARRAY of { loc, msg, type } objects
+// Passing the array straight into setError() and rendering it in JSX throws
+// "Objects are not valid as a React child", which unmounts the (un-bounded)
+// AuthPage and leaves a blank screen. Always collapse detail to a string.
+const extractError = (err, fallback) => {
+    const detail = err?.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+    const clean = (m) => m.replace(/^Value error,\s*/i, ''); // Pydantic v2 prefix
+    if (Array.isArray(detail)) {
+        const msg = detail
+            .map((e) => (typeof e?.msg === 'string' ? clean(e.msg) : null))
+            .filter(Boolean)
+            .join(' ');
+        if (msg) return msg;
+    }
+    if (detail && typeof detail === 'object' && typeof detail.msg === 'string') {
+        return clean(detail.msg);
+    }
+    return fallback;
+};
+
+
 // ── Context ──
 const AuthContext = createContext(null);
 
@@ -194,7 +219,7 @@ export const AuthProvider = ({ children }) => {
             return { success: true, user: data.user };
         } catch (err) {
             loginInProgress.current = false;
-            const message = err.response?.data?.detail || 'Login failed. Please try again.';
+            const message = extractError(err, 'Login failed. Please try again.');
             setError(message);
             return { success: false, error: message };
         }
@@ -215,7 +240,7 @@ export const AuthProvider = ({ children }) => {
             return { success: true, user: data.user };
         } catch (err) {
             loginInProgress.current = false;
-            const message = err.response?.data?.detail || 'Registration failed. Please try again.';
+            const message = extractError(err, 'Registration failed. Please try again.');
             setError(message);
             return { success: false, error: message };
         }
@@ -241,7 +266,7 @@ export const AuthProvider = ({ children }) => {
             return { success: true, user: data.user };
         } catch (err) {
             loginInProgress.current = false;
-            const message = err.response?.data?.detail || 'Google sign-in failed.';
+            const message = extractError(err, 'Google sign-in failed.');
             setError(message);
             return { success: false, error: message };
         }
@@ -255,7 +280,7 @@ export const AuthProvider = ({ children }) => {
             const { data } = await authApi.post('/api/auth/forgot-password', { email });
             return { success: true, message: data.message };
         } catch (err) {
-            const message = err.response?.data?.detail || 'Something went wrong. Please try again.';
+            const message = extractError(err, 'Something went wrong. Please try again.');
             return { success: false, error: message };
         }
     }, []);
@@ -266,7 +291,7 @@ export const AuthProvider = ({ children }) => {
             const { data } = await authApi.post('/api/auth/reset-password', { token, password });
             return { success: true, message: data.message };
         } catch (err) {
-            const message = err.response?.data?.detail || 'Could not reset password. The link may have expired.';
+            const message = extractError(err, 'Could not reset password. The link may have expired.');
             return { success: false, error: message };
         }
     }, []);
@@ -302,7 +327,7 @@ export const AuthProvider = ({ children }) => {
             await refreshUser(); // sync new tier/expiry/claimed flag from server
             return { success: true, message: data.message };
         } catch (err) {
-            const message = err.response?.data?.detail || 'Could not claim the trial. Please try again.';
+            const message = extractError(err, 'Could not claim the trial. Please try again.');
             return { success: false, error: message };
         }
     }, [refreshUser]);
@@ -315,7 +340,7 @@ export const AuthProvider = ({ children }) => {
             writeCache(data.user);
             return { success: true, user: data.user };
         } catch (err) {
-            const message = err.response?.data?.detail || 'Update failed.';
+            const message = extractError(err, 'Update failed.');
             return { success: false, error: message };
         }
     }, []);

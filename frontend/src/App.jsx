@@ -293,11 +293,15 @@ function App() {
                     )}
 
                     {(activeTab === 'login' || activeTab === 'auth/google/callback') && (
-                        <AuthPage onTabChange={setActiveTab} initialMode="login" />
+                        <ErrorBoundary>
+                            <AuthPage onTabChange={setActiveTab} initialMode="login" />
+                        </ErrorBoundary>
                     )}
 
                     {activeTab === 'register' && (
-                        <AuthPage onTabChange={setActiveTab} initialMode="register" />
+                        <ErrorBoundary>
+                            <AuthPage onTabChange={setActiveTab} initialMode="register" />
+                        </ErrorBoundary>
                     )}
 
                     {activeTab === 'profile' && (

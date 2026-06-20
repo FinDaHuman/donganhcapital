@@ -25,6 +25,15 @@ const GoogleIcon = ({ size = 20 }) => (
     </svg>
 );
 
+/* ── Password policy (must match backend/routers/auth.py) ── */
+const validatePasswordStrength = (pw) => {
+    if (pw.length < 8) return 'Password must be at least 8 characters.';
+    if (!/[A-Z]/.test(pw)) return 'Password must contain at least one uppercase letter.';
+    if (!/[a-z]/.test(pw)) return 'Password must contain at least one lowercase letter.';
+    if (!/[0-9]/.test(pw)) return 'Password must contain at least one number.';
+    return null;
+};
+
 /* ── Animation variants ── */
 const pageVariants = {
     initial: { opacity: 0 },
@@ -106,6 +115,13 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
         setSuccess('');
 
         if (mode === 'register') {
+            // Mirror the backend password policy (backend/routers/auth.py) so the
+            // user gets instant feedback instead of a 422 round-trip.
+            const pwError = validatePasswordStrength(password);
+            if (pwError) {
+                setError(pwError);
+                return;
+            }
             if (password !== confirmPassword) {
                 setError('Passwords do not match.');
                 return;
