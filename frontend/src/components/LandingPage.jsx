@@ -258,8 +258,11 @@ const LandingPage = ({ onTabChange }) => {
             {/* ============================================================
                 NAVBAR
                ============================================================ */}
+            {/* pointer-events-none on the bar lets the mouse reach the vertical
+                scrollbar in the right-edge strip the fixed nav spans over; the
+                inner content re-enables pointer events for the actual controls. */}
             <nav
-                className="fixed top-0 left-0 right-0 z-50 transition-all duration-500"
+                className="fixed top-0 left-0 right-0 z-50 transition-all duration-500 pointer-events-none"
                 style={{
                     padding: navScrolled ? '12px 24px' : '18px 24px',
                     ...(navScrolled ? {
@@ -271,7 +274,7 @@ const LandingPage = ({ onTabChange }) => {
                     } : {}),
                 }}
             >
-                <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 relative">
+                <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 relative pointer-events-auto">
                     {/* Logo */}
                     <div
                         className="flex items-center gap-3 cursor-pointer group shrink-0"
@@ -440,7 +443,10 @@ const LandingPage = ({ onTabChange }) => {
             {/* ============================================================
                 SCROLL CONTAINER
                ============================================================ */}
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto relative z-10">
+            {/* scrollbar-gutter both-edges keeps the scrollbar from eating width
+                asymmetrically, so content stays centered on the viewport and
+                lines up with the viewport-centered fixed nav (no left shift). */}
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto relative z-10" style={{ scrollbarGutter: 'stable both-edges' }}>
 
                 {/* ── HERO SECTION ── */}
                 <div
