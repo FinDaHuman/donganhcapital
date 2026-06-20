@@ -53,7 +53,8 @@ authApi.interceptors.response.use(
         if (error.response?.status === 401 && !originalRequest._retry) {
             if (originalRequest.url?.includes('/auth/refresh') ||
                 originalRequest.url?.includes('/auth/login') ||
-                originalRequest.url?.includes('/auth/register')) {
+                originalRequest.url?.includes('/auth/register') ||
+                originalRequest.url?.includes('/auth/google/callback')) {
                 return Promise.reject(error);
             }
 
@@ -126,6 +127,11 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(!cachedUser);
     const [error, setError] = useState(null);
     const initialCheckDone = useRef(false);
+    // Prevents checkAuth's catch from clearing state after a concurrent login
+    // has already succeeded. Set synchronously (before the first await) in each
+    // login function so it's always true before checkAuth's two-round-trip chain
+    // can reach its catch block. Reset only on login failure, never on success.
+    const loginInProgress = useRef(false);
 
     // Check auth status on mount — always runs in the background to verify the
     // httpOnly cookie is still valid and refresh subscription/tier data.
@@ -142,8 +148,10 @@ export const AuthProvider = ({ children }) => {
                 const isRealAuthError =
                     err.response?.status === 401 || err.response?.status === 403;
 
-                if (isRealAuthError) {
-                    // Cookie expired or invalid — really logged out
+                // Skip clearing state if a login already completed while this
+                // chain was in flight (race: /me → interceptor refresh → catch
+                // can lag behind a concurrent loginWithGoogle resolving first).
+                if (isRealAuthError && !loginInProgress.current) {
                     setUser(null);
                     writeCache(null);
                 }
@@ -178,12 +186,14 @@ export const AuthProvider = ({ children }) => {
     // ── Login with email/password ──
     const login = useCallback(async (email, password) => {
         setError(null);
+        loginInProgress.current = true;
         try {
             const { data } = await authApi.post('/api/auth/login', { email, password });
             setUser(data.user);
             writeCache(data.user);
             return { success: true, user: data.user };
         } catch (err) {
+            loginInProgress.current = false;
             const message = err.response?.data?.detail || 'Login failed. Please try again.';
             setError(message);
             return { success: false, error: message };
@@ -193,6 +203,7 @@ export const AuthProvider = ({ children }) => {
     // ── Register with email/password ──
     const register = useCallback(async (email, password, fullName) => {
         setError(null);
+        loginInProgress.current = true;
         try {
             const { data } = await authApi.post('/api/auth/register', {
                 email,
@@ -203,6 +214,7 @@ export const AuthProvider = ({ children }) => {
             writeCache(data.user);
             return { success: true, user: data.user };
         } catch (err) {
+            loginInProgress.current = false;
             const message = err.response?.data?.detail || 'Registration failed. Please try again.';
             setError(message);
             return { success: false, error: message };
@@ -221,12 +233,14 @@ export const AuthProvider = ({ children }) => {
 
     const loginWithGoogle = useCallback(async (code) => {
         setError(null);
+        loginInProgress.current = true;
         try {
             const { data } = await authApi.post('/api/auth/google/callback', { code });
             setUser(data.user);
             writeCache(data.user);
             return { success: true, user: data.user };
         } catch (err) {
+            loginInProgress.current = false;
             const message = err.response?.data?.detail || 'Google sign-in failed.';
             setError(message);
             return { success: false, error: message };
