@@ -23,7 +23,7 @@ def clean_markdown(text):
 
 def load_system_rules():
     """Loads the content generation rules from rule.md"""
-    rule_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "rule.md")
+    rule_path = os.path.join(os.path.dirname(__file__), "rule.md")
     try:
         with open(rule_path, "r", encoding="utf-8") as f:
             return f.read()
