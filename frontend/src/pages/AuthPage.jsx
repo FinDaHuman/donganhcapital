@@ -12,8 +12,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft, User, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft, User, AlertCircle, CheckCircle2, Loader2, ExternalLink, Copy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { detectInAppBrowser, openInSystemBrowser, getMobileOS } from '../utils/inAppBrowser';
 
 /* ── Google Icon SVG ── */
 const GoogleIcon = ({ size = 20 }) => (
@@ -61,6 +62,36 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
     const [agreedToTerms, setAgreedToTerms] = useState(false);
     const [loginFailed, setLoginFailed] = useState(false);
 
+    // Google blocks its OAuth screen inside in-app browsers (Facebook, Messenger,
+    // Instagram, X, …) with "disallowed_useragent". Detect that case so we can
+    // route the user into a real browser instead of dead-ending on Google's error.
+    const [inApp] = useState(() => detectInAppBrowser());
+    const [linkCopied, setLinkCopied] = useState(false);
+    const mobileOS = getMobileOS();
+    // Only Android can auto-hand-off to Chrome (intent:); iOS webviews can't be
+    // escaped programmatically, so there we lead with "Copy link" + a Safari tip.
+    const canAutoOpen = mobileOS === 'android';
+    // Where to reopen the site in a real browser (clean URL, no OAuth code).
+    const browserUrl = `${window.location.origin}/login`;
+
+    const copyBrowserLink = async () => {
+        try {
+            await navigator.clipboard.writeText(browserUrl);
+            setLinkCopied(true);
+            setTimeout(() => setLinkCopied(false), 2500);
+        } catch {
+            // Clipboard can be blocked in some webviews — the on-screen
+            // instructions still tell the user how to open it manually.
+        }
+    };
+
+    // Android hands off to Chrome automatically; iOS webviews can't be escaped
+    // programmatically, so fall back to copy-link + the on-screen Safari tip.
+    const openInBrowser = () => {
+        const escaped = openInSystemBrowser(browserUrl);
+        if (!escaped) copyBrowserLink();
+    };
+
     // Handle Google OAuth callback (URL contains ?code=...)
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
@@ -81,6 +112,13 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
 
     const handleGoogleSignIn = async () => {
         setError('');
+        // Inside an in-app browser, Google's consent screen is blocked
+        // ("disallowed_useragent"). Don't redirect into a dead end — send the
+        // user to a real browser, where the same OAuth flow works.
+        if (inApp.isInApp) {
+            openInBrowser();
+            return;
+        }
         setLoading(true);
         try {
             const url = await getGoogleAuthUrl();
@@ -380,6 +418,75 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                     {/* Google + email/password (login & register only) */}
                     {mode !== 'forgot' && (
                     <>
+                    {/* In-app browser notice — Google sign-in is blocked inside
+                        Facebook/Messenger/Instagram/X webviews. Guide the user
+                        into a real browser; email below still works here. */}
+                    {inApp.isInApp && (
+                        <motion.div
+                            variants={itemVariants}
+                            className="mb-5 rounded-xl p-3.5"
+                            style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid rgba(201,169,110,0.25)' }}
+                        >
+                            <div className="flex items-start gap-2.5">
+                                <AlertCircle size={16} className="shrink-0 mt-0.5" style={{ color: 'var(--gold-primary)' }} />
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+                                        Google sign-in needs a real browser
+                                    </p>
+                                    <p className="text-xs leading-relaxed mb-2.5" style={{ color: 'var(--text-muted)' }}>
+                                        You opened this page inside {inApp.label}. Google blocks sign-in in in-app
+                                        browsers, so open it in {mobileOS === 'ios' ? 'Safari' : 'Chrome'} to continue —
+                                        or sign in with email below, which works here.
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {/* Android can jump straight to Chrome; iOS can't, so it
+                                            leads with "Copy link" + the Safari tip below instead. */}
+                                        {canAutoOpen && (
+                                            <button
+                                                type="button"
+                                                onClick={openInBrowser}
+                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                                                style={{
+                                                    background: 'linear-gradient(135deg, var(--gold-primary), var(--gold-bright, #E8C97A))',
+                                                    color: 'var(--bg-void)',
+                                                    border: 'none',
+                                                    fontFamily: "'Outfit', sans-serif",
+                                                }}
+                                            >
+                                                <ExternalLink size={13} /> Open in Browser
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={copyBrowserLink}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-all"
+                                            style={canAutoOpen ? {
+                                                background: 'rgba(201,169,110,0.1)',
+                                                color: 'var(--gold-primary)',
+                                                border: '1px solid rgba(201,169,110,0.2)',
+                                                fontWeight: 500,
+                                                fontFamily: "'Outfit', sans-serif",
+                                            } : {
+                                                background: 'linear-gradient(135deg, var(--gold-primary), var(--gold-bright, #E8C97A))',
+                                                color: 'var(--bg-void)',
+                                                border: 'none',
+                                                fontWeight: 600,
+                                                fontFamily: "'Outfit', sans-serif",
+                                            }}
+                                        >
+                                            {linkCopied ? (<><CheckCircle2 size={13} /> Link copied</>) : (<><Copy size={13} /> Copy link</>)}
+                                        </button>
+                                    </div>
+                                    {mobileOS === 'ios' && (
+                                        <p className="text-[11px] leading-relaxed mt-2" style={{ color: 'var(--text-muted)' }}>
+                                            Tip: tap the ••• menu (top corner) and choose “Open in Safari”, then paste the link.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+
                     {/* Google Sign In */}
                     <motion.button
                         variants={itemVariants}
