@@ -1,0 +1,4 @@
+Contact: mailto:support@donganhcapital.com
+Expires: 2027-06-21T00:00:00.000Z
+Preferred-Languages: en, vi
+Canonical: https://donganhcapital.com/.well-known/security.txt
