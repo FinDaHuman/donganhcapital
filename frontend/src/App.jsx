@@ -6,6 +6,7 @@ import AIAnalystTab from './components/AIAnalystTab';
 import DataAnalystTab from './components/DataAnalystTab';
 import LTRSignalsTab from './components/LTRSignalsTab';
 import NewsTab from './components/NewsTab';
+import ChatbotTab from './components/ChatbotTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -297,6 +298,14 @@ function App() {
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <NewsTab onSelectStock={handleSelectStock} onTabChange={handleTabChange} />
+                            </ErrorBoundary>
+                        </div>
+                    )}
+
+                    {activeTab === 'chatbot' && (
+                        <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
+                            <ErrorBoundary>
+                                <ChatbotTab onTabChange={handleTabChange} />
                             </ErrorBoundary>
                         </div>
                     )}
