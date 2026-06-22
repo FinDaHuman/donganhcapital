@@ -14,7 +14,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft, User, AlertCircle, CheckCircle2, Loader2, ExternalLink, Copy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { detectInAppBrowser, openInSystemBrowser, getMobileOS } from '../utils/inAppBrowser';
+import { detectInAppBrowser, getMobileOS, getSystemBrowserUrl } from '../utils/inAppBrowser';
 
 /* ── Google Icon SVG ── */
 const GoogleIcon = ({ size = 20 }) => (
@@ -67,29 +67,31 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
     // route the user into a real browser instead of dead-ending on Google's error.
     const [inApp] = useState(() => detectInAppBrowser());
     const [linkCopied, setLinkCopied] = useState(false);
+    const [browserMessage, setBrowserMessage] = useState('');
     const mobileOS = getMobileOS();
-    // Only Android can auto-hand-off to Chrome (intent:); iOS webviews can't be
-    // escaped programmatically, so there we lead with "Copy link" + a Safari tip.
-    const canAutoOpen = mobileOS === 'android';
     // Where to reopen the site in a real browser (clean URL, no OAuth code).
     const browserUrl = `${window.location.origin}/login`;
+    const systemBrowserUrl = getSystemBrowserUrl(browserUrl);
+    const canAutoOpen = Boolean(systemBrowserUrl);
 
     const copyBrowserLink = async () => {
         try {
             await navigator.clipboard.writeText(browserUrl);
             setLinkCopied(true);
+            setBrowserMessage(`Link copied. Open it in ${mobileOS === 'ios' ? 'Safari' : 'your browser'} to continue with Google.`);
             setTimeout(() => setLinkCopied(false), 2500);
         } catch {
-            // Clipboard can be blocked in some webviews — the on-screen
-            // instructions still tell the user how to open it manually.
+            setBrowserMessage('Copy was blocked by this in-app browser. Use the app menu to open this page in your browser.');
         }
     };
 
-    // Android hands off to Chrome automatically; iOS webviews can't be escaped
-    // programmatically, so fall back to copy-link + the on-screen Safari tip.
-    const openInBrowser = () => {
-        const escaped = openInSystemBrowser(browserUrl);
-        if (!escaped) copyBrowserLink();
+    const handleSystemBrowserClick = () => {
+        setBrowserMessage('Opening your browser. If nothing changes, copy the link and open it manually.');
+    };
+
+    const explainBrowserRequired = async () => {
+        setBrowserMessage(`Google sign-in is blocked inside ${inApp.label}. Open this page in a real browser, then tap Google again.`);
+        if (!canAutoOpen) await copyBrowserLink();
     };
 
     // Handle Google OAuth callback (URL contains ?code=...)
@@ -113,10 +115,10 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
     const handleGoogleSignIn = async () => {
         setError('');
         // Inside an in-app browser, Google's consent screen is blocked
-        // ("disallowed_useragent"). Don't redirect into a dead end — send the
-        // user to a real browser, where the same OAuth flow works.
+        // ("disallowed_useragent"). Do not navigate directly to Google or to a
+        // fragile intent:// URL from this button; the notice above owns that UX.
         if (inApp.isInApp) {
-            openInBrowser();
+            await explainBrowserRequired();
             return;
         }
         setLoading(true);
@@ -435,26 +437,27 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                                     </p>
                                     <p className="text-xs leading-relaxed mb-2.5" style={{ color: 'var(--text-muted)' }}>
                                         You opened this page inside {inApp.label}. Google blocks sign-in in in-app
-                                        browsers, so open it in {mobileOS === 'ios' ? 'Safari' : 'Chrome'} to continue —
+                                        browsers, so open it in {mobileOS === 'ios' ? 'Safari' : 'your browser'} to continue —
                                         or sign in with email below, which works here.
                                     </p>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        {/* Android can jump straight to Chrome; iOS can't, so it
-                                            leads with "Copy link" + the Safari tip below instead. */}
+                                        {/* Use a real anchor for Android intent handoff. Known
+                                            social webviews use manual copy/menu instructions. */}
                                         {canAutoOpen && (
-                                            <button
-                                                type="button"
-                                                onClick={openInBrowser}
+                                            <a
+                                                href={systemBrowserUrl}
+                                                onClick={handleSystemBrowserClick}
                                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
                                                 style={{
                                                     background: 'linear-gradient(135deg, var(--gold-primary), var(--gold-bright, #E8C97A))',
                                                     color: 'var(--bg-void)',
                                                     border: 'none',
                                                     fontFamily: "'Outfit', sans-serif",
+                                                    textDecoration: 'none',
                                                 }}
                                             >
                                                 <ExternalLink size={13} /> Open in Browser
-                                            </button>
+                                            </a>
                                         )}
                                         <button
                                             type="button"
@@ -477,9 +480,14 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                                             {linkCopied ? (<><CheckCircle2 size={13} /> Link copied</>) : (<><Copy size={13} /> Copy link</>)}
                                         </button>
                                     </div>
-                                    {mobileOS === 'ios' && (
+                                    {browserMessage && (
+                                        <p className="text-[11px] leading-relaxed mt-2" style={{ color: 'var(--gold-primary)' }}>
+                                            {browserMessage}
+                                        </p>
+                                    )}
+                                    {(mobileOS === 'ios' || inApp.manualOpen) && (
                                         <p className="text-[11px] leading-relaxed mt-2" style={{ color: 'var(--text-muted)' }}>
-                                            Tip: tap the ••• menu (top corner) and choose “Open in Safari”, then paste the link.
+                                            Tip: tap the three-dot menu in {inApp.label} and choose Open in external browser or Open in {mobileOS === 'ios' ? 'Safari' : 'Chrome'}.
                                         </p>
                                     )}
                                 </div>
