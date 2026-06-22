@@ -18,6 +18,7 @@ const Header = ({ activeTab, onTabChange }) => {
         { id: 'chart',        label: 'Chart' },
         { id: 'analyst',      label: 'AI Analyst' },
         { id: 'data-analyst', label: 'Data Analyst' },
+        { id: 'news',         label: 'News' },
         { id: 'ltr-signals',  label: 'Pro Signals', pro: true },
     ];
 
