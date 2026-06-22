@@ -38,12 +38,16 @@ function App() {
     const queryTab = new URLSearchParams(window.location.search).get('tab');
     const initialTab = path || queryTab || 'home';
     const [activeTab, setActiveTab] = useState(initialTab);
+    const [policyReturnTo, setPolicyReturnTo] = useState('home');
     const [checkoutPlan, setCheckoutPlan] = useState({ plan: 'pro', period: 'monthly' });
 
     // Handle checkout navigation with plan/period and update URL
     const handleTabChange = (tab, data) => {
         if (tab === 'checkout' && data) {
             setCheckoutPlan(data);
+        }
+        if (tab === 'terms' || tab === 'privacy') {
+            setPolicyReturnTo(data?.returnTo || 'home');
         }
         setActiveTab(tab);
         // Update URL path without reloading page
@@ -294,13 +298,13 @@ function App() {
 
                     {(activeTab === 'login' || activeTab === 'auth/google/callback') && (
                         <ErrorBoundary>
-                            <AuthPage onTabChange={setActiveTab} initialMode="login" />
+                            <AuthPage onTabChange={handleTabChange} initialMode="login" />
                         </ErrorBoundary>
                     )}
 
                     {activeTab === 'register' && (
                         <ErrorBoundary>
-                            <AuthPage onTabChange={setActiveTab} initialMode="register" />
+                            <AuthPage onTabChange={handleTabChange} initialMode="register" />
                         </ErrorBoundary>
                     )}
 
@@ -321,11 +325,11 @@ function App() {
                     )}
 
                     {activeTab === 'privacy' && (
-                        <PrivacyPolicyPage onTabChange={handleTabChange} />
+                        <PrivacyPolicyPage onTabChange={handleTabChange} returnTo={policyReturnTo} />
                     )}
 
                     {activeTab === 'terms' && (
-                        <TermsOfServicePage onTabChange={handleTabChange} />
+                        <TermsOfServicePage onTabChange={handleTabChange} returnTo={policyReturnTo} />
                     )}
                 </main>
             </div>

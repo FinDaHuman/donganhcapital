@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Shield } from 'lucide-react';
 
-const PrivacyPolicyPage = ({ onTabChange }) => {
+const PrivacyPolicyPage = ({ onTabChange, returnTo = 'home' }) => {
     useEffect(() => {
         window.scrollTo(0, 0);
     }, []);
@@ -18,11 +18,11 @@ const PrivacyPolicyPage = ({ onTabChange }) => {
 
             <div className="max-w-3xl mx-auto relative z-10">
                 <button
-                    onClick={() => onTabChange && onTabChange('home')}
+                    onClick={() => onTabChange && onTabChange(returnTo)}
                     className="flex items-center gap-2 text-sm cursor-pointer transition-colors mb-8"
                     style={{ color: 'var(--text-muted)', background: 'none', border: 'none' }}
                 >
-                    <ArrowLeft size={16} /> Back to Home
+                    <ArrowLeft size={16} /> {returnTo === 'register' ? 'Back to Sign Up' : 'Back to Home'}
                 </button>
 
                 <div className="mb-10 flex items-center gap-4">

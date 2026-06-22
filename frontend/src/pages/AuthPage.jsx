@@ -672,9 +672,15 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                                     />
                                     <span className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                                         I agree to the{' '}
-                                        <span style={{ color: 'var(--gold-primary)', textDecoration: 'underline' }}>Terms of Service</span>
+                                        <span
+                                            style={{ color: 'var(--gold-primary)', textDecoration: 'underline', cursor: 'pointer' }}
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTabChange && onTabChange('terms', { returnTo: mode }); }}
+                                        >Terms of Service</span>
                                         {' '}and{' '}
-                                        <span style={{ color: 'var(--gold-primary)', textDecoration: 'underline' }}>Privacy Policy</span>
+                                        <span
+                                            style={{ color: 'var(--gold-primary)', textDecoration: 'underline', cursor: 'pointer' }}
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTabChange && onTabChange('privacy', { returnTo: mode }); }}
+                                        >Privacy Policy</span>
                                     </span>
                                 </label>
                             </motion.div>
