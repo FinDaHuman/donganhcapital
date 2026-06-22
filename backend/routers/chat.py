@@ -364,7 +364,7 @@ async def chat_message(body: ChatRequest, request: Request, _c=Depends(limit_cha
         )
 
     try:
-        reply = await generate(system, msgs, temperature=0.5, max_output_tokens=1024)
+        reply = await generate(system, msgs, temperature=0.5, max_output_tokens=2048)
     except LLMError as e:
         await asyncio.to_thread(_refund_quota_sync, user_id)
         logger.error(f"chat LLM error: {e}")
@@ -417,7 +417,7 @@ async def analyze_news(body: AnalyzeRequest, request: Request, _c=Depends(limit_
     try:
         analysis = await generate(
             SYSTEM_PROMPT, [{"role": "user", "content": user_content}],
-            temperature=0.4, max_output_tokens=1792,
+            temperature=0.4, max_output_tokens=3072,
         )
     except LLMError as e:
         await asyncio.to_thread(_refund_quota_sync, user_id)

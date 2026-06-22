@@ -25,14 +25,14 @@ GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 # (no 30 s retry sleep like the FB bot — this call is on a user's request path).
 # Overridable via CHAT_GEMINI_MODELS (comma-separated) so a retired model can be
 # swapped without a code change. Each model has its OWN daily-request (RPD) bucket,
-# so a cascade aggregates free-tier capacity. Order = production-reliable flagship
-# first, newer flagship as reserve, then a high-capacity lite workhorse:
-#   gemini-2.5-flash      — 20 RPD  (lead: proven reliable from Render)
-#   gemini-3.5-flash      — 20 RPD  (reserve: newer, but has been network-erroring
-#                                     / "high demand" from Render — kept as fallback)
-#   gemini-3.1-flash-lite — 500 RPD (absorbs sustained load after the above 429)
-# ≈540 RPD total. Pinned (not the `*-latest` alias) so RPD is predictable.
-_DEFAULT_MODELS = "gemini-2.5-flash,gemini-3.5-flash,gemini-3.1-flash-lite"
+# so a cascade aggregates free-tier capacity. Both are reliable + fast from Render
+# (with thinking disabled, see below) and accept thinkingBudget=0:
+#   gemini-2.5-flash      — 20 RPD  (lead: quality)
+#   gemini-3.1-flash-lite — 500 RPD (workhorse: high daily cap, absorbs load)
+# ≈520 RPD total. gemini-3.5-flash was DROPPED — it network-errors / ReadTimeouts /
+# "high demand" from Render in every observation; re-add via CHAT_GEMINI_MODELS if
+# it recovers. Pinned (not the `*-latest` alias) so RPD is predictable.
+_DEFAULT_MODELS = "gemini-2.5-flash,gemini-3.1-flash-lite"
 # Three-level timeout so the cascade stays well under the frontend's request
 # timeout (and can't pin both Semaphore(2) slots): a fast CONNECT_TIMEOUT fails an
 # unreachable model quickly (the common failure here), PER_ATTEMPT_TIMEOUT bounds a
@@ -102,6 +102,12 @@ async def generate(
         "generationConfig": {
             "temperature": temperature,
             "maxOutputTokens": max_output_tokens,
+            # Disable "thinking": on 2.5/3.x flash, thinking tokens count against
+            # maxOutputTokens, so the visible answer gets truncated mid-sentence
+            # (finishReason MAX_TOKENS) and latency balloons ~5-15 s. We want a
+            # direct answer, not chain-of-thought. (2.5-flash & 3.1-flash-lite both
+            # accept thinkingBudget=0 and then return complete answers in ~3 s.)
+            "thinkingConfig": {"thinkingBudget": 0},
         },
     }
     if system_prompt:
