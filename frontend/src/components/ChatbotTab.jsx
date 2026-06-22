@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Bot, Send, Sparkles, Lock, RefreshCw } from 'lucide-react';
+import RichText from './RichText';
 
 const GOLD = '#C9A96E';
 const SURFACE = '#0E1729';
@@ -100,7 +101,7 @@ const Bubble = ({ role, content }) => {
     return (
         <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
             <div
-                className="max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl text-[14px] leading-relaxed whitespace-pre-line"
+                className="max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl text-[14px] leading-relaxed"
                 style={{
                     fontFamily: "'Outfit', sans-serif",
                     background: isUser ? 'rgba(201,169,110,0.14)' : SURFACE,
@@ -110,7 +111,8 @@ const Bubble = ({ role, content }) => {
                     borderBottomLeftRadius: isUser ? 16 : 4,
                 }}
             >
-                {content}
+                {/* Users send plain text; the assistant emits a small Markdown subset. */}
+                {isUser ? <span className="whitespace-pre-line">{content}</span> : <RichText text={content} />}
             </div>
         </div>
     );
@@ -163,7 +165,13 @@ const ChatbotTab = ({ onTabChange }) => {
         setError(null);
 
         try {
-            const res = await authApi.post('/api/chat/message', { messages: [...prior, { role: 'user', content }].slice(-MAX_HISTORY) });
+            // LLM calls are slow (model + fallback cascade) — override the 15s
+            // default so the client waits for the backend's response (incl. fallback).
+            const res = await authApi.post(
+                '/api/chat/message',
+                { messages: [...prior, { role: 'user', content }].slice(-MAX_HISTORY) },
+                { timeout: 30000 },
+            );
             const reply = res.data?.reply || '';
             setMessages((prev) => [...prev, { role: 'assistant', content: reply }].slice(-MAX_HISTORY));
             if (res.data?.quota) setQuota({ used: res.data.quota.used, limit: res.data.quota.limit });

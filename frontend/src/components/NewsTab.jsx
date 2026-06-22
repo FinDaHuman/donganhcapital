@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { SkeletonCard } from './SkeletonLoader';
 import { Newspaper, X, ArrowUpRight, ExternalLink, RefreshCw, Sparkles, Lock } from 'lucide-react';
 import { StarMark } from './StarMark';
+import RichText from './RichText';
 
 const GOLD = '#C9A96E';
 const SURFACE = '#0E1729';
@@ -177,7 +178,8 @@ const AnalysisSection = ({ article, onClose, onTabChange }) => {
         setAnalyzing(true);
         setError(null);
         try {
-            const res = await authApi.post('/api/chat/analyze-news', { url_hash: article.id });
+            // LLM call (+ fallback cascade) is slow — override the 15s default.
+            const res = await authApi.post('/api/chat/analyze-news', { url_hash: article.id }, { timeout: 30000 });
             setAnalysis(res.data?.analysis || '');
         } catch (err) {
             const status = err.response?.status;
@@ -231,9 +233,7 @@ const AnalysisSection = ({ article, onClose, onTabChange }) => {
             {analysis && (
                 <div className="p-4 rounded-2xl" style={{ background: 'rgba(201,169,110,0.05)', border: '1px solid rgba(201,169,110,0.14)' }}>
                     <div className="mb-3"><SectionLabel>Phân tích AI</SectionLabel></div>
-                    <div className="text-[14px] leading-relaxed whitespace-pre-line" style={{ color: '#EDE8DA', fontFamily: "'Outfit', sans-serif" }}>
-                        {analysis}
-                    </div>
+                    <RichText text={analysis} className="text-[14px] leading-relaxed" style={{ color: '#EDE8DA', fontFamily: "'Outfit', sans-serif" }} />
                     <p className="mt-3 text-[11px]" style={{ color: '#4E617A', fontFamily: "'Outfit', sans-serif" }}>
                         Thông tin tham khảo, không phải khuyến nghị đầu tư.
                     </p>
