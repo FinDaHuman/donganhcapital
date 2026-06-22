@@ -282,6 +282,10 @@ app.include_router(auth_router)
 from routers.payments import router as payments_router
 app.include_router(payments_router)
 
+# --- News Router (MongoDB-backed, login-gated) ---
+from routers.news import router as news_router
+app.include_router(news_router)
+
 # --- Email Subscription Security ---
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
 DANGEROUS_CHARS = re.compile(r"[<>'\"`;\-\-]")  # SQL injection / XSS chars
