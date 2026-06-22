@@ -286,6 +286,10 @@ app.include_router(payments_router)
 from routers.news import router as news_router
 app.include_router(news_router)
 
+# --- Chat Router (Gemini-backed AI chatbot + news analysis, Pro/Premium gated) ---
+from routers.chat import router as chat_router
+app.include_router(chat_router)
+
 # --- Email Subscription Security ---
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
 DANGEROUS_CHARS = re.compile(r"[<>'\"`;\-\-]")  # SQL injection / XSS chars

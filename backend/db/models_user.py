@@ -87,6 +87,20 @@ def run_user_migration():
             ADD COLUMN IF NOT EXISTS pro_trial_claimed_at TIMESTAMP WITH TIME ZONE;
         """))
 
+        # AI chat / news-analysis daily quota (Pro = limited, Premium = unlimited).
+        # DB-backed so it survives Render cold starts — the in-memory auth
+        # rate-limiter does not, so it can't be reused for metering. Stores only a
+        # per-day counter (reset when chat_quota_date != today), never chat content,
+        # so it costs ~6 bytes/row and never touches the NeonDB 500 MB budget.
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS chat_quota_count INTEGER NOT NULL DEFAULT 0;
+        """))
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS chat_quota_date DATE;
+        """))
+
         # Create indexes safely (IF NOT EXISTS)
         conn.execute(text("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email

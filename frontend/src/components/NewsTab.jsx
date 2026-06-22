@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SkeletonCard } from './SkeletonLoader';
-import { Newspaper, X, ArrowUpRight, ExternalLink, RefreshCw } from 'lucide-react';
+import { Newspaper, X, ArrowUpRight, ExternalLink, RefreshCw, Sparkles, Lock } from 'lucide-react';
 import { StarMark } from './StarMark';
 
 const GOLD = '#C9A96E';
@@ -161,8 +161,90 @@ const NewsCard = ({ item, onSelectStock, onOpen }) => {
     );
 };
 
+// ── AI deep-analysis section (Pro/Premium) ──────────────────────────────────
+const AnalysisSection = ({ article, onClose, onTabChange }) => {
+    const { user, authApi, refreshUser } = useAuth();
+    const isPro = user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
+
+    const [analysis, setAnalysis] = useState(null);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [error, setError] = useState(null);
+
+    // Reset when the modal switches to a different article.
+    useEffect(() => { setAnalysis(null); setAnalyzing(false); setError(null); }, [article?.id]);
+
+    const runAnalysis = async () => {
+        setAnalyzing(true);
+        setError(null);
+        try {
+            const res = await authApi.post('/api/chat/analyze-news', { url_hash: article.id });
+            setAnalysis(res.data?.analysis || '');
+        } catch (err) {
+            const status = err.response?.status;
+            if (status === 429) {
+                const d = err.response?.data?.detail;
+                setError((d && d.message) || 'Bạn đã dùng hết lượt phân tích hôm nay. Nâng cấp Premium để dùng không giới hạn.');
+            } else if (status === 403) {
+                // Subscription likely expired mid-session — re-sync auth so this
+                // surface flips to the upgrade nudge instead of staying enabled.
+                setError('Phiên đăng ký đã thay đổi. Đang cập nhật…');
+                await refreshUser();
+            } else {
+                setError('Trợ lý đang bận, vui lòng thử lại sau giây lát.');
+            }
+        } finally {
+            setAnalyzing(false);
+        }
+    };
+
+    if (!article?.id) return null;
+
+    return (
+        <div className="mb-6">
+            {!analysis && (
+                isPro ? (
+                    <button
+                        onClick={runAnalysis}
+                        disabled={analyzing}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer"
+                        style={{ color: '#0A1020', background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`, border: 'none', fontFamily: "'Outfit', sans-serif", opacity: analyzing ? 0.7 : 1 }}
+                    >
+                        {analyzing
+                            ? <><RefreshCw size={14} className="animate-spin" /> Đang phân tích…</>
+                            : <><Sparkles size={15} /> Phân tích chuyên sâu với AI</>}
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => { onClose(); onTabChange?.('checkout', { plan: 'pro', period: 'monthly' }); }}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium cursor-pointer"
+                        style={{ color: GOLD, background: 'transparent', border: `1px solid ${GOLD}40`, fontFamily: "'Outfit', sans-serif" }}
+                    >
+                        <Lock size={14} /> Phân tích AI chuyên sâu — Nâng cấp Pro
+                    </button>
+                )
+            )}
+
+            {error && (
+                <p className="mt-2 text-sm" style={{ color: '#E05555', fontFamily: "'Outfit', sans-serif" }}>{error}</p>
+            )}
+
+            {analysis && (
+                <div className="p-4 rounded-2xl" style={{ background: 'rgba(201,169,110,0.05)', border: '1px solid rgba(201,169,110,0.14)' }}>
+                    <div className="mb-3"><SectionLabel>Phân tích AI</SectionLabel></div>
+                    <div className="text-[14px] leading-relaxed whitespace-pre-line" style={{ color: '#EDE8DA', fontFamily: "'Outfit', sans-serif" }}>
+                        {analysis}
+                    </div>
+                    <p className="mt-3 text-[11px]" style={{ color: '#4E617A', fontFamily: "'Outfit', sans-serif" }}>
+                        Thông tin tham khảo, không phải khuyến nghị đầu tư.
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // ── Detail modal ─────────────────────────────────────────────────────────────
-const NewsDetailModal = ({ article, loading, onClose, onSelectStock }) => {
+const NewsDetailModal = ({ article, loading, onClose, onSelectStock, onTabChange }) => {
     useEffect(() => {
         const onKey = (e) => { if (e.key === 'Escape') onClose(); };
         window.addEventListener('keydown', onKey);
@@ -223,6 +305,8 @@ const NewsDetailModal = ({ article, loading, onClose, onSelectStock }) => {
                                 </ul>
                             </div>
                         )}
+
+                        <AnalysisSection article={article} onClose={onClose} onTabChange={onTabChange} />
 
                         {metrics.length > 0 && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-6">
@@ -472,6 +556,7 @@ const NewsTab = ({ onSelectStock, onTabChange }) => {
                     loading={detailLoading}
                     onClose={() => setDetailOpen(false)}
                     onSelectStock={onSelectStock}
+                    onTabChange={onTabChange}
                 />
             )}
         </div>
