@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
-import { Bot, Send, Sparkles, Lock, RefreshCw } from 'lucide-react';
+import { Bot, Send, Lock, RotateCcw } from 'lucide-react';
+import { StarMark } from './StarMark';
 import RichText from './RichText';
 
-const GOLD = '#C9A96E';
-const SURFACE = '#0E1729';
-
+/* ── Constants ──────────────────────────────────────────────────────────────── */
 const MAX_HISTORY = 12;   // turns kept client-side & forwarded to the backend
 const MAX_CHARS = 2000;
+const SEND_TIMEOUT = 30_000;
+const COLD_START_TIMEOUT = 55_000; // first chat can include Render cold start
 
 const SUGGESTIONS = [
     'Phân tích triển vọng cổ phiếu FPT',
@@ -15,34 +17,58 @@ const SUGGESTIONS = [
     'Nên lưu ý gì khi VNINDEX biến động mạnh?',
 ];
 
-// ── Sign-in gate ─────────────────────────────────────────────────────────────
+/* ── Animation variants ─────────────────────────────────────────────────────── */
+const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
+};
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 16 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
+};
+
+const bubbleVariants = {
+    hidden: { opacity: 0, y: 10, scale: 0.97 },
+    visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
+};
+
+/* ── Stable message ID generator ────────────────────────────────────────────── */
+let _msgIdCounter = 0;
+const nextMsgId = () => `msg-${++_msgIdCounter}-${Date.now()}`;
+
+/* ── Sign-in gate ─────────────────────────────────────────────────────────── */
 const SignInPrompt = ({ onTabChange }) => (
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
-            <Bot size={28} style={{ color: GOLD }} />
-        </div>
-        <div>
-            <h3 className="text-xl font-bold mb-2" style={{ color: '#EDE8DA', fontFamily: "'Outfit', sans-serif" }}>
+    <motion.div
+        className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center"
+        variants={containerVariants} initial="hidden" animate="visible"
+    >
+        <motion.div variants={itemVariants}
+            className="w-16 h-16 rounded-full flex items-center justify-center"
+            style={{ background: 'var(--gold-dim)', border: '1px solid rgba(201,169,110,0.2)' }}
+        >
+            <Bot size={28} style={{ color: 'var(--gold-primary)' }} />
+        </motion.div>
+        <motion.div variants={itemVariants}>
+            <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
                 Đăng nhập để dùng Trợ lý Đầu tư AI
             </h3>
-            <p className="text-sm max-w-sm" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>
+            <p className="text-sm max-w-sm" style={{ color: 'var(--text-secondary)', fontFamily: "'Outfit', sans-serif" }}>
                 Trợ lý AI phân tích tin tức và cổ phiếu dành cho thành viên Pro/Premium.
             </p>
-        </div>
-        <div className="flex gap-3">
-            <button onClick={() => onTabChange('login')} className="px-6 py-2.5 rounded-full text-sm font-medium cursor-pointer"
-                style={{ color: GOLD, background: 'transparent', border: `1px solid ${GOLD}35`, fontFamily: "'Outfit', sans-serif" }}>
+        </motion.div>
+        <motion.div variants={itemVariants} className="flex gap-3">
+            <button onClick={() => onTabChange('login')} className="chat-btn-secondary">
                 Đăng nhập
             </button>
-            <button onClick={() => onTabChange('register')} className="px-6 py-2.5 rounded-full text-sm font-semibold cursor-pointer"
-                style={{ color: '#0A1020', background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`, border: 'none', fontFamily: "'Outfit', sans-serif" }}>
+            <button onClick={() => onTabChange('register')} className="chat-btn-primary">
                 Đăng ký miễn phí
             </button>
-        </div>
-    </div>
+        </motion.div>
+    </motion.div>
 );
 
-// ── Free-tier upgrade gate ───────────────────────────────────────────────────
+/* ── Free-tier upgrade gate ───────────────────────────────────────────────── */
 const UpgradeGate = ({ onTabChange, user, claimProTrial }) => {
     const [claiming, setClaiming] = useState(false);
     const [msg, setMsg] = useState('');
@@ -61,64 +87,91 @@ const UpgradeGate = ({ onTabChange, user, claimProTrial }) => {
     };
 
     return (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
-            <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
-                <Lock size={24} style={{ color: GOLD }} />
-            </div>
-            <span className="inline-block px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase"
-                style={{ background: `${GOLD}18`, color: GOLD, border: `1px solid ${GOLD}30` }}>
-                Pro Feature
-            </span>
-            <h3 className="text-lg font-bold" style={{ color: '#EDE8DA', fontFamily: "'Outfit', sans-serif" }}>
-                Trợ lý Đầu tư AI
-            </h3>
-            <p className="text-sm max-w-sm" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>
-                Trò chuyện với AI để phân tích tin tức và cổ phiếu, dựa trên dữ liệu thị trường thực tế của DongAnh Capital.
-                Gói Pro: 20 lượt/ngày · Premium: không giới hạn.
-            </p>
-            <div className="flex flex-col gap-2 w-full max-w-xs mt-2">
+        <motion.div
+            className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center"
+            variants={containerVariants} initial="hidden" animate="visible"
+        >
+            <motion.div variants={itemVariants}
+                className="w-14 h-14 rounded-full flex items-center justify-center"
+                style={{ background: 'var(--gold-dim)', border: '1px solid rgba(201,169,110,0.2)' }}
+            >
+                <Lock size={24} style={{ color: 'var(--gold-primary)' }} />
+            </motion.div>
+            <motion.div variants={itemVariants}>
+                <span className="chat-quota-badge inline-block mb-3"
+                    style={{ color: 'var(--gold-primary)', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Outfit', sans-serif", fontWeight: 700, fontSize: 10 }}>
+                    Pro Feature
+                </span>
+                <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+                    Trợ lý Đầu tư AI
+                </h3>
+                <p className="text-sm max-w-sm mt-2" style={{ color: 'var(--text-secondary)', fontFamily: "'Outfit', sans-serif" }}>
+                    Trò chuyện với AI để phân tích tin tức và cổ phiếu, dựa trên dữ liệu thị trường thực tế của DongAnh Capital.
+                    Gói Pro: 20 lượt/ngày · Premium: không giới hạn.
+                </p>
+            </motion.div>
+            <motion.div variants={itemVariants} className="flex flex-col gap-2 w-full max-w-xs mt-2">
                 {canClaim && (
-                    <button onClick={handleClaim} disabled={claiming}
-                        className="w-full py-3 rounded-xl font-semibold text-sm cursor-pointer"
-                        style={{ background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`, color: '#0A1020', border: 'none', fontFamily: "'Outfit', sans-serif", opacity: claiming ? 0.7 : 1 }}>
+                    <button onClick={handleClaim} disabled={claiming} className="chat-btn-primary w-full">
                         {claiming ? 'Đang kích hoạt…' : 'Dùng thử Pro miễn phí 1 tuần'}
                     </button>
                 )}
-                {msg && <p className="text-xs" style={{ color: msg.includes('tải lại') ? '#4ade80' : '#f87171' }}>{msg}</p>}
+                {msg && (
+                    <p className="text-xs" style={{ color: msg.includes('tải lại') ? 'var(--success)' : 'var(--error)' }}>
+                        {msg}
+                    </p>
+                )}
                 <button onClick={() => onTabChange('checkout', { plan: 'pro', period: 'monthly' })}
-                    className="w-full py-2.5 rounded-xl font-medium text-sm cursor-pointer"
-                    style={{ background: canClaim ? 'transparent' : `linear-gradient(135deg, ${GOLD}, #E8C97A)`, color: canClaim ? GOLD : '#0A1020', border: canClaim ? `1px solid ${GOLD}35` : 'none', fontFamily: "'Outfit', sans-serif" }}>
+                    className={canClaim ? 'chat-btn-secondary w-full' : 'chat-btn-primary w-full'}>
                     Nâng cấp Pro
                 </button>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 };
 
-// ── Message bubble ───────────────────────────────────────────────────────────
+/* ── Message bubble ───────────────────────────────────────────────────────── */
 const Bubble = ({ role, content }) => {
     const isUser = role === 'user';
     return (
-        <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-            <div
-                className="max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl text-[14px] leading-relaxed"
-                style={{
-                    fontFamily: "'Outfit', sans-serif",
-                    background: isUser ? 'rgba(201,169,110,0.14)' : SURFACE,
-                    color: isUser ? '#EDE8DA' : '#EDE8DA',
-                    border: isUser ? `1px solid ${GOLD}33` : '1px solid rgba(255,255,255,0.07)',
-                    borderBottomRightRadius: isUser ? 4 : 16,
-                    borderBottomLeftRadius: isUser ? 16 : 4,
-                }}
-            >
-                {/* Users send plain text; the assistant emits a small Markdown subset. */}
+        <motion.div
+            className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+            variants={bubbleVariants} initial="hidden" animate="visible"
+        >
+            <div className={isUser ? 'chat-bubble-user' : 'chat-bubble-ai'}>
                 {isUser ? <span className="whitespace-pre-line">{content}</span> : <RichText text={content} />}
             </div>
-        </div>
+        </motion.div>
     );
 };
 
-// ── Main tab ─────────────────────────────────────────────────────────────────
+/* ── Flanking gold label (section label motif) ────────────────────────────── */
+const FlankLabel = ({ children }) => (
+    <div className="flex items-center justify-center gap-4">
+        <div style={{ height: 1, flex: '0 0 40px', background: 'linear-gradient(to right, transparent, var(--gold-primary))' }} />
+        <span style={{
+            fontFamily: "'Outfit', sans-serif", fontSize: 10, fontWeight: 600,
+            letterSpacing: '0.24em', textTransform: 'uppercase', color: 'var(--gold-primary)', whiteSpace: 'nowrap',
+        }}>
+            {children}
+        </span>
+        <div style={{ height: 1, flex: '0 0 40px', background: 'linear-gradient(to left, transparent, var(--gold-primary))' }} />
+    </div>
+);
+
+/* ── Auto-resizing textarea hook ──────────────────────────────────────────── */
+const useAutoResize = (value) => {
+    const ref = useRef(null);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+    }, [value]);
+    return ref;
+};
+
+/* ── Main tab ─────────────────────────────────────────────────────────────── */
 const ChatbotTab = ({ onTabChange }) => {
     const { user, isAuthenticated, authApi, claimProTrial, refreshUser } = useAuth();
     const isPro = user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
@@ -131,6 +184,8 @@ const ChatbotTab = ({ onTabChange }) => {
     const [quota, setQuota] = useState(null); // { used, limit }
 
     const scrollRef = useRef(null);
+    const textareaRef = useAutoResize(input);
+    const hasSentRef = useRef(false); // tracks if at least one message succeeded (cold-start heuristic)
 
     useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -154,32 +209,43 @@ const ChatbotTab = ({ onTabChange }) => {
         return () => { active = false; };
     }, [isAuthenticated, isPro, isPremium, authApi]);
 
+    // Use a ref for messages to avoid re-creating `send` on every message change
+    const messagesRef = useRef(messages);
+    messagesRef.current = messages;
+
     const send = useCallback(async (text) => {
         const content = (text ?? input).trim();
         if (!content || sending) return;
 
-        const prior = messages;   // snapshot for rollback if the send fails
-        setMessages([...messages, { role: 'user', content }].slice(-MAX_HISTORY));
+        const prior = messagesRef.current; // snapshot for rollback
+        const userMsg = { id: nextMsgId(), role: 'user', content };
+        setMessages([...prior, userMsg].slice(-MAX_HISTORY));
         setInput('');
         setSending(true);
         setError(null);
 
+        // First chat can include Render cold start. Do not retry POSTs here:
+        // chat sends consume quota and call Gemini, so duplicate requests are costly.
+        const isFirstRequest = !hasSentRef.current;
+        const timeout = isFirstRequest ? COLD_START_TIMEOUT : SEND_TIMEOUT;
+
         try {
-            // LLM calls are slow (model + fallback cascade) — override the 15s
-            // default so the client waits for the backend's response (incl. fallback).
             const res = await authApi.post(
                 '/api/chat/message',
                 { messages: [...prior, { role: 'user', content }].slice(-MAX_HISTORY) },
-                { timeout: 30000 },
+                { timeout },
             );
             const reply = res.data?.reply || '';
-            setMessages((prev) => [...prev, { role: 'assistant', content: reply }].slice(-MAX_HISTORY));
+            const assistantMsg = { id: nextMsgId(), role: 'assistant', content: reply };
+            setMessages((prev) => [...prev, assistantMsg].slice(-MAX_HISTORY));
             if (res.data?.quota) setQuota({ used: res.data.quota.used, limit: res.data.quota.limit });
+            hasSentRef.current = true;
         } catch (err) {
             const status = err.response?.status;
+            const isTimeout = err.code === 'ECONNABORTED';
+
             // Roll back the optimistic user turn so a failed prompt is never carried
-            // as hidden context on the next send; restore it to the input for retry —
-            // but only if the user hasn't already started composing a new prompt.
+            // as hidden context on the next send; restore it to the input for retry.
             setMessages(prior);
             setInput((cur) => (cur ? cur : content));
             if (status === 429) {
@@ -187,17 +253,25 @@ const ChatbotTab = ({ onTabChange }) => {
                 setError((d && d.message) || 'Bạn đã dùng hết lượt trò chuyện hôm nay. Nâng cấp Premium để dùng không giới hạn.');
                 setQuota((q) => (q ? { ...q, used: q.limit ?? q.used } : q));
             } else if (status === 403) {
-                // Subscription likely expired mid-session — re-sync auth so the
-                // upgrade gate renders instead of leaving the chat enabled.
+                // Subscription likely expired mid-session — re-sync auth
                 setError('Phiên đăng ký đã thay đổi. Đang cập nhật…');
                 await refreshUser();
+            } else if (isTimeout) {
+                setError(isFirstRequest
+                    ? 'Server có thể vẫn đang khởi động. Vui lòng thử lại sau giây lát.'
+                    : 'Server phản hồi quá lâu. Vui lòng thử lại.');
             } else {
                 setError('Trợ lý đang bận, vui lòng thử lại sau giây lát.');
             }
         } finally {
             setSending(false);
         }
-    }, [input, sending, messages, authApi, refreshUser]);
+    }, [input, sending, authApi, refreshUser]);
+
+    const clearChat = useCallback(() => {
+        setMessages([]);
+        setError(null);
+    }, []);
 
     const onKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -205,105 +279,160 @@ const ChatbotTab = ({ onTabChange }) => {
 
     // ── Gates ────────────────────────────────────────────────────────────────
     if (!isAuthenticated) {
-        return <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}><SignInPrompt onTabChange={onTabChange} /></div>;
+        return (
+            <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
+                <SignInPrompt onTabChange={onTabChange} />
+            </div>
+        );
     }
     if (!isPro) {
-        return <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}><UpgradeGate onTabChange={onTabChange} user={user} claimProTrial={claimProTrial} /></div>;
+        return (
+            <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
+                <UpgradeGate onTabChange={onTabChange} user={user} claimProTrial={claimProTrial} />
+            </div>
+        );
     }
 
     const remaining = quota && quota.limit != null ? Math.max(quota.limit - quota.used, 0) : null;
 
     // ── Pro / Premium chat ───────────────────────────────────────────────────
     return (
-        <div className="flex-1 w-full flex flex-col min-h-0" style={{ background: '#000' }}>
+        <div className="flex-1 w-full flex flex-col min-h-0" style={{ background: 'var(--bg-base)' }}>
             {/* Header */}
-            <div className="shrink-0 px-4 sm:px-6 py-4 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="shrink-0 px-4 sm:px-6 py-4 flex items-center justify-between gap-3 chat-divider-bottom">
                 <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
-                        <Bot size={18} style={{ color: GOLD }} />
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                        style={{ background: 'var(--gold-dim)', border: '1px solid rgba(201,169,110,0.2)' }}>
+                        <Bot size={18} style={{ color: 'var(--gold-primary)' }} />
                     </div>
                     <div className="min-w-0">
-                        <h2 className="text-[15px] font-bold truncate" style={{ color: '#EDE8DA', fontFamily: "'Outfit', sans-serif" }}>Trợ lý Đầu tư AI</h2>
-                        <p className="text-[11px] truncate" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>Phân tích tin tức &amp; cổ phiếu — dựa trên dữ liệu thị trường</p>
+                        <h2 className="text-[15px] font-bold truncate" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
+                            Trợ lý Đầu tư AI
+                        </h2>
+                        <p className="text-[11px] truncate" style={{ color: 'var(--text-secondary)', fontFamily: "'Outfit', sans-serif" }}>
+                            Phân tích tin tức &amp; cổ phiếu — dựa trên dữ liệu thị trường
+                        </p>
                     </div>
                 </div>
-                {isPremium ? (
-                    <span className="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: `${GOLD}18`, color: GOLD, border: `1px solid ${GOLD}30`, fontFamily: "'Outfit', sans-serif" }}>
-                        Không giới hạn
-                    </span>
-                ) : remaining != null && (
-                    <span className="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(255,255,255,0.04)', color: remaining > 0 ? '#94A3BC' : '#E05555', border: '1px solid rgba(255,255,255,0.08)', fontFamily: "'DM Mono', monospace" }}>
-                        Còn {remaining}/{quota.limit} hôm nay
-                    </span>
-                )}
+
+                <div className="flex items-center gap-2">
+                    {/* New Chat button */}
+                    {messages.length > 0 && (
+                        <button onClick={clearChat} aria-label="Cuộc trò chuyện mới" className="chat-icon-btn">
+                            <RotateCcw size={14} />
+                        </button>
+                    )}
+
+                    {/* Quota / tier badge */}
+                    {isPremium ? (
+                        <span className="chat-quota-badge" style={{ color: 'var(--gold-primary)' }}>
+                            Không giới hạn
+                        </span>
+                    ) : remaining != null && (
+                        <span className="chat-quota-badge" style={{ color: remaining > 0 ? 'var(--text-secondary)' : 'var(--error)' }}>
+                            Còn <span className="chat-quota-value">{remaining}/{quota.limit}</span> hôm nay
+                        </span>
+                    )}
+                </div>
             </div>
 
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-5">
                 <div className="max-w-3xl mx-auto flex flex-col gap-4">
+
+                    {/* Empty state */}
                     {messages.length === 0 && !sending && (
-                        <div className="flex flex-col items-center justify-center gap-5 py-12 text-center">
-                            <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: `${GOLD}12`, border: `1px solid ${GOLD}25` }}>
-                                <Sparkles size={24} style={{ color: GOLD }} />
-                            </div>
-                            <p className="text-sm max-w-md" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>
+                        <motion.div
+                            className="flex flex-col items-center justify-center gap-5 py-12 text-center"
+                            variants={containerVariants} initial="hidden" animate="visible"
+                        >
+                            <motion.div variants={itemVariants}>
+                                <FlankLabel>Trợ lý Đầu tư AI</FlankLabel>
+                            </motion.div>
+                            <motion.div variants={itemVariants}
+                                className="w-14 h-14 rounded-full flex items-center justify-center"
+                                style={{
+                                    background: 'var(--gold-dim)',
+                                    border: '1px solid rgba(201,169,110,0.2)',
+                                    boxShadow: '0 0 30px -8px rgba(201,169,110,0.2)',
+                                }}
+                            >
+                                <StarMark size={24} color="var(--gold-primary)" />
+                            </motion.div>
+                            <motion.p variants={itemVariants} className="text-sm max-w-md" style={{ color: 'var(--text-secondary)', fontFamily: "'Outfit', sans-serif" }}>
                                 Hỏi bất cứ điều gì về thị trường, một mã cổ phiếu, hay một tin tức gần đây.
-                            </p>
-                            <div className="flex flex-col gap-2 w-full max-w-md">
+                            </motion.p>
+                            <motion.div variants={itemVariants} className="flex flex-col gap-2 w-full max-w-md">
                                 {SUGGESTIONS.map((s) => (
-                                    <button key={s} onClick={() => send(s)}
-                                        className="text-left px-4 py-2.5 rounded-xl text-[13px] cursor-pointer transition-colors"
-                                        style={{ background: 'rgba(255,255,255,0.03)', color: '#EDE8DA', border: '1px solid rgba(255,255,255,0.07)', fontFamily: "'Outfit', sans-serif" }}>
+                                    <button key={s} onClick={() => send(s)} className="chat-suggestion">
                                         {s}
                                     </button>
                                 ))}
-                            </div>
-                        </div>
+                            </motion.div>
+                        </motion.div>
                     )}
 
-                    {messages.map((m, i) => <Bubble key={i} role={m.role} content={m.content} />)}
+                    {/* Message list */}
+                    <AnimatePresence mode="popLayout">
+                        {messages.map((m) => <Bubble key={m.id} role={m.role} content={m.content} />)}
+                    </AnimatePresence>
 
-                    {sending && (
-                        <div className="flex justify-start">
-                            <div className="px-4 py-3 rounded-2xl flex items-center gap-2" style={{ background: SURFACE, border: '1px solid rgba(255,255,255,0.07)', borderBottomLeftRadius: 4 }}>
-                                <RefreshCw size={14} className="animate-spin" style={{ color: GOLD }} />
-                                <span className="text-[13px]" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>Đang soạn câu trả lời…</span>
-                            </div>
-                        </div>
-                    )}
+                    {/* Typing indicator */}
+                    <AnimatePresence>
+                        {sending && (
+                            <motion.div
+                                className="flex justify-start"
+                                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                                aria-live="polite" aria-label="AI đang soạn câu trả lời"
+                            >
+                                <div className="chat-typing">
+                                    <StarMark size={14} color="var(--gold-primary)" className="star-spin" />
+                                    <span className="text-[13px]" style={{ color: 'var(--text-secondary)', fontFamily: "'Outfit', sans-serif" }}>
+                                        Đang soạn câu trả lời…
+                                    </span>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
-                    {error && (
-                        <div className="flex justify-center">
-                            <p className="text-[13px] text-center px-4 py-2 rounded-xl" style={{ color: '#E05555', background: 'rgba(224,85,85,0.08)', border: '1px solid rgba(224,85,85,0.2)', fontFamily: "'Outfit', sans-serif" }}>{error}</p>
-                        </div>
-                    )}
+                    {/* Error */}
+                    <AnimatePresence>
+                        {error && (
+                            <motion.div
+                                className="flex justify-center"
+                                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                            >
+                                <p className="chat-error">{error}</p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
 
             {/* Composer */}
-            <div className="shrink-0 px-4 sm:px-6 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="shrink-0 px-4 sm:px-6 py-4 chat-divider-top">
                 <div className="max-w-3xl mx-auto flex items-end gap-2">
                     <textarea
+                        ref={textareaRef}
                         rows={1}
                         value={input}
                         maxLength={MAX_CHARS}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={onKeyDown}
                         placeholder="Nhập câu hỏi của bạn…"
-                        className="flex-1 resize-none rounded-2xl px-4 py-3 text-[14px] focus:outline-none"
-                        style={{ background: '#0C1828', color: '#EDE8DA', border: '1px solid rgba(255,255,255,0.08)', fontFamily: "'Outfit', sans-serif", maxHeight: 140 }}
+                        className="chat-input flex-1"
+                        style={{ maxHeight: 140 }}
                     />
                     <button
                         onClick={() => send()}
                         disabled={sending || !input.trim()}
                         aria-label="Gửi"
-                        className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center cursor-pointer"
-                        style={{ background: (sending || !input.trim()) ? 'rgba(201,169,110,0.25)' : `linear-gradient(135deg, ${GOLD}, #E8C97A)`, color: '#0A1020', border: 'none', opacity: (sending || !input.trim()) ? 0.6 : 1 }}
+                        className="chat-send-btn"
                     >
                         <Send size={17} />
                     </button>
                 </div>
-                <p className="max-w-3xl mx-auto mt-2 text-[11px]" style={{ color: '#4E617A', fontFamily: "'Outfit', sans-serif" }}>
+                <p className="max-w-3xl mx-auto mt-2 text-[11px]" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
                     Thông tin tham khảo, không phải khuyến nghị đầu tư. Đầu tư luôn có rủi ro.
                 </p>
             </div>
