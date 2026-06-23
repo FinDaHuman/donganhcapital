@@ -27,7 +27,11 @@ data/
 # To Do List
 ToDoList.txt
 
+# Remotion
+RemotionMarketing/
+
 # Agents
+.agents
 .agent/
 AGENTS.md
 .cursor/
@@ -37,6 +41,7 @@ donganhcapital_theme_rules.md
 Context.md
 CLAUDE.md
 .claude
+skills-lock.json
 
 #Reference model
 xgb_model.ipynb
