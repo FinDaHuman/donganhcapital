@@ -23,6 +23,7 @@ Security:
 import re
 import secrets
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -54,8 +55,29 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # ── Constants ──
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
 DANGEROUS_CHARS = re.compile(r"[<>'\";]")
-IS_PRODUCTION = True  # Set based on environment
-COOKIE_DOMAIN = ".donganhcapital.com" if IS_PRODUCTION else None
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+APP_ENV = os.getenv("APP_ENV", "production").strip().lower()
+IS_PRODUCTION = APP_ENV == "production"
+COOKIE_SECURE = _env_flag("COOKIE_SECURE", IS_PRODUCTION)
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").strip().lower()
+if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+    logger.warning("Invalid COOKIE_SAMESITE=%r; falling back to 'lax'", COOKIE_SAMESITE)
+    COOKIE_SAMESITE = "lax"
+
+_cookie_domain = os.getenv("COOKIE_DOMAIN")
+if _cookie_domain is not None:
+    COOKIE_DOMAIN = _cookie_domain.strip() or None
+elif IS_PRODUCTION:
+    COOKIE_DOMAIN = ".donganhcapital.com"
+else:
+    COOKIE_DOMAIN = None
 
 ACCESS_COOKIE = "dac_access_token"
 REFRESH_COOKIE = "dac_refresh_token"
@@ -156,19 +178,18 @@ class UserResponse(BaseModel):
 
 # ── Cookie Helpers ──
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str):
-    """Set httpOnly, Secure, SameSite auth cookies.
+    """Set httpOnly auth cookies.
 
-    domain=".donganhcapital.com" marks these as first-party cookies valid
-    across all *.donganhcapital.com subdomains, which prevents Brave and
-    Safari from classifying frontend→API requests as cross-site and blocking
-    cookie transmission.
+    Production defaults keep Secure cookies scoped to .donganhcapital.com.
+    APP_ENV=local in backend/.env removes the domain and allows HTTP localhost
+    testing without changing Render's deployed behavior.
     """
     response.set_cookie(
         key=ACCESS_COOKIE,
         value=access_token,
         httponly=True,
-        secure=True,
-        samesite="lax",
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
         max_age=15 * 60,  # 15 minutes
         path="/",
         domain=COOKIE_DOMAIN,
@@ -177,8 +198,8 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         key=REFRESH_COOKIE,
         value=refresh_token,
         httponly=True,
-        secure=True,
-        samesite="lax",
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
         max_age=7 * 24 * 3600,  # 7 days
         path="/api/auth/refresh",  # Only sent to refresh endpoint
         domain=COOKIE_DOMAIN,
@@ -187,8 +208,22 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
 
 def _clear_auth_cookies(response: Response):
     """Clear auth cookies — all attributes must match set_cookie exactly for deletion to work."""
-    response.delete_cookie(key=ACCESS_COOKIE, path="/", secure=True, httponly=True, samesite="lax", domain=COOKIE_DOMAIN)
-    response.delete_cookie(key=REFRESH_COOKIE, path="/api/auth/refresh", secure=True, httponly=True, samesite="lax", domain=COOKIE_DOMAIN)
+    response.delete_cookie(
+        key=ACCESS_COOKIE,
+        path="/",
+        secure=COOKIE_SECURE,
+        httponly=True,
+        samesite=COOKIE_SAMESITE,
+        domain=COOKIE_DOMAIN,
+    )
+    response.delete_cookie(
+        key=REFRESH_COOKIE,
+        path="/api/auth/refresh",
+        secure=COOKIE_SECURE,
+        httponly=True,
+        samesite=COOKIE_SAMESITE,
+        domain=COOKIE_DOMAIN,
+    )
 
 
 # ── Current User Dependency ──

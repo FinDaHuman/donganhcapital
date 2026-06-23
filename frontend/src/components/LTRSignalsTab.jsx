@@ -6,21 +6,21 @@ import { Lock, TrendingUp, BarChart2 } from 'lucide-react';
 const GOLD = '#C9A96E';
 
 // Placeholder rows shown (blurred) to free-tier users so they can see the table shape
-const PLACEHOLDER_SIGNALS = Array.from({ length: 10 }, (_, i) => ({
+const PLACEHOLDER_SIGNALS = Array.from({ length: 5 }, (_, i) => ({
     rank: i + 1,
     stock_id: '•••',
     score: 0,
 }));
 
 const ScoreBadge = ({ score }) => {
-    const pct = (score * 100).toFixed(1);
+    const display = (score * 100).toFixed(1);
     const hue = score > 0.6 ? '#4ade80' : score > 0.4 ? GOLD : '#94a3b8';
     return (
         <span
             className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums"
             style={{ background: `${hue}18`, color: hue, border: `1px solid ${hue}30` }}
         >
-            {pct}%
+            {display}
         </span>
     );
 };
@@ -69,8 +69,8 @@ const UpgradeOverlay = ({ onTabChange, user, claimProTrial }) => {
                         LTR Pro Signals
                     </h3>
                     <p className="text-sm text-gray-400 leading-relaxed">
-                        Our LightGBM ranker scores all 167 stocks daily by probability of gaining
-                        &gt;6% over 3 trading days. Top 20 picks are updated every afternoon.
+                        Our LightGBM ranker scores all 167 stocks daily by breakout score
+                        (&gt;8% over 5 trading days). Top 5 picks are updated every afternoon.
                     </p>
                 </div>
 
@@ -254,7 +254,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
                             PRO
                         </span>
                     </h2>
-                    <p className="text-sm text-gray-500">Daily ranked shortlist — top 20 stocks by 3-day breakout probability</p>
+                    <p className="text-sm text-gray-500">Daily ranked shortlist — top 5 stocks by 5-day breakout score</p>
                 </div>
 
                 <div className="relative rounded-xl overflow-hidden" style={{ border: '1px solid #1f2937' }}>
@@ -265,7 +265,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
                                 <tr style={{ background: '#0d1117', borderBottom: '1px solid #1f2937' }}>
                                     <th className="px-4 py-3 text-left font-medium text-gray-400">Rank</th>
                                     <th className="px-4 py-3 text-left font-medium text-gray-400">Ticker</th>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-400">P(&gt;6% / 3 days)</th>
+                                    <th className="px-4 py-3 text-left font-medium text-gray-400">Breakout Score</th>
                                     <th className="px-4 py-3 text-left font-medium text-gray-400">Chart</th>
                                 </tr>
                             </thead>
@@ -310,7 +310,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
                         </span>
                     </h2>
                     <p className="text-sm text-gray-500 mt-0.5">
-                        Top 20 ranked stocks · P(&gt;6% over 3 days) · Generated at 15:02 Vietnam time
+                        Top 5 ranked stocks · Breakout Score (&gt;8% / 5 days) · Generated at 15:02 Vietnam time
                     </p>
                 </div>
 
@@ -345,8 +345,8 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
             >
                 <BarChart2 size={14} style={{ color: GOLD, marginTop: 1, flexShrink: 0 }} />
                 <span>
-                    Ranked by a LightGBM classifier (binary cross-entropy). Score = P(&gt;6% over 3 trading days).
-                    Win rate: ~42.5% · This is a <strong style={{ color: GOLD }}>ranked shortlist for research only</strong>, not financial advice.
+                    Ranked by a LightGBM classifier. <strong style={{ color: GOLD }}>Breakout Score</strong> = relative likelihood of &gt;8% gain over 5 trading days (not a calibrated probability).
+                    Backtest win rate: ~47% · This is a <strong style={{ color: GOLD }}>ranked shortlist for research only</strong>, not financial advice.
                     Past performance does not guarantee future results.
                 </span>
             </div>
@@ -397,7 +397,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
                             <tr style={{ background: '#0d1117', borderBottom: '1px solid #1f2937' }}>
                                 <th className="px-4 py-3 text-left font-medium text-gray-400 w-16">Rank</th>
                                 <th className="px-4 py-3 text-left font-medium text-gray-400">Ticker</th>
-                                <th className="px-4 py-3 text-left font-medium text-gray-400">P(&gt;6% / 3 days)</th>
+                                <th className="px-4 py-3 text-left font-medium text-gray-400">Breakout Score</th>
                                 <th className="px-4 py-3 text-left font-medium text-gray-400 hidden sm:table-cell">Chart</th>
                             </tr>
                         </thead>

@@ -1,4 +1,6 @@
 import gc
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -6,15 +8,29 @@ from features.market_features import MarketRegimeFeatureBuilder
 from labels.market_label import add_market_label
 
 
+UNIVERSE_PATH = Path(__file__).resolve().parent.parent / "ltr_stock_universe.csv"
+
 LTR_FEATURE_COLS = [
+    # ── Returns ─────────────────────────────────────────────────────────────
     "ret_1d", "ret_3d", "ret_5d", "ret_10d",
+    # ── Volume ──────────────────────────────────────────────────────────────
     "vol_ratio_5d", "vol_ratio_20d", "vol_ratio_60d", "vol_ratio_90d",
+    "vol_thrust_5d",          # count of accumulation days (vol > 1.5× MA20) in last 5
+    # ── Price action ────────────────────────────────────────────────────────
     "intraday", "gap", "close_vs_range",
-    "dist_ma5", "dist_ma10", "dist_ma20",
+    # ── MA distances ────────────────────────────────────────────────────────
+    "dist_ma5", "dist_ma10", "dist_ma20", "dist_ma50",
+    # ── Volatility / momentum ───────────────────────────────────────────────
     "atr_ratio", "rsi_14",
-    "rs_5d", "pos_52w",
+    "bb_width_ratio",         # BB width / 50-period rolling avg — squeeze detection
+    # ── Relative strength ───────────────────────────────────────────────────
+    "rs_5d",                  # stock ret_5d minus index ret_5d
+    "rs_new_high_60d",        # 1 if RS line (close/index_close) at 60-day high
+    "pos_52w",                # close / 52-week rolling high
+    # ── Market regime ───────────────────────────────────────────────────────
     "market_label", "index_dist_ma200", "index_vol_ratio",
     "index_ret_1d", "index_ret_5d",
+    # ── Calendar ────────────────────────────────────────────────────────────
     "dow",
 ]
 
@@ -55,7 +71,8 @@ def build_ltr_features(stock_df: pd.DataFrame, market_df: pd.DataFrame) -> pd.Da
         "market_label", "index_dist_ma200", "index_vol_ratio",
         "index_ret_1d", "index_ret_5d",
     ]
-    mf_slim = mf[["Ngay"] + regime_cols].copy()
+    # Keep index_close for RS-new-high computation; drop after use
+    mf_slim = mf[["Ngay", "index_close"] + regime_cols].copy()
     del mf
     gc.collect()
 
@@ -69,12 +86,25 @@ def build_ltr_features(stock_df: pd.DataFrame, market_df: pd.DataFrame) -> pd.Da
         )
 
     # ── Volume ratios ────────────────────────────────────────────────────────
+    vol_ma20 = df.groupby("stock_id")["volume"].transform(
+        lambda x: x.rolling(20, min_periods=20).mean()
+    )
     for n, col in [(5, "vol_ratio_5d"), (20, "vol_ratio_20d"),
                    (60, "vol_ratio_60d"), (90, "vol_ratio_90d")]:
         ma = df.groupby("stock_id")["volume"].transform(
             lambda x, _n=n: x.rolling(_n, min_periods=_n).mean()
         )
         df[col] = (df["volume"] / (ma + 1e-9)).clip(0, 20).astype("float32")
+
+    # ── Volume thrust — count of accumulation days in last 5 ─────────────────
+    # Accumulation day: today's volume > 1.5× 20-day average (institutional buying signal)
+    df["_vol_above"] = (df["volume"] > 1.5 * vol_ma20).astype("float32")
+    df["vol_thrust_5d"] = (
+        df.groupby("stock_id")["_vol_above"]
+        .transform(lambda x: x.rolling(5, min_periods=5).sum())
+        .astype("float32")
+    )
+    df.drop(columns=["_vol_above"], inplace=True)
 
     # ── Intraday, gap, close-vs-range ────────────────────────────────────────
     prev_close = df.groupby("stock_id")["close"].shift(1)
@@ -84,7 +114,7 @@ def build_ltr_features(stock_df: pd.DataFrame, market_df: pd.DataFrame) -> pd.Da
     df["close_vs_range"] = ((df["close"] - df["low"]) / (rng + 1e-9)).astype("float32")
 
     # ── MA distances (MA uses shift(1) to exclude today's close) ────────────
-    for n, col in [(5, "dist_ma5"), (10, "dist_ma10"), (20, "dist_ma20")]:
+    for n, col in [(5, "dist_ma5"), (10, "dist_ma10"), (20, "dist_ma20"), (50, "dist_ma50")]:
         ma = df.groupby("stock_id")["close"].transform(
             lambda x, _n=n: x.rolling(_n, min_periods=_n).mean().shift(1)
         )
@@ -111,6 +141,22 @@ def build_ltr_features(stock_df: pd.DataFrame, market_df: pd.DataFrame) -> pd.Da
         .astype("float32")
     )
 
+    # ── Bollinger Band width ratio (squeeze detector) ────────────────────────
+    # BB width = 4 × std20 / MA20 (= (upper - lower) / midline)
+    # Ratio vs its own 50-period rolling mean: < 1 means squeeze (volatility compressed)
+    std20 = df.groupby("stock_id")["close"].transform(
+        lambda x: x.rolling(20, min_periods=20).std().shift(1)
+    )
+    ma20_close = df.groupby("stock_id")["close"].transform(
+        lambda x: x.rolling(20, min_periods=20).mean().shift(1)
+    )
+    df["_bb_width"] = 4.0 * std20 / (ma20_close + 1e-9)
+    bb_width_ma50 = df.groupby("stock_id")["_bb_width"].transform(
+        lambda x: x.rolling(50, min_periods=50).mean()
+    )
+    df["bb_width_ratio"] = (df["_bb_width"] / (bb_width_ma50 + 1e-9)).clip(0, 5).astype("float32")
+    df.drop(columns=["_bb_width"], inplace=True)
+
     # ── 52-week position ─────────────────────────────────────────────────────
     rolling_max_252 = df.groupby("stock_id")["close"].transform(
         lambda x: x.rolling(252, min_periods=20).max().shift(1)
@@ -120,7 +166,7 @@ def build_ltr_features(stock_df: pd.DataFrame, market_df: pd.DataFrame) -> pd.Da
     # ── Day of week ──────────────────────────────────────────────────────────
     df["dow"] = df["Ngay"].dt.dayofweek.astype("int8")
 
-    # ── Join market features ─────────────────────────────────────────────────
+    # ── Join market features (includes index_close for RS computation) ───────
     df = df.merge(mf_slim, on="Ngay", how="left")
     del mf_slim
     gc.collect()
@@ -130,5 +176,16 @@ def build_ltr_features(stock_df: pd.DataFrame, market_df: pd.DataFrame) -> pd.Da
 
     # ── Relative strength vs index ───────────────────────────────────────────
     df["rs_5d"] = (df["ret_5d"] - df["index_ret_5d"]).astype("float32")
+
+    # ── RS line new 60-day high (binary momentum confirmation) ───────────────
+    # RS line = close[T] / index_close[T] — both fully known post-close.
+    # rs_60d_max uses shift(1) so it reflects the prior 60-day window (T-60 to T-1),
+    # making rs_new_high_60d a look-ahead-free "is today a new RS high?" signal.
+    df["_rs_line"] = df["close"] / (df["index_close"] + 1e-9)
+    rs_60d_max = df.groupby("stock_id")["_rs_line"].transform(
+        lambda x: x.rolling(60, min_periods=60).max().shift(1)
+    )
+    df["rs_new_high_60d"] = (df["_rs_line"] >= rs_60d_max - 1e-9).astype("float32")
+    df.drop(columns=["_rs_line", "index_close"], inplace=True)
 
     return df

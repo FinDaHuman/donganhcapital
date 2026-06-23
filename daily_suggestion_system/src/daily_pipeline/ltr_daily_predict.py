@@ -1,5 +1,5 @@
 """
-LTR daily inference: score all stocks for today and persist top-20 to ltr_signals.
+LTR daily inference: score all universe stocks for today and persist top-5 to ltr_signals.
 
 Called from run_daily_pipeline.py as Step 4 (non-fatal).
 Can also be run directly for testing:
@@ -22,13 +22,15 @@ sys.path.insert(0, str(SRC_DIR))
 from data_access.db_connection import get_engine
 from data_access.stock_data_loader import load_stock_data
 from data_access.market_data_loader import load_market_data
-from features.ltr_features import build_ltr_features, LTR_FEATURE_COLS
+from features.ltr_features import build_ltr_features, LTR_FEATURE_COLS, UNIVERSE_PATH
 
 log = logging.getLogger(__name__)
 
-INFERENCE_LOOKBACK_DAYS = 450   # covers 252-day rolling max + buffer
+# 500 days: covers the 252-day rolling max + 50-day MA + BB-width 50-period rolling + buffer
+INFERENCE_LOOKBACK_DAYS = 500
 MODEL_PATH = Path(__file__).resolve().parents[2] / "model" / "ltr_model.pkl"
-TOP_N = 20
+# Top-5 matches the evaluated and gated serving window (go/no-go validated on P@5 only)
+TOP_N = 5
 
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS ltr_signals (
@@ -49,12 +51,21 @@ def _ensure_table(engine) -> None:
         conn.execute(text(_CREATE_TABLE_SQL))
 
 
+def _load_universe_tickers() -> list[str] | None:
+    """Return the 167-stock curated universe. None = abort (fail closed)."""
+    if not UNIVERSE_PATH.exists():
+        log.error(f"LTR: Universe CSV not found at {UNIVERSE_PATH} — aborting to prevent out-of-distribution scoring")
+        return None
+    universe = pd.read_csv(UNIVERSE_PATH, usecols=["stock_id"])
+    return universe["stock_id"].dropna().unique().tolist()
+
+
 def score_all_stocks() -> pd.DataFrame | None:
     """
-    Compute LTR scores for the latest trading day and write top-20 to ltr_signals.
+    Compute LTR scores for the latest trading day and write top-5 to ltr_signals.
 
-    Returns the top-20 DataFrame on success, None if scoring cannot run
-    (missing model, no data, etc.).
+    Returns the top-5 DataFrame on success, None if scoring cannot run
+    (missing model, no data, missing universe CSV, etc.).
     """
     engine = get_engine()
     if engine is None:
@@ -72,12 +83,21 @@ def score_all_stocks() -> pd.DataFrame | None:
     start_date = (datetime.now() - timedelta(days=INFERENCE_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
 
     log.info(f"LTR: Loading stock/market data from {start_date} …")
-    stock_df = load_stock_data(engine, start_date=start_date)
+    stock_df  = load_stock_data(engine,  start_date=start_date)
     market_df = load_market_data(engine, start_date=start_date)
 
     if stock_df.empty:
         log.warning("LTR: No stock data returned — skipping")
         return None
+
+    # Restrict to the curated 167-stock universe for train/inference consistency.
+    # Fail closed: if the CSV is missing we cannot score safely (model is OOD on other tickers).
+    universe_tickers = _load_universe_tickers()
+    if universe_tickers is None:
+        return None
+    before = stock_df["stock_id"].nunique()
+    stock_df = stock_df[stock_df["stock_id"].isin(universe_tickers)].reset_index(drop=True)
+    log.info(f"LTR: Universe filter: {before} -> {stock_df['stock_id'].nunique()} tickers")
 
     log.info("LTR: Building features …")
     feature_df = build_ltr_features(stock_df, market_df)
@@ -103,12 +123,12 @@ def score_all_stocks() -> pd.DataFrame | None:
         return None
 
     X = today_df[LTR_FEATURE_COLS].astype("float32")
-    scores = clf.predict_proba(X)[:, 1]   # P(>6% over 3 days)
+    scores = clf.predict_proba(X)[:, 1]   # LTR breakout score (>8% over 5 trading days)
 
     today_df = today_df.assign(score=scores)
     today_df = today_df.sort_values("score", ascending=False).reset_index(drop=True)
     today_df["rank"] = today_df.index + 1
-    top20 = today_df.head(TOP_N)[["stock_id", "rank", "score"]].copy()
+    top_n = today_df.head(TOP_N)[["stock_id", "rank", "score"]].copy()
 
     # DELETE then INSERT in one transaction — avoids stale rows from re-runs
     with engine.begin() as conn:
@@ -116,31 +136,29 @@ def score_all_stocks() -> pd.DataFrame | None:
             text("DELETE FROM ltr_signals WHERE date = :today"),
             {"today": today_str},
         )
-        for _, row in top20.iterrows():
+        for _, row in top_n.iterrows():
             conn.execute(
                 text("""
                     INSERT INTO ltr_signals (date, stock_id, rank, score)
                     VALUES (:date, :stock_id, :rank, :score)
                 """),
                 {
-                    "date": today_str,
+                    "date":     today_str,
                     "stock_id": str(row["stock_id"]),
-                    "rank": int(row["rank"]),
-                    "score": float(row["score"]),
+                    "rank":     int(row["rank"]),
+                    "score":    float(row["score"]),
                 },
             )
 
-    log.info(f"LTR: Saved {len(top20)} signals for {today_str}")
-    return top20
+    log.info(f"LTR: Saved {len(top_n)} signals for {today_str}")
+    return top_n
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
-    # Support loading .env for local dev runs
-    from pathlib import Path as _P
-    for _cand in [_P(__file__).resolve().parents[2] / ".env",
-                  _P(__file__).resolve().parents[3] / "backend" / ".env"]:
+    for _cand in [Path(__file__).resolve().parents[2] / ".env",
+                  Path(__file__).resolve().parents[3] / "backend" / ".env"]:
         if _cand.exists():
             from dotenv import load_dotenv
             load_dotenv(_cand)

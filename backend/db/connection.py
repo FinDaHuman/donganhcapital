@@ -19,6 +19,11 @@ def get_engine(retries: int = 3, delay: float = 2.0):
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         return None
+
+    sslmode = os.environ.get("DATABASE_SSLMODE", "require").strip()
+    connect_args = {"connect_timeout": 10}
+    if sslmode:
+        connect_args["sslmode"] = sslmode
     
     for attempt in range(retries):
         try:
@@ -30,10 +35,7 @@ def get_engine(retries: int = 3, delay: float = 2.0):
                 pool_pre_ping=True,
                 pool_recycle=300,
                 pool_timeout=30,
-                connect_args={
-                    "connect_timeout": 10,
-                    "sslmode": "require"
-                }
+                connect_args=connect_args,
             )
             with _engine.connect() as conn:
                 conn.execute(text("SELECT 1"))

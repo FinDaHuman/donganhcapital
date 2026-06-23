@@ -1,200 +1,463 @@
-# DongAnh Capital Technical Documentation & Architecture Overview
+# DongAnh Capital
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT) [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/release/python-3100/) [![React 18](https://img.shields.io/badge/react-18.2.0-blue.svg)](https://react.dev/) [![FastAPI](https://img.shields.io/badge/fastapi-0.109.0-green.svg)](https://fastapi.tiangolo.com/)
+DongAnh Capital is a Vietnamese equities analysis platform. The repository contains
+the customer-facing web app, the FastAPI backend, the daily signal-generation
+pipeline, a Facebook posting bot, and a Remotion marketing-video project.
 
-## Executive Summary
+The core product flow is:
 
-DongAnh Capital is an advanced, proprietary stock analysis and algorithmic signal generation platform engineered specifically for the Vietnamese equities market. The system integrates real-time market visualization, rigorous technical analysis, and machine learning (XGBoost/LSTM) to deliver actionable trading intelligence.
+1. Market data is loaded into PostgreSQL.
+2. Daily jobs generate breakout and learning-to-rank signals.
+3. The backend exposes market data, signals, forecasts, auth, subscriptions,
+   news, and AI chat endpoints.
+4. The React app consumes those endpoints and renders the trading dashboard,
+   analyst views, account pages, checkout, news feed, and chatbot.
 
-This repository contains the entirety of the platform's source code, structured as a decoupled, micro-architecture system comprising a React-based Single Page Application (SPA), a highly concurrent FastAPI backend, and an automated ETL/ML data pipeline.
-
----
-
-## 1. Core System Architecture
-
-The platform is logically partitioned into three independent subsystems to ensure scalability, maintainability, and clear separation of concerns.
-
-### 1.1. Presentation Layer: React SPA (`/frontend`)
-The frontend is a modern, responsive Single Page Application optimized for high-density data visualization.
-*   **Frameworks:** React 18, Vite (for optimized bundling and HMR).
-*   **Styling:** Tailwind CSS for utility-first, consistent design system implementation.
-*   **Data Visualization:**
-    *   **Plotly.js:** Utilized for rendering complex, interactive sector heatmaps.
-    *   **HTML5 Canvas:** Employed for performant, high-frequency rendering of historical price charts and performance metrics, bypassing DOM overhead.
-*   **State & Navigation:** Framer Motion manages smooth UI transitions. The `Dashboard.jsx` acts as the primary data orchestrator, implementing a critical gating mechanism that suspends rendering until a minimum threshold of market data (≥ 15 assets) is successfully loaded, preventing UI thrashing.
-
-### 1.2. Application Server: FastAPI Backend (`/backend`)
-A high-performance RESTful API serving as the intermediary between the presentation layer, the database, and the inference engine.
-*   **Framework:** Python 3.10+ with FastAPI, chosen for its native async capabilities and automatic OpenAPI documentation.
-*   **Database ORM:** SQLAlchemy coupled with `psycopg2-binary` for robust interactions with the NeonDB (PostgreSQL) instance.
-*   **Inference Engine Integration:** Directly loads and serves pre-trained machine learning models (XGBoost by default, configurable via `USE_XGB=true`) to calculate real-time asset probabilities.
-*   **Performance Engineering:**
-    *   **TTL Caching:** Implements an in-memory `get_cached` utility within `main.py` to memoize expensive analytical queries (e.g., market overviews, signal summaries), drastically reducing database load during traffic spikes.
-    *   **Concurrency Management:** Utilizes `asyncio.Semaphore` to throttle concurrent database connections, protecting the NeonDB instance from connection exhaustion.
-    *   **Background Tasks:** Manages an asynchronous polling loop that synchronizes high-frequency VN30F1M derivative data every 60 seconds during active market hours.
-
-### 1.3. ETL & Machine Learning Pipeline (`/daily_suggestion_system`)
-An autonomous, scheduled system responsible for data ingestion, feature engineering, and the generation of predictive signals.
-*   **Core Libraries:** Python, `vnstock` (market data adapter), LightGBM, scikit-learn, Pandas.
-*   **Operational Execution:** Triggered daily via GitHub Actions (`.github/workflows/daily-pipeline.yml`).
-*   **Fail-Safe Mechanisms:** Designed to fail closed. If upstream data acquisition (via the VCI source) fails or returns anomalous data, the pipeline halts execution immediately, preventing the generation of signals based on stale or corrupted data.
-
-### 1.4. Platform Services: Auth, Payments & Email
-Layered on top of the FastAPI backend (`backend/routers/`, `backend/utils/`):
-*   **Authentication (`routers/auth.py`):** Email/password and Google OAuth sign-in with password reset. JWTs are issued as **httpOnly + Secure + SameSite cookies** scoped to `.donganhcapital.com`, so they are shared transparently between the SPA (`donganhcapital.com`) and the API (`api.donganhcapital.com`). Refresh tokens are rotated on every use; only SHA-256 hashes of refresh and reset tokens are persisted. Hardening: per-IP rate limiting (5 req / 5 min) on auth routes and account lockout (15 min after 5 failed attempts).
-*   **Payments (`routers/payments.py`, `utils/sepay.py`):** Subscriptions are paid via **SePay / VietQR** bank transfer. The user creates an order (returning a VietQR code), SePay confirms via a webhook whose HMAC-SHA256 signature is verified before the subscription is activated, and a Stripe-style proration credit is applied on upgrades. A background task downgrades expired subscriptions back to the free tier.
-*   **Transactional Email (`utils/mailer.py`):** Password-reset links and purchase receipts are sent through the **Resend HTTP API** (not SMTP — Render blocks outbound SMTP), fired via FastAPI `BackgroundTasks` so a slow send never holds a concurrency slot. **Cloudflare hosts DNS only** (SPF/DKIM/DMARC authorising Resend, plus inbound Email Routing); it does not send mail. See `EMAIL_SETUP.md`.
-
-### 1.5. Hosting Topology
-| Layer | Service | Role |
-| :--- | :--- | :--- |
-| Frontend | **Vercel** | Static SPA hosting at `donganhcapital.com` |
-| Backend API | **Render** (free tier) | FastAPI container, reached at `api.donganhcapital.com` |
-| Database | **NeonDB** | Managed PostgreSQL (scales to zero) |
-| DNS / Email auth | **Cloudflare** | DNS for the `api` subdomain + SPF/DKIM/DMARC + inbound Email Routing |
-| Outbound email | **Resend** | Transactional email HTTP API |
-| Cron / CI | **GitHub Actions** | Daily signal pipeline + automation |
-
----
-
-## 2. Data Flow & Operational Lifecycle
-
-The lifeblood of the DongAnh Capital platform is its daily automated pipeline, which updates the system of record and generates trading intelligence.
-
-### 2.1. The Signal Generation Lifecycle
-1.  **Data Ingestion (`database_update.py`):** The orchestrator script (`run_daily_pipeline.py`) initiates the update sequence. It fetches the latest OHLC (Open, High, Low, Close) and volume data for approximately 400 tracked equities using the `vnstock` library. *Note: Requests are intentionally paced to respect upstream API rate limits.*
-2.  **Feature Engineering (`features/`):** Raw market data is transformed into predictive features. This includes calculating moving averages, identifying price/volume breakouts, and evaluating trend alignment (e.g., SEPA methodology).
-3.  **Model Inference (`daily_predict.py`):** The engineered feature set is fed into the active machine learning model (located in `backend/models/xgb_model/`). The model outputs a probability score indicating the likelihood of a positive price movement over the target horizon.
-4.  **Signal Persistence:** Assets exceeding the predefined probability threshold generate "Buy" signals, which are inserted into the `ai_signals` database table alongside calculated Take Profit (TP) and Stop Loss (SL) levels.
-5.  **Portfolio Management (`trade_manager.py`):** The system evaluates existing "HOLD" positions. If current market prices breach the associated TP or SL levels, the position is closed, and the realized Profit and Loss (PnL) is recorded in the `trade_history` table for performance auditing.
-
----
-
-## 3. Database Schema Reference (NeonDB)
-
-The platform relies on a normalized PostgreSQL database hosted on NeonDB.
-
-| Table Name | Description | Key Attributes |
-| :--- | :--- | :--- |
-| `stocks` | Master registry of tracked assets. | `ticker_id`, `exchange`, `industry_classification` |
-| `stock_ohlc` | Time-series historical price data. Updated via daily upserts. | `date`, `open`, `high`, `low`, `close`, `volume`, `stock_id` |
-| `vnindex_ohlc` | Time-series historical data for the broader VN-Index. | `date`, `open`, `high`, `low`, `close`, `volume` |
-| `vn30f1m_intraday`| High-frequency (1-minute) data for the VN30 derivative. | `timestamp`, `price`, `volume` |
-| `ai_signals` | Daily generated algorithmic trading recommendations. | `date`, `stock_id`, `entry_price`, `tp_price`, `sl_price`, `probability` |
-| `trade_history` | Ledger of simulated trades and outcome analysis. | `entry_date`, `exit_date`, `stock_id`, `realized_pnl`, `duration` |
-| `daily_signal_summary`| Aggregated metrics of daily signal generation activity. | `date`, `total_signals`, `sector_breakdown` |
-| `users` | Authentication profiles. | `id` (UUID), `email`, `hashed_password`, `google_id`, `subscription_tier`, `subscription_expires_at`, `failed_login_attempts` |
-| `payments` | Subscription payment orders and outcomes. | `order_code`, `amount`, `plan`, `period`, `status`, `sepay_ref`, `subscription_start`, `subscription_end` |
-| `subscribers` | Email newsletter sign-ups. | `email`, `subscribed_at`, `source` |
-
----
-
-## 4. Codebase Navigation
+## Repository Layout
 
 ```text
-DongAnhCapital/
-├── backend/                     # Application Server (FastAPI)
-│   ├── db/                      # Database connection and query logic
-│   ├── models/                  # Serialized ML models (XGBoost .json files, LSTM .h5)
-│   ├── main.py                  # API routing and server entrypoint
-│   └── train_xgb.py             # Utility for retraining the XGBoost model
-├── daily_suggestion_system/     # ETL & ML Pipeline
-│   └── src/
-│       ├── daily_pipeline/      # Pipeline orchestration scripts
-│       ├── data_access/         # Interfaces for Vnstock and DB writes
-│       ├── features/            # Feature engineering logic
-│       ├── manager/             # Trade lifecycle management
-│       └── training/            # Model training configurations
-├── frontend/                    # Presentation Layer (React SPA)
-│   └── src/
-│       ├── components/          # React components (Dashboard, Charts, Heatmaps)
-│       └── services/            # Axios API client configurations
-└── .github/workflows/           # CI/CD and automation pipelines
+.
+|-- backend/                    # FastAPI API service
+|   |-- db/                     # PostgreSQL and MongoDB query/migration helpers
+|   |-- models/                 # XGBoost/LSTM model artifacts and predictors
+|   |-- routers/                # Auth, payments, news, and chat routers
+|   |-- utils/                  # Security, email, LLM, and SePay helpers
+|   |-- main.py                 # FastAPI app, public market endpoints, background jobs
+|   `-- requirements.txt
+|-- frontend/                   # Vite + React single-page application
+|   |-- public/                 # Static images, icons, robots, sitemap
+|   `-- src/                    # App, pages, components, context, API client
+|-- daily_suggestion_system/    # Data update, feature engineering, training, inference
+|   |-- model/                  # Pipeline models tracked through Git LFS
+|   `-- src/
+|-- facebook_bot/               # Scheduled Facebook content generator/poster
+|-- marketing/                  # Remotion project for promotional video assets
+|-- .github/workflows/          # Scheduled automation
+|-- Procfile                    # Root Render-style backend process
+`-- run_api.bat                 # Local Windows backend launcher
 ```
 
----
+## Main Services
 
-## 5. Developer Guide: Extending the Platform
+### Backend API
 
-### 5.1. Implementing a New API Endpoint
-1.  **Data Access:** Define the required SQL execution logic within `backend/db/queries.py` (for raw data) or `backend/db/analytics.py` (for aggregated metrics).
-2.  **Routing:** Expose the endpoint in `backend/main.py` using standard FastAPI decorators (e.g., `@app.get("/api/v1/new-resource")`). Ensure comprehensive type hinting for automatic documentation generation.
-3.  **Optimization:** If the endpoint performs intensive calculations or queries, encapsulate the logic within the `get_cached(key, func, ttl)` utility to enforce memoization.
+Location: `backend/`
 
-### 5.2. Modifying the User Interface
-1.  **Component Architecture:** All UI modifications should occur within `frontend/src/components/`. Adhere strictly to functional components and React Hooks.
-2.  **Styling Standards:** Utilize Tailwind CSS utility classes exclusively. Avoid creating custom CSS files unless fundamentally necessary for complex animations not supported by Tailwind/Framer.
-3.  **Client Integration:** Register any new backend endpoints within the Axios client located at `frontend/src/services/stock_api.js`.
+The backend is a FastAPI application backed by PostgreSQL and optional MongoDB.
+It loads prediction artifacts at startup, runs lightweight startup migrations,
+and starts background tasks for VN30F1M intraday polling and subscription expiry
+cleanup.
 
-### 5.3. Retraining and Deploying the AI Models
-There are two distinct models in the platform: the backend XGBoost predictor and the daily pipeline model.
+Important areas:
 
-**1. Daily Pipeline Model (LightGBM/scikit-learn):**
-*   **Training:** Execute `daily_suggestion_system/src/training/breakout_training.py` with an updated dataset.
-*   **Deployment:** The script exports `breakout_model.pkl`. Move or ensure this file replaces `daily_suggestion_system/model/breakout_model.pkl`.
+- `backend/main.py` exposes market data, OHLC, predictions, AI signals, LTR
+  signals, trade history, analytics, sectors, and email subscription endpoints.
+- `backend/routers/auth.py` handles email/password auth, Google OAuth, password
+  reset, httpOnly cookie sessions, refresh-token rotation, rate limiting, and
+  account lockout.
+- `backend/routers/payments.py` handles SePay/VietQR order creation, webhook
+  confirmation, subscription upgrades, proration, purchase history, and the Pro
+  trial flow.
+- `backend/routers/news.py` exposes a login-gated, MongoDB-backed CafeF news feed.
+- `backend/routers/chat.py` exposes Pro/Premium-gated Gemini chat and news
+  analysis with DB-backed daily quota tracking.
+- `backend/db/models_user.py`, `backend/db/models_payment.py`, and
+  `backend/db/ltr_signals_migration.py` contain direct SQL migrations. This
+  project does not currently use Alembic.
 
-**2. Backend Predictor Model (XGBoost):**
-*   **Training:** Execute `backend/train_xgb.py` to retrain the intraday/historical predictor.
-*   **Deployment:** Replaces existing artifacts in `backend/models/xgb_model/` (JSON booster files, `scaler.pkl`, etc.).
-*   **Verification:** Restart the FastAPI backend and execute a local test run of the `api/predict/{stock_id}` endpoint to ensure schema compatibility.
+### Frontend SPA
 
----
+Location: `frontend/`
 
-## 6. Local Development Environment Setup
+The frontend is a Vite React 18 application styled with Tailwind CSS. It uses
+Axios for API calls, `lightweight-charts` and Plotly for market visualization,
+Framer Motion for UI transitions, and `AuthContext` for cookie-based session
+state.
 
-### 6.1. Prerequisites
-*   Python 3.10 or higher
-*   Node.js 18 or higher
-*   Access to a NeonDB PostgreSQL instance
+Important areas:
 
-### 6.2. Backend Setup
+- `frontend/src/App.jsx` wires the main application routes/views.
+- `frontend/src/context/AuthContext.jsx` manages login state, refresh retries,
+  cross-tab token refresh coordination, and non-sensitive session caching.
+- `frontend/src/services/stock_api.js` is the main market/analytics API client.
+- `frontend/src/components/` contains dashboard, chart, landing, news, LTR,
+  AI analyst, data analyst, chatbot, layout, and loading components.
+- `frontend/vercel.json` rewrites all routes to `index.html` for SPA routing.
+
+### Daily Suggestion Pipeline
+
+Location: `daily_suggestion_system/`
+
+The pipeline updates OHLC data, builds market and stock features, scores breakout
+signals, updates trade state, fetches VN30F1M intraday data, and writes LTR ranked
+signals.
+
+Entry point:
+
 ```bash
+python daily_suggestion_system/src/daily_pipeline/run_daily_pipeline.py
+```
+
+Pipeline order:
+
+1. Verify `DATABASE_URL` and database connectivity.
+2. Update stock and VNINDEX OHLC data.
+3. Run breakout inference and persist `ai_signals` and daily summary rows.
+4. Update VN30F1M intraday data.
+5. Score all stocks with the LTR model and persist top-ranked rows to
+   `ltr_signals`.
+
+The scheduled GitHub workflow runs this on weekdays at `08:02 UTC`, which is
+`15:02` in Vietnam.
+
+### Facebook Bot
+
+Location: `facebook_bot/`
+
+The bot runs from `.github/workflows/facebook-bot.yml` at `00:00 UTC` and
+`08:00 UTC`. It selects a post type, fetches or generates content, uses Gemini to
+write the post, and publishes through the Facebook Graph API.
+
+### Marketing Video Project
+
+Location: `marketing/`
+
+This is a Remotion project for promotional media. It is independent from the web
+app and backend.
+
+## Technology Stack
+
+| Area | Technology |
+| --- | --- |
+| API | FastAPI, Uvicorn, Pydantic, SQLAlchemy |
+| Relational data | PostgreSQL, commonly deployed on Neon |
+| News data | MongoDB Atlas via `pymongo` |
+| Auth | JWT access/refresh cookies, bcrypt, Google OAuth |
+| Payments | SePay/VietQR webhook flow |
+| Email | Resend HTTP API |
+| AI / LLM | Gemini via `google-genai` or direct HTTP helpers |
+| ML / data | pandas, numpy, scikit-learn, LightGBM, XGBoost, joblib, vnstock |
+| Frontend | React 18, Vite, Tailwind CSS, Axios, Plotly, lightweight-charts |
+| Marketing | Remotion |
+| Automation | GitHub Actions |
+
+## Prerequisites
+
+- Python 3.11 recommended. The GitHub workflows use Python 3.11. The backend
+  Dockerfile currently uses `python:3.9-slim`, so validate dependency behavior if
+  you rely on that image.
+- Node.js 18 or newer.
+- PostgreSQL database access through `DATABASE_URL`.
+- Git LFS for model files in `daily_suggestion_system/model/*.pkl`.
+- Optional service credentials for Google OAuth, SePay, Resend, MongoDB, Gemini,
+  and Facebook automation.
+
+After cloning, pull LFS assets if they are not already present:
+
+```bash
+git lfs pull
+```
+
+## Local Development
+
+If you have a Render environment export at `DongAnhCapital.env`, generate the
+ignored local env files from the repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-local-env.ps1
+```
+
+This writes `backend/.env`, `frontend/.env`, and
+`daily_suggestion_system/.env`. It keeps deployed secrets local, overrides
+frontend/backend URLs to localhost, and enables local HTTP auth cookies.
+
+### Local Test Tutorial
+
+Use this flow before deploying a new feature or function:
+
+1. Put the latest Render export at the repo root as `DongAnhCapital.env`.
+   This file is ignored by git.
+2. Regenerate local env files:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\scripts\setup-local-env.ps1
+   ```
+
+3. Start the backend in the first terminal:
+
+   ```powershell
+   cd backend
+   py -3.11 -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   uvicorn main:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+4. Confirm the backend is alive:
+
+   ```text
+   http://localhost:8000/api/health
+   http://localhost:8000/docs
+   ```
+
+5. Start the frontend in a second terminal:
+
+   ```powershell
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+6. Open the app at:
+
+   ```text
+   http://localhost:5173
+   ```
+
+7. Smoke-test the feature you changed. For auth-related work, use
+   `http://localhost:5173` and `http://localhost:8000` consistently. Do not mix
+   `localhost` with `127.0.0.1`, because browser cookies can stop matching.
+
+8. Before deploying, run the frontend build:
+
+   ```powershell
+   cd frontend
+   npm run build
+   ```
+
+Google OAuth local testing also requires this redirect URI to be allowed in
+Google Cloud:
+
+```text
+http://localhost:5173/auth/google/callback
+```
+
+### Backend
+
+Run commands from `backend/` so relative model paths and `.env` loading behave as
+expected.
+
+```powershell
 cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-**Environment Variables (`backend/.env`):**
-*   `DATABASE_URL`: Connection string for NeonDB (Must use `sslmode=require`).
-*   `USE_XGB`: `true` (default) or `false`.
-*   `JWT_SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`: Authentication.
-*   `ALLOWED_ORIGINS`: Comma-separated CORS whitelist (defaults to `*` in dev).
-*   `RESEND_API_KEY`, `EMAIL_FROM`, `FRONTEND_URL`, `SUPPORT_EMAIL`: Transactional email — see `EMAIL_SETUP.md`.
-*   `SEPAY_API_TOKEN`, `SEPAY_WEBHOOK_SECRET`, `SEPAY_BANK_ID`, `SEPAY_BANK_ACCOUNT_NO`, `SEPAY_BANK_ACCOUNT_NAME`: SePay / VietQR payments.
-
-> The full list with descriptions lives in `CLAUDE.md`.
-
-**Run Server:**
-```bash
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 6.3. Frontend Setup
-```bash
+The API should respond at:
+
+```text
+http://localhost:8000/api/health
+http://localhost:8000/docs
+```
+
+Copy `backend/.env.example` to `backend/.env` and fill the values you need.
+
+Minimum backend variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string. SSL is expected by the DB helpers. |
+| `DATABASE_SSLMODE` | `require` for Render/Neon; use `disable` for a local Postgres server without SSL. |
+| `JWT_SECRET_KEY` | Stable signing key for access and refresh tokens. Required for persistent sessions. |
+| `ALLOWED_ORIGINS` | Comma-separated frontend origins. Use exact origins when cookies are involved. |
+| `APP_ENV`, `COOKIE_SECURE`, `COOKIE_DOMAIN`, `COOKIE_SAMESITE` | Local/prod cookie behavior. Use `APP_ENV=local`, `COOKIE_SECURE=false`, and empty `COOKIE_DOMAIN` for localhost. |
+| `USE_XGB` | `true` by default; controls XGBoost predictor loading behavior. |
+
+Feature-specific backend variables:
+
+| Variable | Used by |
+| --- | --- |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | Google OAuth login |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `FRONTEND_URL`, `SUPPORT_EMAIL` | Password reset and purchase emails |
+| `SEPAY_API_TOKEN`, `SEPAY_WEBHOOK_SECRET`, `SEPAY_BANK_ID`, `SEPAY_BANK_ACCOUNT_NO`, `SEPAY_BANK_ACCOUNT_NAME` | SePay/VietQR subscriptions |
+| `MONGODB_URI` | CafeF news feed |
+| `CHAT_GEMINI_API_KEY`, `CHAT_GEMINI_MODELS` | Pro/Premium AI chat and news analysis |
+
+For local browser auth, use `http://localhost:5173` for the frontend and
+`http://localhost:8000` for the API. Avoid mixing `localhost` and `127.0.0.1`
+while testing login cookies.
+
+### Frontend
+
+```powershell
 cd frontend
 npm install
-```
-**Environment Variables (`frontend/.env`):**
-*   `VITE_API_URL`: URL of the local backend (e.g., `http://localhost:8000/api`).
-
-**Run Development Server:**
-```bash
 npm run dev
 ```
 
-### 6.4. Executing the Data Pipeline Locally
-```bash
-cd daily_suggestion_system/src/daily_pipeline
-# Ensure PYTHONPATH is correctly set if running outside an IDE
+Create `frontend/.env` when you need to point the app at a non-production API:
+
+```env
+VITE_API_URL=http://localhost:8000/api
+```
+
+Build the frontend:
+
+```powershell
+cd frontend
+npm run build
+```
+
+Preview the production build:
+
+```powershell
+cd frontend
+npm run preview
+```
+
+### Daily Pipeline
+
+```powershell
+cd daily_suggestion_system
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+$env:DATABASE_URL="postgresql+psycopg2://..."
+cd src\daily_pipeline
 python run_daily_pipeline.py
 ```
 
----
+The pipeline writes to the shared database. Run it only against a database where
+you are comfortable updating OHLC, signal, summary, trade, VN30F1M, and LTR rows.
 
-## 7. Operational Troubleshooting & Known Behaviors
+### Facebook Bot
 
-*   **Database Connection Exhaustion:** The backend mitigates this via `NullPool` in SQLAlchemy. If connection limits are reached locally, ensure no rogue Python processes are holding connections open.
-*   **Missing Market Data / Pipeline Failures:** The `vnstock` library relies on third-party APIs (VCI). If the daily pipeline fails, check the GitHub Actions logs. Failures are typically caused by upstream guest limits or API changes. The pipeline is designed to halt to prevent data corruption.
-*   **CORS Violations:** Ensure `VITE_API_URL` exactly matches the backend's address. In development the backend defaults `ALLOWED_ORIGINS` to `*` (no credentials). In production `ALLOWED_ORIGINS` must list the exact SPA origins (e.g. `https://donganhcapital.com,https://www.donganhcapital.com`); this is what enables credentialed CORS so httpOnly auth cookies are accepted. Because the SPA and API live on different subdomains, CORS is required even though both share the `.donganhcapital.com` cookie domain.
-*   **Auth Cookies Rejected / 401 Loops:** Confirm the API is reached at `https://api.donganhcapital.com` (same registrable domain as the SPA) and that `ALLOWED_ORIGINS` is set — cookies scoped to `.donganhcapital.com` will not attach to a bare `*.onrender.com` host.
-*   **Empty VN30F1M Charts:** Intraday derivative data is only polled during active trading sessions (GMT+7: 08:50–11:45 and 12:45–16:30). The charts will naturally be empty during weekends, the lunch break, or overnight hours.
+```powershell
+cd facebook_bot
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+$env:GEMINI_API_KEY="..."
+$env:FB_PAGE_ID="..."
+$env:FB_PAGE_TOKEN="..."
+python main.py
+```
+
+### Marketing Project
+
+```powershell
+cd marketing
+npm install
+npm run studio
+```
+
+Render the promo reel:
+
+```powershell
+cd marketing
+npm run render-promo
+```
+
+## API Surface
+
+Representative backend endpoints:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Health and model-load status |
+| `GET /api/stocks` | Available ticker symbols |
+| `GET /api/market-status` | Market heatmap/status data |
+| `GET /api/vnindex` | VNINDEX OHLC series |
+| `GET /api/ohlc/{stock_id}` | Stock OHLC series |
+| `GET /api/predict/{stock_id}` | Historical data plus forecast candles |
+| `GET /api/ai-signals` | Breakout AI signals |
+| `GET /api/ltr-signals` | Pro/Premium LTR ranked signals |
+| `GET /api/trade-history` | Trade-manager history |
+| `GET /api/analytics/*` | Dashboard analytics and pipeline health |
+| `POST /api/subscribe` | Public email signup |
+| `POST /api/auth/*` | Register, login, logout, refresh, OAuth, password reset |
+| `POST /api/payments/*` | Order creation, trial, webhook, payment status/history |
+| `GET /api/news/*` | Login-gated news feed |
+| `POST /api/chat/*` | Pro/Premium AI chat and news analysis |
+
+FastAPI also exposes generated OpenAPI docs at `/docs` when the backend is
+running.
+
+## Data Model Overview
+
+The backend and pipeline expect these main PostgreSQL tables:
+
+| Table | Role |
+| --- | --- |
+| `stocks` | Ticker registry and stock metadata |
+| `stock_ohlc` | Historical OHLCV data by ticker |
+| `vnindex_ohlc` | VNINDEX market series |
+| `vn30f1m_intraday` | Intraday VN30F1M futures candles |
+| `ai_signals` | Breakout model signals with entry, take-profit, stop-loss, probability |
+| `daily_signal_summary` | Daily signal counts |
+| `trade_history` | Managed signal/trade lifecycle and realized outcomes |
+| `ltr_signals` | Daily learning-to-rank top picks |
+| `users` | Auth profiles, subscription state, token hashes, quotas |
+| `payments` | SePay order, status, subscription, and proration history |
+| `subscribers` | Public email signup list |
+
+MongoDB is used separately for the CafeF news feed. If `MONGODB_URI` is not set,
+news endpoints return service-unavailable responses without blocking the rest of
+the API.
+
+## Automation and Deployment
+
+### GitHub Actions
+
+- `.github/workflows/daily-pipeline.yml`
+  - Weekdays at `08:02 UTC`.
+  - Requires `DATABASE_URL`.
+  - Checks out Git LFS assets.
+  - Runs `daily_suggestion_system/src/daily_pipeline/run_daily_pipeline.py`.
+
+- `.github/workflows/facebook-bot.yml`
+  - Daily at `00:00 UTC` and `08:00 UTC`.
+  - Requires `GEMINI_API_KEY`, `FB_PAGE_ID`, and `FB_PAGE_TOKEN`.
+  - Runs `facebook_bot/main.py`.
+
+### Hosting Files
+
+- Root `Procfile`: `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT`
+- `backend/Procfile`: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- `backend/Dockerfile`: containerized backend entrypoint.
+- `frontend/vercel.json`: SPA fallback rewrite for Vercel/static hosting.
+
+## Development Notes
+
+- Keep market-data writes, signal generation, and payment subscription updates
+  pointed at the intended database. Most scripts perform real upserts.
+- Do not commit real `.env` files or service credentials.
+- Prefer adding database changes through the existing explicit SQL migration
+  pattern in `backend/db/` unless the project adopts a formal migration tool.
+- Auth tokens are intentionally stored in httpOnly cookies, not localStorage.
+  Frontend sessionStorage stores only non-sensitive profile cache data.
+- The backend uses in-memory TTL caches and semaphores to protect a small API
+  instance from expensive analytics, chat, and DB operations.
+- Public market endpoints can work without browser auth. News, LTR signals,
+  payments, profile, and chat endpoints require valid cookies and, for some
+  features, a Pro/Premium subscription.
+- There is no project-wide automated test suite in this checkout. At minimum,
+  run `npm run build` for the frontend and smoke-test `/api/health`, `/docs`,
+  and any endpoint touched by a backend change.
+
+## Useful Commands
+
+```powershell
+# Backend
+cd backend
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Frontend
+cd frontend
+npm run dev
+npm run build
+
+# Daily pipeline
+cd daily_suggestion_system\src\daily_pipeline
+python run_daily_pipeline.py
+
+# Marketing video studio
+cd marketing
+npm run studio
+
+# Facebook bot
+cd facebook_bot
+python main.py
+```

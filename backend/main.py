@@ -90,42 +90,40 @@ def get_cached(key: str, ttl: int, compute):
     return value
 
 def run_vn30f1m_sync():
-    try:
-        from vnstock import Quote
-        from uuid import uuid4
-        import pytz
-        vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
-        today = datetime.now(vn_tz).strftime("%Y-%m-%d")
-        df = Quote(symbol="VN30F1M", source="KBS").history(start=today, end=today, interval="1m")
-        if df is None or len(df) == 0:
-            return
-        df = df.rename(columns={"time": "time"})
-        df["time"] = pd.to_datetime(df["time"])
-        df = df[["time", "open", "high", "low", "close", "volume"]]
-        df = df.drop_duplicates(subset=["time"])
-        df = df.replace([np.inf, -np.inf], np.nan)
-        from db.connection import get_engine
-        from sqlalchemy import text
-        engine = get_engine()
-        temp_table = f"vn30f1m_temp_{uuid4().hex}"
-        with engine.begin() as conn:
+    """Fetch and upsert today's VN30F1M 1-minute candles. Raises on failure."""
+    from vnstock import Quote
+    from uuid import uuid4
+    import pytz
+    vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+    today = datetime.now(vn_tz).strftime("%Y-%m-%d")
+    df = Quote(symbol="VN30F1M", source="KBS").history(start=today, end=today, interval="1m")
+    if df is None or len(df) == 0:
+        return
+    df = df.rename(columns={"time": "time"})
+    df["time"] = pd.to_datetime(df["time"])
+    df = df[["time", "open", "high", "low", "close", "volume"]]
+    df = df.drop_duplicates(subset=["time"])
+    df = df.replace([np.inf, -np.inf], np.nan)
+    from db.connection import get_engine
+    from sqlalchemy import text
+    engine = get_engine()
+    temp_table = f"vn30f1m_temp_{uuid4().hex}"
+    with engine.begin() as conn:
+        try:
+            df.to_sql(temp_table, conn, if_exists="replace", index=False, chunksize=500)
+            conn.execute(text(f"""
+                INSERT INTO vn30f1m_intraday (time, open, high, low, close, volume)
+                SELECT time, open, high, low, close, volume FROM {temp_table}
+                ON CONFLICT (time) DO UPDATE SET
+                    open = EXCLUDED.open, high = EXCLUDED.high,
+                    low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume
+            """))
+        finally:
             try:
-                df.to_sql(temp_table, conn, if_exists="replace", index=False, chunksize=500)
-                conn.execute(text(f"""
-                    INSERT INTO vn30f1m_intraday (time, open, high, low, close, volume)
-                    SELECT time, open, high, low, close, volume FROM {temp_table}
-                    ON CONFLICT (time) DO UPDATE SET
-                        open = EXCLUDED.open, high = EXCLUDED.high, 
-                        low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume
-                """))
-            finally:
-                try:
-                    conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
-                except Exception as cleanup_err:
-                    print(f"Cleanup ignored due to prior errors: {cleanup_err}")
-        print(f"Live VN30F1M update fetched {len(df)} candles.")
-    except Exception as e:
-        print(f"Error live updating VN30F1M: {e}")
+                conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
+            except Exception as cleanup_err:
+                print(f"Cleanup ignored due to prior errors: {cleanup_err}")
+    print(f"Live VN30F1M update fetched {len(df)} candles.")
 def is_vn30f1m_open():
     import pytz
     from datetime import datetime, time as dt_time
@@ -152,11 +150,44 @@ def is_vn30f1m_open():
         
     return False
 
+# Circuit breaker for VN30F1M polling — KB Securities API is intermittently slow.
+# After _VN30F1M_FAILURE_THRESHOLD consecutive failures, back off for cooldown seconds.
+_vn30f1m_consecutive_failures = 0
+_vn30f1m_circuit_open_until = 0.0
+_VN30F1M_FAILURE_THRESHOLD = 3
+_VN30F1M_COOLDOWN_SECONDS = 300  # 5-minute backoff when circuit trips
+
+
 async def realtime_vn30f1m():
+    global _vn30f1m_consecutive_failures, _vn30f1m_circuit_open_until
     while True:
         try:
             if is_vn30f1m_open():
-                await asyncio.to_thread(run_vn30f1m_sync)
+                if time.time() < _vn30f1m_circuit_open_until:
+                    # Circuit open: API recently failed repeatedly, skip this cycle
+                    await asyncio.sleep(60)
+                    continue
+                try:
+                    # 95s cap: vnstock KBS retries 3× at 30s each = ~90s worst case
+                    await asyncio.wait_for(
+                        asyncio.to_thread(run_vn30f1m_sync),
+                        timeout=95,
+                    )
+                    _vn30f1m_consecutive_failures = 0
+                except asyncio.TimeoutError:
+                    _vn30f1m_consecutive_failures += 1
+                    print(f"VN30F1M update timed out (failure #{_vn30f1m_consecutive_failures})")
+                    if _vn30f1m_consecutive_failures >= _VN30F1M_FAILURE_THRESHOLD:
+                        _vn30f1m_circuit_open_until = time.time() + _VN30F1M_COOLDOWN_SECONDS
+                        print(f"VN30F1M circuit breaker tripped — skipping for {_VN30F1M_COOLDOWN_SECONDS}s")
+                        _vn30f1m_consecutive_failures = 0
+                except Exception as e:
+                    _vn30f1m_consecutive_failures += 1
+                    print(f"Error live updating VN30F1M (failure #{_vn30f1m_consecutive_failures}): {e}")
+                    if _vn30f1m_consecutive_failures >= _VN30F1M_FAILURE_THRESHOLD:
+                        _vn30f1m_circuit_open_until = time.time() + _VN30F1M_COOLDOWN_SECONDS
+                        print(f"VN30F1M circuit breaker tripped — skipping for {_VN30F1M_COOLDOWN_SECONDS}s")
+                        _vn30f1m_consecutive_failures = 0
         except Exception as e:
             print(f"Background task error: {e}")
         await asyncio.sleep(60)

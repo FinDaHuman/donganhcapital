@@ -6,11 +6,20 @@ Hardware target: ~8 GB RAM, Intel i7 Gen 11, RTX 3050 Ti
   - n_jobs=-1 uses all CPU cores
 
 Model choice — LGBMClassifier (binary cross-entropy):
-  LGBMRanker / LambdaRank was evaluated but dropped. With a ~2-4% binary positive
-  rate and ~167 stocks per day, the overwhelming majority of training pairs are
-  (negative, negative), contributing zero gradient to LambdaRank's pairwise loss.
-  A calibrated LGBMClassifier ranked by predict_proba[:,1] produces the same
-  ranking at serving time without gradient starvation.
+  LGBMRanker / LambdaRank was evaluated but dropped. With a ~3-5% binary positive
+  rate (8% 5-day return target) and ~167 stocks per day, most training pairs are still
+  (negative, negative) and contribute zero gradient to LambdaRank's pairwise loss.
+  A calibrated LGBMClassifier ranked by predict_proba[:,1] produces the same ranking
+  at serving time without gradient starvation.
+
+Label: 5-day forward close-to-close return > 8%
+  The 8% threshold targets meaningful breakouts with a more achievable base rate (~3-5%)
+  than the previous 10%/3-day label (~2%). The 5-day horizon gives the move time to
+  develop post-entry at open[T+1] without requiring near-limit-up action every day.
+
+Universe: 167 curated stocks from ltr_stock_universe.csv
+  Training is restricted to this universe for train/inference consistency.
+  Stocks with < 300 trading days are excluded from training only.
 
 Data split (3-way — avoids early-stopping leaking into holdout):
   Train : 2015-01-01 to 2022-12-31
@@ -53,7 +62,7 @@ for candidate in [
 from data_access.db_connection import get_engine
 from data_access.stock_data_loader import load_stock_data
 from data_access.market_data_loader import load_market_data
-from features.ltr_features import build_ltr_features, LTR_FEATURE_COLS
+from features.ltr_features import build_ltr_features, LTR_FEATURE_COLS, UNIVERSE_PATH
 from labels.ltr_label import build_ltr_labels
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
@@ -67,13 +76,30 @@ TRAIN_END       = "2026-12-31"
 MODEL_SAVE_PATH = Path(__file__).resolve().parents[2] / "model" / "ltr_model.pkl"
 
 
-def load_data():
-    engine = get_engine()
-    log.info("Loading stock OHLC from NeonDB …")
-    stock_df = load_stock_data(engine, start_date=TRAIN_START, end_date=TRAIN_END)
-    log.info(f"  stock_df: {len(stock_df):,} rows, {stock_df['stock_id'].nunique()} tickers")
+def load_universe_tickers() -> list[str] | None:
+    """Load the 167-stock curated universe. Returns None and aborts if CSV is missing."""
+    if not UNIVERSE_PATH.exists():
+        log.error(f"Universe CSV not found at {UNIVERSE_PATH} — aborting to prevent OOD training")
+        return None
+    universe = pd.read_csv(UNIVERSE_PATH, usecols=["stock_id"])
+    tickers = universe["stock_id"].dropna().unique().tolist()
+    log.info(f"Universe: {len(tickers)} tickers loaded from {UNIVERSE_PATH.name}")
+    return tickers
 
-    log.info("Loading market (VNINDEX) data …")
+
+def load_data(universe_tickers: list[str]):
+    engine = get_engine()
+    log.info("Loading stock OHLC from NeonDB ...")
+    stock_df = load_stock_data(engine, start_date=TRAIN_START, end_date=TRAIN_END)
+
+    before = stock_df["stock_id"].nunique()
+    stock_df = stock_df[stock_df["stock_id"].isin(universe_tickers)].reset_index(drop=True)
+    log.info(
+        f"  Universe filter: {before} -> {stock_df['stock_id'].nunique()} tickers "
+        f"({len(stock_df):,} rows)"
+    )
+
+    log.info("Loading market (VNINDEX) data ...")
     market_df = load_market_data(engine, start_date=TRAIN_START, end_date=TRAIN_END)
     log.info(f"  market_df: {len(market_df):,} rows")
     return stock_df, market_df
@@ -107,7 +133,7 @@ def build_dataset(stock_df: pd.DataFrame, market_df: pd.DataFrame):
     labeled_df["ltr_label"] = labeled_df["ltr_label"].astype(int)
 
     base_rate = labeled_df["ltr_label"].mean()
-    log.info(f"  Base rate (>6% next day): {base_rate:.4f} ({base_rate*100:.2f}%)")
+    log.info(f"  Base rate (>8% over 5d): {base_rate:.4f} ({base_rate*100:.2f}%)")
     log.info(f"  Total positives: {labeled_df['ltr_label'].sum():,} / {len(labeled_df):,}")
 
     return labeled_df, base_rate
@@ -137,7 +163,8 @@ def prepare_split(labeled_df: pd.DataFrame):
 def train(X_train, y_train, X_val, y_val, base_rate: float):
     log.info("Training LGBMClassifier …")
 
-    # Compensate for class imbalance so the model attends to the rare positive class
+    # Compensate for class imbalance so the model attends to the rare positive class.
+    # With 8%/5d label the base rate is ~3-5%, so scale_pos_weight is ~20-30×.
     scale_pos_weight = (1 - base_rate) / (base_rate + 1e-9)
     log.info(f"  scale_pos_weight: {scale_pos_weight:.1f}  (base_rate={base_rate:.4f})")
 
@@ -145,16 +172,19 @@ def train(X_train, y_train, X_val, y_val, base_rate: float):
         objective         = "binary",
         metric            = "auc",
 
-        n_estimators      = 1500,
-        learning_rate     = 0.03,
+        n_estimators      = 2000,
+        learning_rate     = 0.02,
         num_leaves        = 31,
-        min_child_samples = 20,
+        # Higher base rate (~3-5%) means more positives per leaf; slight regularization
+        # increase from 10 → 15 reduces overfitting without starving the model of signal.
+        min_child_samples = 15,
 
         scale_pos_weight  = scale_pos_weight,
 
         subsample         = 0.8,
         subsample_freq    = 1,
-        colsample_bytree  = 0.8,
+        # Slightly more feature randomization to prevent overfitting on rare class.
+        colsample_bytree  = 0.7,
 
         reg_alpha         = 0.1,
         reg_lambda        = 1.0,
@@ -165,7 +195,8 @@ def train(X_train, y_train, X_val, y_val, base_rate: float):
     )
 
     callbacks = [
-        lgb.early_stopping(stopping_rounds=100, verbose=True),
+        # More patience: weaker signal from 10% label means val-AUC fluctuates more.
+        lgb.early_stopping(stopping_rounds=150, verbose=True),
         lgb.log_evaluation(period=100),
     ]
 
@@ -197,7 +228,10 @@ def print_feature_importance(clf):
 
 
 def main():
-    stock_df, market_df = load_data()
+    universe_tickers = load_universe_tickers()
+    if universe_tickers is None:
+        sys.exit(1)
+    stock_df, market_df = load_data(universe_tickers)
 
     good_tickers = check_history_depth(stock_df, min_days=300)
     stock_df = stock_df[stock_df["stock_id"].isin(good_tickers)].reset_index(drop=True)
