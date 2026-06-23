@@ -107,6 +107,8 @@ def run_vn30f1m_sync():
     from db.connection import get_engine
     from sqlalchemy import text
     engine = get_engine()
+    if engine is None:
+        return
     temp_table = f"vn30f1m_temp_{uuid4().hex}"
     with engine.begin() as conn:
         try:
@@ -150,44 +152,62 @@ def is_vn30f1m_open():
         
     return False
 
-# Circuit breaker for VN30F1M polling — KB Securities API is intermittently slow.
-# After _VN30F1M_FAILURE_THRESHOLD consecutive failures, back off for cooldown seconds.
+# Circuit breaker for VN30F1M polling — KB Securities API is intermittently slow
+# and frequently unreachable from Render's servers.
+# After _VN30F1M_FAILURE_THRESHOLD consecutive failures, back off with exponential
+# backoff (300 → 600 → 1200 → 3600s cap) so a broken API day doesn't hammer the
+# thread pool every 5 minutes indefinitely.
 _vn30f1m_consecutive_failures = 0
 _vn30f1m_circuit_open_until = 0.0
+_vn30f1m_trip_count = 0  # resets when a successful fetch is observed
 _VN30F1M_FAILURE_THRESHOLD = 3
-_VN30F1M_COOLDOWN_SECONDS = 300  # 5-minute backoff when circuit trips
+_VN30F1M_BASE_COOLDOWN = 300
+_VN30F1M_MAX_COOLDOWN = 3600
+
+
+def _vn30f1m_cooldown(trip_count: int) -> int:
+    """Exponential backoff: 300 → 600 → 1200 → 3600s (cap)."""
+    return min(_VN30F1M_BASE_COOLDOWN * (2 ** max(trip_count - 1, 0)), _VN30F1M_MAX_COOLDOWN)
+
+
+def _trip_vn30f1m_circuit() -> None:
+    """Increment trip count, arm the circuit breaker, and log the cooldown."""
+    global _vn30f1m_consecutive_failures, _vn30f1m_circuit_open_until, _vn30f1m_trip_count
+    _vn30f1m_trip_count += 1
+    cooldown = _vn30f1m_cooldown(_vn30f1m_trip_count)
+    _vn30f1m_circuit_open_until = time.time() + cooldown
+    print(f"VN30F1M circuit breaker tripped (trip #{_vn30f1m_trip_count}) — skipping for {cooldown}s")
+    _vn30f1m_consecutive_failures = 0
 
 
 async def realtime_vn30f1m():
-    global _vn30f1m_consecutive_failures, _vn30f1m_circuit_open_until
+    global _vn30f1m_consecutive_failures, _vn30f1m_circuit_open_until, _vn30f1m_trip_count
     while True:
         try:
             if is_vn30f1m_open():
                 if time.time() < _vn30f1m_circuit_open_until:
-                    # Circuit open: API recently failed repeatedly, skip this cycle
                     await asyncio.sleep(60)
                     continue
                 try:
-                    # 95s cap: vnstock KBS retries 3× at 30s each = ~90s worst case
+                    # 35s cap: lets asyncio give up after ~1 vnstock retry (30s each)
+                    # instead of waiting for all 3 retries (~90s). The underlying thread
+                    # runs to completion regardless, but failure is detected much sooner.
                     await asyncio.wait_for(
                         asyncio.to_thread(run_vn30f1m_sync),
-                        timeout=95,
+                        timeout=35,
                     )
                     _vn30f1m_consecutive_failures = 0
+                    _vn30f1m_trip_count = 0
                 except asyncio.TimeoutError:
                     _vn30f1m_consecutive_failures += 1
                     print(f"VN30F1M update timed out (failure #{_vn30f1m_consecutive_failures})")
                     if _vn30f1m_consecutive_failures >= _VN30F1M_FAILURE_THRESHOLD:
-                        _vn30f1m_circuit_open_until = time.time() + _VN30F1M_COOLDOWN_SECONDS
-                        print(f"VN30F1M circuit breaker tripped — skipping for {_VN30F1M_COOLDOWN_SECONDS}s")
-                        _vn30f1m_consecutive_failures = 0
+                        _trip_vn30f1m_circuit()
                 except Exception as e:
                     _vn30f1m_consecutive_failures += 1
                     print(f"Error live updating VN30F1M (failure #{_vn30f1m_consecutive_failures}): {e}")
                     if _vn30f1m_consecutive_failures >= _VN30F1M_FAILURE_THRESHOLD:
-                        _vn30f1m_circuit_open_until = time.time() + _VN30F1M_COOLDOWN_SECONDS
-                        print(f"VN30F1M circuit breaker tripped — skipping for {_VN30F1M_COOLDOWN_SECONDS}s")
-                        _vn30f1m_consecutive_failures = 0
+                        _trip_vn30f1m_circuit()
         except Exception as e:
             print(f"Background task error: {e}")
         await asyncio.sleep(60)
