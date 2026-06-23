@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Activity, TrendingUp, BarChart3, LineChart,
     Lock, Calendar, Globe, Server, Database,
-    ChevronDown, ChevronUp, MapPin, Users, Mail, Phone, Facebook, Youtube, ShieldCheck,
+    ChevronDown, ChevronUp, MapPin, Users, Mail, Facebook, Youtube, ShieldCheck,
     CheckCircle2, Clock, Sparkles, Send, ArrowRight,
     Bot, Brain, Target, Shield, Zap, BarChart2, Eye, Cpu,
     XCircle, TrendingDown, AlertTriangle, BarChart,
@@ -80,7 +80,7 @@ export const MarqueeTicker = () => {
         { label: 'VNM', value: '+8.7%', up: true },
         { label: 'FPT', value: '+12.3%', up: true },
         { label: 'HPG', value: '+5.4%', up: true },
-        { label: 'Stocks Covered', value: '400+', up: null },
+        { label: 'Stocks Covered', value: '256', up: null },
         { label: 'AI Models', value: '3 Active', up: null },
         { label: 'VCB', value: '+6.1%', up: true },
         { label: 'MWG', value: '-2.3%', up: false },
@@ -135,9 +135,9 @@ export const HowItWorksSection = () => {
         {
             number: '01',
             title: 'Market Ingestion at Scale',
-            description: 'Every trading session, our data pipeline ingests price, volume, order flow, and derivatives data across 400+ Vietnamese equities on HOSE, HNX, and UPCoM in near real-time.',
+            description: 'Every trading session, our data pipeline ingests price, volume, order flow, and derivatives data across 256 Vietnamese equities on HOSE, HNX, and UPCoM in near real-time.',
             icon: Database,
-            detail: '400+ stocks · 3 exchanges',
+            detail: '256 stocks · 3 exchanges',
         },
         {
             number: '02',
@@ -221,7 +221,7 @@ export const HowItWorksSection = () => {
    ============================================================ */
 export const SocialProofSection = () => {
     const stats = [
-        { value: '400+', label: 'Stocks Monitored', sub: 'HOSE · HNX · UPCoM', icon: BarChart3 },
+        { value: '256', label: 'Stocks Monitored', sub: 'HOSE · HNX · UPCoM', icon: BarChart3 },
         { value: '3', label: 'Proprietary AI Models', sub: 'LightGBM & XGBoost', icon: Brain },
         { value: '87%', label: 'Avg. Signal Score', sub: 'Cross-validated confidence', icon: Target },
         { value: '< 1s', label: 'Signal Delivery', sub: 'After model computation', icon: Zap },
@@ -307,7 +307,7 @@ export const FeaturesSection = () => {
         {
             icon: Activity,
             title: 'Live Market Intelligence Dashboard',
-            description: 'A real-time treemap heatmap covering 400+ Vietnamese equities — visualize market breadth, sector rotation, and individual stock momentum at a glance during trading hours.',
+            description: 'A real-time treemap heatmap covering 256 Vietnamese equities — visualize market breadth, sector rotation, and individual stock momentum at a glance during trading hours.',
             span: 'md:col-span-2',
             highlight: ['HOSE', 'HNX', 'UPCoM', 'Real-time'],
         },
@@ -624,7 +624,7 @@ export const AIAdvantageSection = ({ onTabChange }) => {
             icon: Target,
             title: 'Predictive Signals',
             description: 'Our AI scans every Vietnamese equity daily, identifying high-probability opportunities before the crowd moves.',
-            stat: '400+',
+            stat: '256',
             statLabel: 'Stocks scanned daily',
         },
         {
@@ -903,17 +903,17 @@ export const FutureSection = () => {
             quarter: 'Q2 2026',
             status: 'completed',
             title: 'AI Signal Engine v1',
-            description: 'Deployed six AI models for stock prediction, sentiment analysis, and market trend detection across 400+ Vietnamese equities.',
+            description: 'Deployed six AI models for stock prediction, sentiment analysis, and market trend detection across 256 Vietnamese equities.',
         },
         {
             quarter: 'Q3 2026',
-            status: 'active',
+            status: 'completed',
             title: 'AI Agent: News Tracking & Personalization',
             description: 'Your AI Agent will track financial news, learn your investment style, and deliver personalized trade suggestions based on your unique profile and risk appetite.',
         },
         {
             quarter: 'Q4 2026',
-            status: 'planned',
+            status: 'active',
             title: 'AI Agent: Automated Trade Execution',
             description: 'With a single approval tap, your AI Agent executes trades through connected brokerages at optimal prices — zero manual intervention required.',
         },
@@ -1248,7 +1248,6 @@ export const PricingSection = ({ onTabChange }) => {
             features: [
                 { text: 'Vietnam market dashboard', included: true },
                 { text: 'Daily news & price board', included: true },
-                { text: 'Stock price alerts by ticker', included: true },
                 { text: 'AI news analysis (limited)', included: true },
                 { text: 'Investment chatbot (limited)', included: true },
                 { text: '1 FinAI Stock Predict model', included: true },
@@ -1562,7 +1561,7 @@ export const QAndASection = () => {
     const faqs = [
         {
             q: "How do the AI trading agents work?",
-            a: "Our AI agents continuously analyze 400+ Vietnamese stocks using 3 proprietary models. They identify high-probability trading opportunities, calculate entry/exit prices, and generate actionable signals — all automatically, every trading day."
+            a: "Our AI agents continuously analyze 256 Vietnamese stocks using 3 proprietary models. They identify high-probability trading opportunities, calculate entry/exit prices, and generate actionable signals — all automatically, every trading day."
         },
         {
             q: "What is the upcoming AI Agent feature?",
@@ -1590,7 +1589,7 @@ export const QAndASection = () => {
         },
         {
             q: "When will the AI Agent be available?",
-            a: "The AI Agent is currently in development (Q3 2026 target). Subscribe with your email to be notified at launch. Early adopters will receive priority access and help shape the product through beta testing."
+            a: "The AI Agent is currently in development (Q4 2026 target). Subscribe with your email to be notified at launch. Early adopters will receive priority access and help shape the product through beta testing."
         },
         {
             q: "Can I upgrade or switch plans later?",
@@ -1751,15 +1750,15 @@ export const AboutUsSection = () => {
                     </div>
 
                     <div className="space-y-3 sm:space-y-4">
-                        <h4 className="type-label mb-3 sm:mb-4">Connect Directly</h4>
-                        <a href="tel:0813221910" className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all group cursor-pointer"
+                        <h4 className="type-label mb-3 sm:mb-4">Support</h4>
+                        <a href="mailto:support@donganhcapital.com" className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all group cursor-pointer"
                             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--gold-border)' }}>
                             <div className="p-2 rounded-lg" style={{ background: 'rgba(201,169,110,0.1)', color: 'var(--gold-primary)' }}>
-                                <Phone size={18} />
+                                <Mail size={18} />
                             </div>
                             <div>
-                                <p className="type-caption" style={{ color: 'var(--text-muted)' }}>Direct Line</p>
-                                <p className="type-body font-medium" style={{ color: 'var(--text-primary)' }}>0813 221 910</p>
+                                <p className="type-caption" style={{ color: 'var(--text-muted)' }}>Support Email</p>
+                                <p className="type-body font-medium" style={{ color: 'var(--text-primary)' }}>support@donganhcapital.com</p>
                             </div>
                         </a>
                         <a href="mailto:contact@donganhcapital.com" className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all group cursor-pointer"
@@ -1831,9 +1830,6 @@ export const FooterSection = ({ onTabChange }) => {
                             </a>
                             <a href="mailto:support@donganhcapital.com" className="block transition-colors hover:text-gold-primary" style={{ color: 'var(--text-muted)' }}>
                                 support@donganhcapital.com
-                            </a>
-                            <a href="tel:0813221910" className="block transition-colors" style={{ color: 'var(--text-muted)' }}>
-                                0813 221 910
                             </a>
                         </div>
                     </div>

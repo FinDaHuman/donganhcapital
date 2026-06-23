@@ -118,7 +118,7 @@ const LandingPage = ({ onTabChange }) => {
     const scrollContainerRef = useRef(null);
 
     /* Animated counters */
-    const stocksCounter = useCounter(400, 2200);
+    const stocksCounter = useCounter(256, 2200);
     const modelsCounter = useCounter(3, 1500);
     const accuracyCounter = useCounter(87, 1800);
 
@@ -543,7 +543,7 @@ const LandingPage = ({ onTabChange }) => {
                                 lineHeight: 1.7,
                             }}
                         >
-                            An AI Agent that tracks market news, learns your trading style, suggests trades tailored to your taste, and executes with your approval — across 400+ Vietnamese equities.
+                            An AI Agent that tracks market news, learns your trading style, suggests trades tailored to your taste, and executes with your approval — across 256 Vietnamese equities.
                         </motion.p>
 
                         {/* ── Trust micro-line ── */}
@@ -610,7 +610,7 @@ const LandingPage = ({ onTabChange }) => {
                             }}
                         >
                             {[
-                                { ref: stocksCounter.ref, value: `${stocksCounter.count}+`, label: 'Stocks Monitored' },
+                                { ref: stocksCounter.ref, value: stocksCounter.count.toString(), label: 'Stocks Monitored' },
                                 { ref: null, value: 'Real-time', label: 'Market Intelligence' },
                                 { ref: modelsCounter.ref, value: modelsCounter.count.toString(), label: 'AI Models' },
                                 { ref: accuracyCounter.ref, value: `${accuracyCounter.count}%`, label: 'Avg. Signal Score' },
