@@ -10,19 +10,23 @@ import ChatbotTab from './components/ChatbotTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
-import { Search, AlertTriangle, X } from 'lucide-react';
+import { Search, AlertTriangle, X, Mail } from 'lucide-react';
 import { SkeletonChart } from './components/SkeletonLoader';
 import AuthPage from './pages/AuthPage';
 import ProfilePage from './pages/ProfilePage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
 import CheckoutPage from './pages/CheckoutPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import { useAuth } from './context/AuthContext';
 
 function App() {
-    const { user } = useAuth();
+    const { user, resendVerification } = useAuth();
     const [dismissedExpiry, setDismissedExpiry] = useState(false);
+    const [dismissedVerify, setDismissedVerify] = useState(false);
+    const [resendVerifyLoading, setResendVerifyLoading] = useState(false);
+    const [resendVerifyMsg, setResendVerifyMsg] = useState('');
 
     // Compute expiry warning
     const expiryWarning = (() => {
@@ -34,6 +38,22 @@ function App() {
         }
         return null;
     })();
+
+    const handleResendVerify = async () => {
+        setResendVerifyLoading(true);
+        setResendVerifyMsg('');
+        const result = await resendVerification();
+        setResendVerifyLoading(false);
+        setResendVerifyMsg(result.success ? 'Verification email sent! Check your inbox.' : result.error);
+    };
+
+    // Show the email verification banner for unverified email/password accounts,
+    // but not on auth pages or the verify-email page itself.
+    const showVerifyBanner =
+        user &&
+        user.auth_provider === 'email' &&
+        !user.email_verified &&
+        !dismissedVerify;
 
     // Read initial tab from URL path (e.g. /privacy) or query param fallback
     const path = window.location.pathname.replace('/', '');
@@ -166,6 +186,44 @@ function App() {
                     </button>
                 </div>
             )}
+            {/* Email verification nudge banner — shown for unverified email/password accounts */}
+            {showVerifyBanner && activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'verify-email' && activeTab !== 'reset-password' && (
+                <div
+                    className="w-full flex flex-col items-center justify-center gap-1 px-4 py-2"
+                    style={{
+                        background: 'rgba(59,130,246,0.07)',
+                        borderBottom: '1px solid rgba(59,130,246,0.18)',
+                        fontFamily: "'Outfit', sans-serif",
+                    }}
+                >
+                    <div className="flex items-center gap-2.5">
+                        <Mail size={13} style={{ color: '#60a5fa', flexShrink: 0 }} />
+                        <span className="text-xs" style={{ color: '#93c5fd' }}>
+                            Please verify your email to claim your free Pro trial.{' '}
+                            <button
+                                onClick={handleResendVerify}
+                                disabled={resendVerifyLoading}
+                                className="underline cursor-pointer"
+                                style={{ background: 'none', border: 'none', color: '#60a5fa', fontFamily: "'Outfit', sans-serif", fontSize: 'inherit', opacity: resendVerifyLoading ? 0.6 : 1 }}
+                            >
+                                {resendVerifyLoading ? 'Sending…' : 'Resend email →'}
+                            </button>
+                        </span>
+                        <button
+                            onClick={() => setDismissedVerify(true)}
+                            className="ml-auto cursor-pointer"
+                            style={{ background: 'none', border: 'none', color: '#60a5fa', opacity: 0.5, flexShrink: 0, fontSize: '16px', lineHeight: 1, padding: 0 }}
+                            aria-label="Dismiss"
+                        >
+                            <X size={13} />
+                        </button>
+                    </div>
+                    {resendVerifyMsg && (
+                        <span className="text-xs" style={{ color: '#93c5fd' }}>{resendVerifyMsg}</span>
+                    )}
+                </div>
+            )}
+
             {activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'profile' && activeTab !== 'checkout' && activeTab !== 'privacy' && activeTab !== 'terms' && activeTab !== 'reset-password' && <Header activeTab={activeTab} onTabChange={handleTabChange} />}
 
             <div className="flex-1 flex flex-col w-full min-h-0 relative">
@@ -328,6 +386,10 @@ function App() {
 
                     {activeTab === 'reset-password' && (
                         <ResetPasswordPage onTabChange={handleTabChange} />
+                    )}
+
+                    {activeTab === 'verify-email' && (
+                        <VerifyEmailPage onTabChange={handleTabChange} />
                     )}
 
                     {activeTab === 'checkout' && (

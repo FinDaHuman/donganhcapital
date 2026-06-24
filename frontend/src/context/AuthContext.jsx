@@ -320,6 +320,28 @@ export const AuthProvider = ({ children }) => {
         }
     }, []);
 
+    // ── Email verification ──
+    const verifyEmail = useCallback(async (token) => {
+        try {
+            const { data } = await authApi.post('/api/auth/verify-email', { token });
+            await refreshUser();
+            return { success: true, message: data.message };
+        } catch (err) {
+            const message = extractError(err, 'Verification failed. The link may be invalid or expired.');
+            return { success: false, error: message };
+        }
+    }, [refreshUser]);
+
+    const resendVerification = useCallback(async () => {
+        try {
+            const { data } = await authApi.post('/api/auth/resend-verification');
+            return { success: true, message: data.message };
+        } catch (err) {
+            const message = extractError(err, 'Could not send verification email. Please try again.');
+            return { success: false, error: message };
+        }
+    }, []);
+
     // ── Claim the free 1-week Pro trial (limited-time offer) ──
     const claimProTrial = useCallback(async () => {
         try {
@@ -360,6 +382,8 @@ export const AuthProvider = ({ children }) => {
         updateProfile,
         refreshUser,
         claimProTrial,
+        verifyEmail,
+        resendVerification,
         authApi,
     };
 

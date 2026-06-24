@@ -46,6 +46,7 @@ from utils.security import (
 from utils.mailer import (
     send_password_reset_email,
     send_google_account_notice_email,
+    send_verification_email,
     FRONTEND_URL,
 )
 
@@ -83,6 +84,7 @@ ACCESS_COOKIE = "dac_access_token"
 REFRESH_COOKIE = "dac_refresh_token"
 
 RESET_TOKEN_EXPIRE_MINUTES = 60
+VERIFY_TOKEN_EXPIRE_HOURS = 24
 
 
 def _validate_password_strength(v: str) -> str:
@@ -151,6 +153,10 @@ class ResetPasswordRequest(BaseModel):
     @classmethod
     def validate_password(cls, v):
         return _validate_password_strength(v)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(..., min_length=20, max_length=256)
 
 
 class UpdateProfileRequest(BaseModel):
@@ -285,6 +291,9 @@ def _format_user(user: dict) -> dict:
         # Limited-time free Pro trial: True once the account has claimed it (ever).
         # Lets the UI hide the offer for users who've already used it.
         "pro_trial_claimed": bool(user.get("pro_trial_claimed_at")),
+        # Email/password accounts must verify their inbox before claiming the Pro trial.
+        # Google OAuth users are always True (verified by Google on signup).
+        "email_verified": bool(user.get("email_verified")),
         "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
     }
 
@@ -294,8 +303,13 @@ def _format_user(user: dict) -> dict:
 # ══════════════════════════════════════
 
 @router.post("/register")
-async def register(body: RegisterRequest, request: Request, response: Response):
-    """Register a new user with email and password."""
+async def register(body: RegisterRequest, request: Request, response: Response, background_tasks: BackgroundTasks):
+    """Register a new user with email and password.
+
+    The account is created and immediately logged in, but email_verified starts
+    as FALSE. A verification link is emailed in the background; the Pro trial
+    claim is gated until the user clicks it.
+    """
     client_ip = get_client_ip(request)
     if not check_auth_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
@@ -305,6 +319,12 @@ async def register(body: RegisterRequest, request: Request, response: Response):
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     hashed_pw = hash_password(body.password)
+
+    # Generate email verification token before the INSERT so we can store its
+    # hash atomically with the user row (single round trip, no race window).
+    raw_verify_token = secrets.token_urlsafe(32)
+    verify_token_hash = hash_token(raw_verify_token)
+    verify_expires = datetime.now(timezone.utc) + timedelta(hours=VERIFY_TOKEN_EXPIRE_HOURS)
 
     with engine.begin() as conn:
         # Check if email already exists
@@ -320,15 +340,23 @@ async def register(body: RegisterRequest, request: Request, response: Response):
                 detail="Unable to create account. Please try a different email or sign in."
             )
 
-        # Insert new user
+        # Insert new user — email_verified is explicitly FALSE so the column
+        # default can never silently skip verification for new accounts.
         result = conn.execute(
             text("""
-                INSERT INTO users (email, hashed_password, full_name, auth_provider)
-                VALUES (:email, :password, :name, 'email')
-                RETURNING id, email, full_name, avatar_url, auth_provider, 
-                          risk_appetite, subscription_tier, created_at
+                INSERT INTO users (
+                    email, hashed_password, full_name, auth_provider,
+                    email_verified, email_verify_token_hash, email_verify_expires_at
+                )
+                VALUES (:email, :password, :name, 'email',
+                        FALSE, :verify_hash, :verify_expires)
+                RETURNING id, email, full_name, avatar_url, auth_provider,
+                          risk_appetite, subscription_tier, email_verified, created_at
             """),
-            {"email": body.email, "password": hashed_pw, "name": body.full_name}
+            {
+                "email": body.email, "password": hashed_pw, "name": body.full_name,
+                "verify_hash": verify_token_hash, "verify_expires": verify_expires,
+            }
         )
         user = dict(result.mappings().first())
 
@@ -342,6 +370,11 @@ async def register(body: RegisterRequest, request: Request, response: Response):
             text("UPDATE users SET refresh_token_hash = :hash WHERE id = :id"),
             {"hash": hash_token(refresh_token), "id": user["id"]}
         )
+
+    # Send verification email in the background — never blocks or fails the
+    # registration response. The link is valid for VERIFY_TOKEN_EXPIRE_HOURS.
+    verify_url = f"{FRONTEND_URL}/verify-email?token={raw_verify_token}"
+    background_tasks.add_task(send_verification_email, body.email, verify_url, body.full_name)
 
     _set_auth_cookies(response, access_token, refresh_token)
 
@@ -365,7 +398,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
                 SELECT id, email, hashed_password, full_name, avatar_url,
                        auth_provider, risk_appetite, subscription_tier,
                        subscription_period, subscription_expires_at,
-                       pro_trial_claimed_at, created_at,
+                       pro_trial_claimed_at, email_verified, created_at,
                        failed_login_attempts, locked_until, is_active
                 FROM users WHERE email = :email
             """),
@@ -694,6 +727,113 @@ async def reset_password(
 
 
 # ══════════════════════════════════════
+#   EMAIL VERIFICATION ENDPOINTS
+# ══════════════════════════════════════
+
+@router.post("/verify-email")
+async def verify_email(body: VerifyEmailRequest, request: Request):
+    """Consume an email verification token and mark the account as verified.
+
+    No authentication required — the token itself is the credential (256-bit
+    entropy via secrets.token_urlsafe(32)). The user may be on a different
+    device than where they registered. Idempotent: a second call with the same
+    token fails because the token is cleared on first use.
+    """
+    client_ip = get_client_ip(request)
+    if not check_auth_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+
+    engine = get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    token_hash = hash_token(body.token)
+
+    with engine.begin() as conn:
+        user = conn.execute(
+            text("""
+                SELECT id FROM users
+                WHERE email_verify_token_hash = :hash
+                  AND email_verify_expires_at > NOW()
+                  AND email_verified = FALSE
+                  AND is_active = TRUE
+            """),
+            {"hash": token_hash},
+        ).mappings().first()
+
+        if not user:
+            raise HTTPException(
+                status_code=400,
+                detail="This verification link is invalid or has expired. Please request a new one.",
+            )
+
+        # Verify and consume the token atomically — a second attempt with the
+        # same token finds email_verified = TRUE and gets a 400 above.
+        conn.execute(
+            text("""
+                UPDATE users SET
+                    email_verified = TRUE,
+                    email_verify_token_hash = NULL,
+                    email_verify_expires_at = NULL,
+                    updated_at = NOW()
+                WHERE id = :id
+            """),
+            {"id": user["id"]},
+        )
+
+    logger.info("Email verified for user_id=%s", user["id"])
+    return {"message": "Your email has been verified successfully."}
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+):
+    """Resend the email verification link to the authenticated user.
+
+    Silent no-op if the account is already verified or is a Google account
+    (both have nothing to verify). Sends to the user's own email — no email
+    parameter is accepted to prevent enumeration and spam abuse.
+    """
+    client_ip = get_client_ip(request)
+    if not check_auth_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+
+    # Google accounts and already-verified accounts need nothing.
+    if user.get("email_verified") or user.get("auth_provider") == "google":
+        return {"message": "Your email is already verified."}
+
+    engine = get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hash_token(raw_token)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=VERIFY_TOKEN_EXPIRE_HOURS)
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("""
+                UPDATE users SET
+                    email_verify_token_hash = :hash,
+                    email_verify_expires_at = :expires,
+                    updated_at = NOW()
+                WHERE id = :id
+            """),
+            {"hash": token_hash, "expires": expires_at, "id": user["id"]},
+        )
+
+    verify_url = f"{FRONTEND_URL}/verify-email?token={raw_token}"
+    background_tasks.add_task(
+        send_verification_email, user["email"], verify_url, user.get("full_name")
+    )
+
+    return {"message": "Verification email sent. Please check your inbox."}
+
+
+# ══════════════════════════════════════
 #   USER PROFILE ENDPOINTS
 # ══════════════════════════════════════
 
@@ -734,7 +874,7 @@ async def update_me(
             text(f"""
                 UPDATE users SET {', '.join(updates)} WHERE id = :id
                 RETURNING id, email, full_name, avatar_url, auth_provider,
-                          risk_appetite, subscription_tier, created_at
+                          risk_appetite, subscription_tier, email_verified, created_at
             """),
             params
         )
@@ -790,13 +930,18 @@ async def google_oauth_callback(
 
         if existing:
             user = dict(existing)
-            # Update Google info if needed (user might have registered with email first)
+            # Update Google info if needed (user might have registered with email first).
+            # Google has verified this email so we can safely mark email_verified = TRUE
+            # even if the user never clicked our own verification link.
             conn.execute(
                 text("""
                     UPDATE users SET
                         google_id = COALESCE(google_id, :gid),
                         avatar_url = COALESCE(:avatar, avatar_url),
                         full_name = COALESCE(:name, full_name),
+                        email_verified = TRUE,
+                        email_verify_token_hash = NULL,
+                        email_verify_expires_at = NULL,
                         updated_at = NOW(),
                         failed_login_attempts = 0,
                         locked_until = NULL
@@ -816,11 +961,11 @@ async def google_oauth_callback(
             )
             user = dict(result.mappings().first())
         else:
-            # Create new user
+            # Create new user — Google has already verified this email address.
             result = conn.execute(
                 text("""
-                    INSERT INTO users (email, google_id, full_name, avatar_url, auth_provider)
-                    VALUES (:email, :gid, :name, :avatar, 'google')
+                    INSERT INTO users (email, google_id, full_name, avatar_url, auth_provider, email_verified)
+                    VALUES (:email, :gid, :name, :avatar, 'google', TRUE)
                     RETURNING *
                 """),
                 {

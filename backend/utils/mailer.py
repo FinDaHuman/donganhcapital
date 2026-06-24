@@ -249,6 +249,40 @@ async def send_purchase_confirmation_email(
     )
 
 
+async def send_verification_email(to: str, verify_url: str, full_name: str | None = None) -> bool:
+    """Email verification link sent immediately after email/password registration."""
+    name = html.escape(full_name.strip()) if full_name else "there"
+    body = f"""
+      <p style="margin:0 0 12px 0;font-size:15px;line-height:24px;color:#3f3f46;">Hi {name},</p>
+      <p style="margin:0 0 4px 0;font-size:15px;line-height:24px;color:#3f3f46;">
+        Welcome to DongAnh Capital! Please verify your email address to unlock
+        all features, including the free <strong>1-week Pro trial</strong>.
+        This link expires in <strong>24 hours</strong>.
+      </p>
+      {_button("Verify Email Address", verify_url)}
+      <p style="margin:0 0 8px 0;font-size:13px;line-height:20px;color:#71717a;">
+        If the button doesn't work, copy and paste this link into your browser:<br>
+        <a href="{verify_url}" style="color:{GOLD};word-break:break-all;">{verify_url}</a>
+      </p>
+      <p style="margin:16px 0 0 0;font-size:13px;line-height:20px;color:#71717a;">
+        If you didn't create this account, you can safely ignore this email.
+      </p>
+    """
+    text = (
+        f"Hi {full_name or 'there'},\n\n"
+        "Welcome to DongAnh Capital! Please verify your email address to unlock "
+        "all features, including the free 1-week Pro trial.\n\n"
+        f"Verify here (expires in 24 hours):\n{verify_url}\n\n"
+        "If you didn't create this account, ignore this email."
+    )
+    return await send_email(
+        to,
+        "Verify your DongAnh Capital email address",
+        _wrap("Verify your email", body),
+        text,
+    )
+
+
 async def send_trial_started_email(
     to: str,
     expires_at: str,

@@ -292,6 +292,14 @@ async def claim_pro_trial(
     if user.get("pro_trial_claimed_at"):
         raise HTTPException(status_code=409, detail="You've already used your free Pro trial.")
 
+    # Email/password accounts must verify their inbox first. Google OAuth users
+    # are always verified (Google guarantees it at the OAuth callback).
+    if not user.get("email_verified"):
+        raise HTTPException(
+            status_code=403,
+            detail="Please verify your email address before claiming the Pro trial. Check your inbox for a verification link.",
+        )
+
     # Only free-tier accounts with no active paid plan are eligible.
     current_tier = user.get("subscription_tier", "free")
     expires_at = user.get("subscription_expires_at")

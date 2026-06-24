@@ -87,6 +87,33 @@ def run_user_migration():
             ADD COLUMN IF NOT EXISTS pro_trial_claimed_at TIMESTAMP WITH TIME ZONE;
         """))
 
+        # Email verification for email/password accounts — gates the free Pro trial.
+        # Google OAuth users are pre-verified by Google and are set TRUE on insert.
+        # Existing users created before the feature ship date (2026-06-25 UTC+7)
+        # are grandfathered TRUE. The cutoff makes the backfill idempotent on every
+        # cold-start re-run: newly-registered unverified users always have
+        # created_at after the cutoff and are never touched by this UPDATE.
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+        """))
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS email_verify_token_hash VARCHAR(255);
+        """))
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS email_verify_expires_at TIMESTAMP WITH TIME ZONE;
+        """))
+        conn.execute(text("""
+            UPDATE users SET email_verified = TRUE
+            WHERE email_verified = FALSE
+              AND (
+                google_id IS NOT NULL
+                OR created_at < TIMESTAMP WITH TIME ZONE '2026-06-25 00:00:00+07:00'
+              );
+        """))
+
         # AI chat / news-analysis daily quota (Pro = limited, Premium = unlimited).
         # DB-backed so it survives Render cold starts — the in-memory auth
         # rate-limiter does not, so it can't be reused for metering. Stores only a
@@ -116,6 +143,11 @@ def run_user_migration():
             CREATE INDEX IF NOT EXISTS idx_users_reset_token_hash
             ON users(reset_token_hash)
             WHERE reset_token_hash IS NOT NULL;
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_users_email_verify_token
+            ON users(email_verify_token_hash)
+            WHERE email_verify_token_hash IS NOT NULL;
         """))
 
     logger.info("User migration completed successfully")

@@ -189,8 +189,8 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
             const result = await register(email, password, fullName);
             setLoading(false);
             if (result.success) {
-                setSuccess('Account created! Redirecting...');
-                setTimeout(() => onTabChange && onTabChange('dashboard'), 800);
+                setSuccess('Account created! Check your inbox to verify your email, then claim your free Pro trial.');
+                setTimeout(() => onTabChange && onTabChange('dashboard'), 2000);
             } else {
                 setError(result.error);
             }
