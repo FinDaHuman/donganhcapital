@@ -42,7 +42,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
     const [trades, setTrades] = useState([]);
     const [statusFilter, setStatusFilter] = useState(null);
     const [tradesLoading, setTradesLoading] = useState(true);
-    const [minWinRate, setMinWinRate] = useState(0);
+    const [minWinRate, setMinWinRate] = useState(0.85);
     const [sortConfig, setSortConfig] = useState({ key: 'entry_date', direction: 'desc' });
 
     // Active section
