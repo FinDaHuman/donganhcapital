@@ -5,9 +5,10 @@ Design constraints (see PRODUCTION_CONSTRAINTS.md / NEWS_FEATURE_PLAN.md):
     Only a bounded ~280-char preview is returned, and only for the rare
     (~0.1 %) docs whose AI summary is too thin. The slice is computed inside
     Mongo via ``$substrCP`` so the full body never leaves the database.
-  - Sorting / pagination is on ``created_at`` (a true Date on 100 % of done
-    docs, backed by the ``status_created_at`` index). ``published_at`` is mixed
-    BSON type + format, so it is display-only.
+  - Sorting / pagination is on ``published_at`` (uniformly a BSON Date on all
+    done docs after the 2026-06 DB rework, backed by the ``status_published_at``
+    compound index). ``_id`` is used as a tiebreaker because up to ~10 docs can
+    share the same ``published_at`` minute.
   - status == "done" only (these are the docs with AI summaries).
 """
 
@@ -86,23 +87,22 @@ def get_news(category=None, ticker=None, impact=None, cursor=None, limit=MAX_LIM
     if ticker:
         match["summary_json.tickers"] = ticker.upper()
     if cursor:
-        # Opaque compound cursor "<created_at_iso>|<_id_hex>". The _id tiebreaker
-        # makes pagination correct even if two docs ever share a created_at
-        # (today they don't, but the scraper could batch-insert in future).
+        # Opaque compound cursor "<published_at_iso>|<_id_hex>". The _id tiebreaker
+        # is essential: up to ~10 docs share the same published_at minute.
         try:
-            created_part, _, id_part = cursor.rpartition("|")
-            cur_dt = datetime.fromisoformat(created_part)
+            pub_part, _, id_part = cursor.rpartition("|")
+            cur_dt = datetime.fromisoformat(pub_part)
             cur_id = ObjectId(id_part)
             match["$or"] = [
-                {"created_at": {"$lt": cur_dt}},
-                {"created_at": cur_dt, "_id": {"$lt": cur_id}},
+                {"published_at": {"$lt": cur_dt}},
+                {"published_at": cur_dt, "_id": {"$lt": cur_id}},
             ]
         except (ValueError, TypeError, InvalidId):
             pass  # bad cursor → treat as first page
 
     pipeline = [
         {"$match": match},
-        {"$sort": {"created_at": -1, "_id": -1}},
+        {"$sort": {"published_at": -1, "_id": -1}},
         {"$limit": limit},
         {"$project": {
             "_id": 0,
@@ -125,10 +125,10 @@ def get_news(category=None, ticker=None, impact=None, cursor=None, limit=MAX_LIM
     docs = list(coll.aggregate(pipeline))
 
     items = []
-    last_created = None
+    last_published = None
     last_cursor_id = None
     for d in docs:
-        last_created = d.get("created_at")
+        last_published = d.get("published_at")
         last_cursor_id = d.get("cursor_id")
         summary = [s for s in (d.get("summary") or []) if isinstance(s, str)]
         item = {
@@ -151,8 +151,8 @@ def get_news(category=None, ticker=None, impact=None, cursor=None, limit=MAX_LIM
 
     # Only advertise a next cursor when the page was full (more may exist).
     next_cursor = None
-    if last_created and last_cursor_id and len(items) == limit:
-        next_cursor = f"{_iso(last_created)}|{last_cursor_id}"
+    if last_published and last_cursor_id and len(items) == limit:
+        next_cursor = f"{_iso(last_published)}|{last_cursor_id}"
     return {"items": items, "next_cursor": next_cursor}
 
 

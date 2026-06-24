@@ -337,6 +337,10 @@ app.include_router(payments_router)
 from routers.news import router as news_router
 app.include_router(news_router)
 
+# --- Macro News Router (separate Atlas cluster, login-gated) ---
+from routers.macro_news import router as macro_news_router
+app.include_router(macro_news_router)
+
 # --- Chat Router (Gemini-backed AI chatbot + news analysis, Pro/Premium gated) ---
 from routers.chat import router as chat_router
 app.include_router(chat_router)
