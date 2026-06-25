@@ -80,7 +80,7 @@ export const MarqueeTicker = () => {
         { label: 'VNM', value: '+8.7%', up: true },
         { label: 'FPT', value: '+12.3%', up: true },
         { label: 'HPG', value: '+5.4%', up: true },
-        { label: 'Stocks Covered', value: '256', up: null },
+        { label: 'Stocks Covered', value: '226', up: null },
         { label: 'AI Models', value: '3 Active', up: null },
         { label: 'VCB', value: '+6.1%', up: true },
         { label: 'MWG', value: '-2.3%', up: false },
@@ -135,9 +135,9 @@ export const HowItWorksSection = () => {
         {
             number: '01',
             title: 'Market Ingestion at Scale',
-            description: 'Every trading session, our data pipeline ingests price, volume, order flow, and derivatives data across 256 Vietnamese equities on HOSE, HNX, and UPCoM in near real-time.',
+            description: 'Every trading session, our data pipeline ingests price, volume, order flow, and derivatives data across 226 Vietnamese equities on HOSE, HNX, and UPCoM in near real-time.',
             icon: Database,
-            detail: '256 stocks · 3 exchanges',
+            detail: '226 stocks · 3 exchanges',
         },
         {
             number: '02',
@@ -221,7 +221,7 @@ export const HowItWorksSection = () => {
    ============================================================ */
 export const SocialProofSection = () => {
     const stats = [
-        { value: '256', label: 'Stocks Monitored', sub: 'HOSE · HNX · UPCoM', icon: BarChart3 },
+        { value: '226', label: 'Stocks Monitored', sub: 'HOSE · HNX · UPCoM', icon: BarChart3 },
         { value: '3', label: 'Proprietary AI Models', sub: 'LightGBM & XGBoost', icon: Brain },
         { value: '87%', label: 'Avg. Signal Score', sub: 'Cross-validated confidence', icon: Target },
         { value: '< 1s', label: 'Signal Delivery', sub: 'After model computation', icon: Zap },
@@ -307,7 +307,7 @@ export const FeaturesSection = () => {
         {
             icon: Activity,
             title: 'Live Market Intelligence Dashboard',
-            description: 'A real-time treemap heatmap covering 256 Vietnamese equities — visualize market breadth, sector rotation, and individual stock momentum at a glance during trading hours.',
+            description: 'A real-time treemap heatmap covering 226 Vietnamese equities — visualize market breadth, sector rotation, and individual stock momentum at a glance during trading hours.',
             span: 'md:col-span-2',
             highlight: ['HOSE', 'HNX', 'UPCoM', 'Real-time'],
         },
@@ -624,7 +624,7 @@ export const AIAdvantageSection = ({ onTabChange }) => {
             icon: Target,
             title: 'Predictive Signals',
             description: 'Our AI scans every Vietnamese equity daily, identifying high-probability opportunities before the crowd moves.',
-            stat: '256',
+            stat: '226',
             statLabel: 'Stocks scanned daily',
         },
         {
@@ -903,7 +903,7 @@ export const FutureSection = () => {
             quarter: 'Q2 2026',
             status: 'completed',
             title: 'AI Signal Engine v1',
-            description: 'Deployed six AI models for stock prediction, sentiment analysis, and market trend detection across 256 Vietnamese equities.',
+            description: 'Deployed six AI models for stock prediction, sentiment analysis, and market trend detection across 226 Vietnamese equities.',
         },
         {
             quarter: 'Q3 2026',
@@ -1561,7 +1561,7 @@ export const QAndASection = () => {
     const faqs = [
         {
             q: "How do the AI trading agents work?",
-            a: "Our AI agents continuously analyze 256 Vietnamese stocks using 3 proprietary models. They identify high-probability trading opportunities, calculate entry/exit prices, and generate actionable signals — all automatically, every trading day."
+            a: "Our AI agents continuously analyze 226 Vietnamese stocks using 3 proprietary models. They identify high-probability trading opportunities, calculate entry/exit prices, and generate actionable signals — all automatically, every trading day."
         },
         {
             q: "What is the upcoming AI Agent feature?",
