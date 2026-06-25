@@ -4,8 +4,32 @@ import logging
 import random
 import re
 import time
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
+
+# Vietnam timezone (UTC+7).
+VN_TZ = timezone(timedelta(hours=7))
+
+# Limited-time free 1-week Pro trial. Mirrors the frontend cutoff in
+# LandingSections.jsx (`2026-07-08T00:00:00+07:00`). After this instant the trial
+# CTA is no longer injected into prompts, so posts never advertise a dead offer.
+PRO_TRIAL_DEADLINE = datetime(2026, 7, 8, tzinfo=VN_TZ)
+
+
+def trial_offer_active():
+    """True while the limited-time free Pro trial is still being offered."""
+    return datetime.now(VN_TZ) < PRO_TRIAL_DEADLINE
+
+
+def _trial_hint():
+    """A one-line, opt-in trial mention — only while the offer is live."""
+    if trial_offer_active():
+        return (
+            "\nƯU ĐÃI ĐANG DIỄN RA (có thể nhắc khéo nếu phù hợp, KHÔNG bắt buộc): "
+            "Dùng thử gói Pro MIỄN PHÍ 1 tuần, không cần thẻ."
+        )
+    return ""
 
 def clean_markdown(text):
     """Robustly strips markdown formatting characters to ensure clean Facebook display."""
@@ -45,6 +69,7 @@ def generate_facebook_post(action_data):
     
     system_rules = load_system_rules()
     post_type = action_data.get("type")
+    trial_hint = _trial_hint()
     prompt = ""
     
     if post_type == "news":
@@ -54,42 +79,58 @@ def generate_facebook_post(action_data):
         prompt = f"""
         Bạn là hệ thống AI phân tích chứng khoán của DongAnh Capital.
         Hãy đọc thông tin bài báo dưới đây và viết một bài đăng Facebook hấp dẫn đại diện cho thương hiệu.
-        
+
         TÀI LIỆU BÀI BÁO:
         Tiêu đề: {article.get('title')}
         Nội dung: {article.get('content', article.get('description', 'Không có nội dung chi tiết'))}
         Link: {article.get('link')}
-        
+
         YÊU CẦU:
-        1. Tóm tắt ngắn gọn nội dung bài báo.
-        2. Đưa ra góc nhìn/nhận định về việc tin tức này ảnh hưởng thế nào đến thị trường chứng khoán Việt Nam.
-        3. Tuân thủ các quy tắc hệ thống.
-        4. BẮT BUỘC để lại trích dẫn nguồn ở cuối bài: Nguồn: {domain} - {article.get('link')}
-        
+        1. Mở bài bằng một HOOK mạnh ở dòng đầu tiên (xem mục MARKETING trong QUY TẮC).
+        2. Tóm tắt ngắn gọn, trung thực nội dung bài báo (chỉ dựa trên nội dung được cung cấp).
+        3. Đưa ra góc nhìn/nhận định khách quan về việc tin tức này ảnh hưởng thế nào đến
+           thị trường chứng khoán Việt Nam. Kèm khuyến nghị rủi ro khi phù hợp.
+        4. Liên hệ khéo léo tới việc nhà đầu tư có thể theo dõi diễn biến này qua dashboard
+           và tín hiệu AI của DongAnh Capital (chỉ dùng dữ kiện trong PRODUCT FACTS).
+        5. Chèn đúng 1 CTA trỏ về https://donganhcapital.com (theo mục CALL-TO-ACTION).{trial_hint}
+        6. BẮT BUỘC để lại trích dẫn nguồn ở cuối bài: Nguồn: {domain} - {article.get('link')}
+
         QUY TẮC:
         {system_rules}
         """
         
     elif post_type == "promotion":
         topics = [
-            "Giới thiệu nền tảng tín hiệu giao dịch AI của DongAnh Capital: Miễn phí sử dụng Mô hình dự đoán Breakout công khai (Public Model) với độ trễ bằng 0.",
-            "Khám phá hệ thống AI của chúng tôi: 1 Mô hình Public dự đoán cổ phiếu hoàn toàn miễn phí và 2 Mô hình Pro chuyên sâu dành cho gói trả phí.",
-            "Tại sao nhà đầu tư cá nhân nên dùng Bot AI để theo dõi thị trường 24/7? Trải nghiệm ngay Mô hình Public miễn phí của DongAnh Capital."
+            "Giới thiệu nền tảng: dashboard thị trường thời gian thực + tín hiệu AI hằng ngày "
+            "(giá vào lệnh, chốt lời, cắt lỗ, điểm tin cậy) cho 226 cổ phiếu Việt Nam — bắt đầu "
+            "miễn phí với gói Free trọn đời.",
+            "3 mô hình AI độc lập (LightGBM & XGBoost) đối chiếu chéo tín hiệu mỗi phiên: vì sao "
+            "sự đồng thuận đa mô hình giúp nhà đầu tư cá nhân ra quyết định tự tin hơn.",
+            "AI Agent sắp ra mắt: trợ lý AI đọc tin tức, học phong cách đầu tư của bạn, gợi ý lệnh "
+            "cá nhân hóa và chỉ thực thi khi bạn xác nhận — tương lai của đầu tư tại Việt Nam.",
+            "So sánh 3 gói Free / Pro / Premium của DongAnh Capital: nhà đầu tư nên bắt đầu từ đâu "
+            "và khi nào thì nên nâng cấp.",
+            "Phân tích tin tức bằng AI kết hợp chatbot tư vấn đầu tư: công nghệ giúp nhà đầu tư cá "
+            "nhân tiết kiệm thời gian nghiên cứu và bám sát thị trường mỗi ngày.",
         ]
         topic = random.choice(topics)
-        
+
         prompt = f"""
-        Bạn là hệ thống truyền thông chính thức của quỹ giao dịch DongAnh Capital.
-        Hãy viết một bài đăng Facebook (khoảng 150-250 từ) để quảng bá về nền tảng của chúng tôi.
-        
+        Bạn là kênh truyền thông chính thức của DongAnh Capital — nền tảng phân tích chứng khoán
+        và tín hiệu AI cho nhà đầu tư cá nhân Việt Nam (KHÔNG phải quỹ đầu tư).
+        Hãy viết một bài đăng Facebook (khoảng 150-220 từ) quảng bá nền tảng.
+
         CHỦ ĐỀ HÔM NAY: {topic}
-        
+
         YÊU CẦU:
-        1. Giọng văn thu hút, chuyên nghiệp nhưng vẫn gần gũi với nhà đầu tư cá nhân. Không xưng "tôi".
-        2. Đảm bảo thông tin chính xác về hệ thống AI: Chúng tôi có 1 Mô hình Public miễn phí (chuyên dự đoán/lọc cổ phiếu Breakout) và 2 Mô hình Pro chuyên sâu dành cho hội viên trả phí.
-        3. Thêm các emoji phù hợp.
-        4. BẮT BUỘC chèn Call-to-action (CTA) trỏ về link website: https://donganhcapital.com
-        
+        1. Mở bài bằng một HOOK mạnh ở dòng đầu. Giọng văn thu hút, chuyên nghiệp nhưng gần gũi,
+           không xưng "tôi".
+        2. CHỈ dùng thông tin sản phẩm trong PRODUCT FACTS của QUY TẮC. Tuyệt đối không bịa tính
+           năng, số liệu hay con số lợi nhuận. Nếu nói tới AI Agent, ghi rõ là "sắp ra mắt".
+        3. Dùng emoji tiết chế và gạch đầu dòng cho dễ đọc.
+        4. Chèn đúng 1 CTA trỏ về https://donganhcapital.com (theo mục CALL-TO-ACTION).{trial_hint}
+        5. Kết thúc bằng 3-6 hashtag phù hợp.
+
         QUY TẮC:
         {system_rules}
         """
@@ -105,18 +146,23 @@ def generate_facebook_post(action_data):
         concept = random.choice(concepts)
         
         prompt = f"""
-        Bạn là chuyên gia phân tích kỹ thuật và đào tạo của DongAnh Capital.
-        Hãy viết một bài chia sẻ kiến thức ngắn (khoảng 200-300 từ) cho cộng đồng nhà đầu tư trên Facebook.
-        
+        Bạn là tiếng nói chuyên môn về phân tích kỹ thuật của DongAnh Capital.
+        Hãy viết một bài chia sẻ kiến thức ngắn (khoảng 180-280 từ) cho cộng đồng nhà đầu tư trên Facebook.
+
         KIẾN THỨC HÔM NAY: {concept}
-        
+
         YÊU CẦU:
-        1. Giải thích khái niệm chuyên sâu nhưng cực kỳ dễ hiểu bằng ví dụ thực tế trên thị trường chứng khoán Việt Nam (VD: VNIndex, cổ phiếu ngân hàng, chứng khoán...). Không xưng "tôi".
-        2. Cấu trúc bài viết mạch lạc: Nêu vấn đề -> Giải thích/Phân tích -> Bài học rút ra.
-        3. Liên hệ khéo léo: Nhắc đến việc nhà đầu tư có thể sử dụng các Mô hình AI (như Mô hình Public miễn phí của DongAnh Capital) để tự động hóa việc lọc tín hiệu, giảm bớt khó khăn trong phân tích thủ công.
-        4. Dùng bullet points và emoji để bài viết trực quan, dễ đọc.
-        5. BẮT BUỘC chèn Call-to-action (CTA) trỏ về website: https://donganhcapital.com ở cuối bài.
-        
+        1. Mở bài bằng một HOOK gợi tò mò ở dòng đầu. Giải thích khái niệm chuyên sâu nhưng cực kỳ
+           dễ hiểu bằng ví dụ thực tế trên thị trường chứng khoán Việt Nam (VD: VNIndex, cổ phiếu
+           ngân hàng, chứng khoán...). Không xưng "tôi".
+        2. Cấu trúc mạch lạc: Nêu vấn đề -> Giải thích/Phân tích -> Bài học rút ra.
+        3. Liên hệ khéo léo tới việc nhà đầu tư có thể dùng tín hiệu AI và bộ phân tích của
+           DongAnh Capital để lọc cơ hội và bám sát kỷ luật giao dịch (chỉ dùng dữ kiện trong
+           PRODUCT FACTS; không mô tả tính năng chưa có như đã có sẵn).
+        4. Dùng gạch đầu dòng và emoji tiết chế cho trực quan, dễ đọc.
+        5. Chèn đúng 1 CTA trỏ về https://donganhcapital.com (theo mục CALL-TO-ACTION).{trial_hint}
+        6. Kết thúc bằng 3-6 hashtag phù hợp.
+
         QUY TẮC:
         {system_rules}
         """
