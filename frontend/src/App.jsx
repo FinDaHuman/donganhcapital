@@ -23,6 +23,7 @@ import { useAuth } from './context/AuthContext';
 
 // Every navigable tab. Anything else in the URL path falls back to 'home' so a
 // mistyped or stale link renders the landing page instead of a blank screen.
+// (Single source of truth for both the initial render and popstate handling.)
 const KNOWN_TABS = new Set([
     'home', 'dashboard', 'chart', 'analyst', 'data-analyst', 'ltr-signals',
     'news', 'chatbot', 'login', 'auth/google/callback', 'register', 'profile',
