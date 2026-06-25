@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 import pytz
 from fastapi import APIRouter, Request, HTTPException, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import text
 
 from routers.auth import get_current_user
@@ -40,7 +40,13 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 PRO_DAILY_LIMIT = 20            # Pro tier: 20 LLM calls/day (chat + analysis share it)
 MAX_HISTORY_TURNS = 12         # cap client-sent history forwarded to the LLM
-MAX_MESSAGE_CHARS = 2000
+# Per-role content caps. User input is bounded for abuse/cost (mirrors the frontend
+# textarea maxLength). Assistant turns are echoed back from our OWN model output
+# (max_output_tokens=2048 → routinely >2000 Vietnamese chars), so they MUST be
+# allowed to be longer than a user prompt — otherwise the 2nd send in a thread 422s
+# on the previous reply we just produced.
+MAX_USER_MESSAGE_CHARS = 2000
+MAX_ASSISTANT_MESSAGE_CHARS = 12000   # generous headroom over any 2048-token reply
 MAX_GROUNDING_TICKERS = 3
 MAX_ARTICLE_CHARS = 8000       # cap article body sent to the LLM (raw_text reaches ~88 KB)
 
@@ -88,7 +94,22 @@ Kết thúc bằng một câu nhắc rằng đây là thông tin tham khảo, kh
 # --------------------------------------------------------------------------- #
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]      # reject forged/unknown roles
-    content: str = Field(..., max_length=MAX_MESSAGE_CHARS)
+    content: str
+
+    @model_validator(mode="after")
+    def _bound_content(self):
+        if self.role == "user":
+            # User-supplied prompt: reject oversized input so a scripted client gets
+            # clear feedback (the composer enforces the same cap client-side).
+            if len(self.content) > MAX_USER_MESSAGE_CHARS:
+                raise ValueError(f"User message exceeds {MAX_USER_MESSAGE_CHARS} characters")
+        else:
+            # Assistant history is OUR OWN model output echoed back by the client.
+            # Never reject it — just truncate defensively to bound RAM so an oversized
+            # reply can never break the next turn.
+            if len(self.content) > MAX_ASSISTANT_MESSAGE_CHARS:
+                self.content = self.content[:MAX_ASSISTANT_MESSAGE_CHARS]
+        return self
 
 
 class ChatRequest(BaseModel):
