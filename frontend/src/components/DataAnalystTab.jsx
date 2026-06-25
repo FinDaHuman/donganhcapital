@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import Plot from 'react-plotly.js';
+import _PlotImport from 'react-plotly.js';
+const Plot = _PlotImport.default ?? _PlotImport;
 import {
     Activity,
     AlertTriangle,

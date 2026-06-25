@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import Plot from 'react-plotly.js';
+import _PlotImport from 'react-plotly.js';
+const Plot = _PlotImport.default ?? _PlotImport;
 import { getMarketStatus, getLoadingProgress, getCachedMarketStatus, getSectors } from '../services/stock_api';
 import { SkeletonDashboard } from './SkeletonLoader';
 
