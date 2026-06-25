@@ -21,6 +21,23 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import { useAuth } from './context/AuthContext';
 
+// Every navigable tab. Anything else in the URL path falls back to 'home' so a
+// mistyped or stale link renders the landing page instead of a blank screen.
+const KNOWN_TABS = new Set([
+    'home', 'dashboard', 'chart', 'analyst', 'data-analyst', 'ltr-signals',
+    'news', 'chatbot', 'login', 'auth/google/callback', 'register', 'profile',
+    'reset-password', 'verify-email', 'checkout', 'privacy', 'terms',
+]);
+
+// Derive the active tab from the current URL: path first (e.g. /news), then the
+// ?tab= query fallback, else 'home'. Unknown paths resolve to 'home'.
+const tabFromLocation = () => {
+    const path = window.location.pathname.replace('/', '');
+    const queryTab = new URLSearchParams(window.location.search).get('tab');
+    const tab = path || queryTab || 'home';
+    return KNOWN_TABS.has(tab) ? tab : 'home';
+};
+
 function App() {
     const { user, resendVerification } = useAuth();
     const [dismissedExpiry, setDismissedExpiry] = useState(false);
@@ -55,11 +72,8 @@ function App() {
         !user.email_verified &&
         !dismissedVerify;
 
-    // Read initial tab from URL path (e.g. /privacy) or query param fallback
-    const path = window.location.pathname.replace('/', '');
-    const queryTab = new URLSearchParams(window.location.search).get('tab');
-    const initialTab = path || queryTab || 'home';
-    const [activeTab, setActiveTab] = useState(initialTab);
+    // Initial tab is derived from the URL (clamped to a known tab).
+    const [activeTab, setActiveTab] = useState(tabFromLocation);
     const [policyReturnTo, setPolicyReturnTo] = useState('home');
     const [checkoutPlan, setCheckoutPlan] = useState({ plan: 'pro', period: 'monthly' });
 
@@ -77,6 +91,20 @@ function App() {
         window.history.pushState({ path: newUrl }, '', newUrl);
         window.scrollTo(0, 0);
     };
+
+    // Keep the rendered tab in sync with the browser Back/Forward buttons.
+    // handleTabChange pushes history entries, but the resulting popstate events
+    // were previously unhandled — so navigating Back changed the URL while the
+    // UI stayed put. Re-derive the tab from the URL on each pop (no pushState
+    // here: the history entry already exists).
+    useEffect(() => {
+        const onPopState = () => {
+            setActiveTab(tabFromLocation());
+            window.scrollTo(0, 0);
+        };
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, []);
     const [selectedTicker, setSelectedTicker] = useState(null);
     const [predictionData, setPredictionData] = useState(null);
     const [error, setError] = useState(null);
@@ -224,7 +252,7 @@ function App() {
                 </div>
             )}
 
-            {activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'profile' && activeTab !== 'checkout' && activeTab !== 'privacy' && activeTab !== 'terms' && activeTab !== 'reset-password' && <Header activeTab={activeTab} onTabChange={handleTabChange} />}
+            {activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'profile' && activeTab !== 'checkout' && activeTab !== 'privacy' && activeTab !== 'terms' && activeTab !== 'reset-password' && activeTab !== 'verify-email' && <Header activeTab={activeTab} onTabChange={handleTabChange} />}
 
             <div className="flex-1 flex flex-col w-full min-h-0 relative">
                 <main className="flex-1 overflow-hidden relative flex flex-col min-h-0" style={{ backgroundColor: '#000' }}>

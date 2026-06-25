@@ -119,7 +119,7 @@ const formatAmount = (amount) => {
 };
 
 const ProfilePage = ({ onTabChange }) => {
-    const { user, logout, updateProfile, authApi } = useAuth();
+    const { user, loading, logout, updateProfile, authApi } = useAuth();
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState('');
     const [activeSection, setActiveSection] = useState('account');
@@ -169,10 +169,16 @@ const ProfilePage = ({ onTabChange }) => {
         }
     }, [activeSection, authApi]);
 
+    // Redirect unauthenticated visitors (e.g. an expired session opening /profile
+    // directly) to login instead of leaving them on an endless "Loading…" screen.
+    useEffect(() => {
+        if (!loading && !user) onTabChange && onTabChange('login');
+    }, [loading, user, onTabChange]);
+
     if (!user) {
         return (
             <div className="w-full min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-void)' }}>
-                <p style={{ color: 'var(--text-muted)' }}>Loading profile...</p>
+                <p style={{ color: 'var(--text-muted)' }}>{loading ? 'Loading profile…' : 'Redirecting…'}</p>
             </div>
         );
     }
@@ -408,7 +414,7 @@ const ProfilePage = ({ onTabChange }) => {
                                             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Current Plan</p>
                                             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                                                 {user.subscription_expires_at
-                                                    ? `Renews / expires on ${formatDate(user.subscription_expires_at)}`
+                                                    ? `${isTrial ? 'Trial ends' : 'Renews / expires'} on ${formatDate(user.subscription_expires_at)}`
                                                     : 'No active paid subscription'
                                                 }
                                             </p>
