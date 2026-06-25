@@ -25,6 +25,8 @@ import logging
 
 import httpx
 
+from utils.trial import is_trial_offer_active
+
 logger = logging.getLogger(__name__)
 
 # ── Configuration ──
@@ -37,6 +39,10 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "https://donganhcapital.com").rstrip("/
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@donganhcapital.com")
 
 RESEND_API_URL = "https://api.resend.com/emails"
+
+# Public Google feedback form, linked from the post-signup feedback-request email.
+# Overridable via env so the form can be swapped without a code change.
+FEEDBACK_FORM_URL = os.getenv("FEEDBACK_FORM_URL", "https://forms.gle/groLoDvpLHxB8ikFA")
 
 GOLD = "#C9A96E"
 
@@ -252,11 +258,21 @@ async def send_purchase_confirmation_email(
 async def send_verification_email(to: str, verify_url: str, full_name: str | None = None) -> bool:
     """Email verification link sent immediately after email/password registration."""
     name = html.escape(full_name.strip()) if full_name else "there"
+    # Only advertise the free Pro trial while the limited-time offer is still open
+    # (single source of truth: utils/trial.py). After it closes, the copy quietly
+    # drops the mention so we never email a link to a dead offer.
+    trial_clause_html = (
+        ", including the free <strong>1-week Pro trial</strong>"
+        if is_trial_offer_active() else ""
+    )
+    trial_clause_text = (
+        ", including the free 1-week Pro trial" if is_trial_offer_active() else ""
+    )
     body = f"""
       <p style="margin:0 0 12px 0;font-size:15px;line-height:24px;color:#3f3f46;">Hi {name},</p>
       <p style="margin:0 0 4px 0;font-size:15px;line-height:24px;color:#3f3f46;">
         Welcome to DongAnh Capital! Please verify your email address to unlock
-        all features, including the free <strong>1-week Pro trial</strong>.
+        all features{trial_clause_html}.
         This link expires in <strong>24 hours</strong>.
       </p>
       {_button("Verify Email Address", verify_url)}
@@ -271,7 +287,7 @@ async def send_verification_email(to: str, verify_url: str, full_name: str | Non
     text = (
         f"Hi {full_name or 'there'},\n\n"
         "Welcome to DongAnh Capital! Please verify your email address to unlock "
-        "all features, including the free 1-week Pro trial.\n\n"
+        f"all features{trial_clause_text}.\n\n"
         f"Verify here (expires in 24 hours):\n{verify_url}\n\n"
         "If you didn't create this account, ignore this email."
     )
@@ -316,5 +332,119 @@ async def send_trial_started_email(
         to,
         "Your free DongAnh Capital Pro trial is active",
         _wrap("Welcome to Pro", body),
+        text,
+    )
+
+
+async def send_welcome_email(to: str, full_name: str | None = None) -> bool:
+    """One-time welcome / getting-started email for a newly usable account.
+
+    Fired once per account when it becomes usable: for Google sign-ups at account
+    creation, and for email/password accounts right after they verify their inbox.
+    Evergreen and trial-agnostic — the optional Pro-trial nudge is gated on the
+    live offer window (utils/trial.py), so when the trial sunsets this email keeps
+    working unchanged and simply stops pitching a dead offer.
+    """
+    name = html.escape(full_name.strip()) if full_name else "there"
+    dashboard_url = f"{FRONTEND_URL}/dashboard"
+
+    # Optional, time-limited Pro-trial nudge — only while the offer is open.
+    if is_trial_offer_active():
+        trial_html = """
+      <p style="margin:0 0 4px 0;font-size:15px;line-height:24px;color:#3f3f46;">
+        For a limited time, you can unlock everything with a free
+        <strong>1-week Pro trial</strong> — no card required. Claim it from your
+        dashboard whenever you're ready.
+      </p>"""
+        trial_text = (
+            "\nFor a limited time you can unlock everything with a free 1-week Pro "
+            "trial — no card required. Claim it from your dashboard.\n"
+        )
+    else:
+        trial_html = ""
+        trial_text = ""
+
+    body = f"""
+      <p style="margin:0 0 12px 0;font-size:15px;line-height:24px;color:#3f3f46;">Hi {name},</p>
+      <p style="margin:0 0 4px 0;font-size:15px;line-height:24px;color:#3f3f46;">
+        Welcome to DongAnh Capital — you're all set. We turn AI-driven analysis of
+        ~225 Vietnamese equities into clear, actionable market intelligence.
+      </p>
+      <p style="margin:16px 0 8px 0;font-size:15px;line-height:24px;color:#3f3f46;">
+        A few things to try first:
+      </p>
+      <ul style="margin:0 0 4px 0;padding-left:20px;font-size:15px;line-height:24px;color:#3f3f46;">
+        <li style="margin-bottom:6px;">Check today's <strong>AI trading signals</strong> — entry, take-profit and stop-loss levels.</li>
+        <li style="margin-bottom:6px;">Browse the <strong>market news feed</strong> with AI summaries.</li>
+        <li style="margin-bottom:6px;">Explore the <strong>VN30F1M dashboard</strong> and stock charts.</li>
+      </ul>
+      {trial_html}
+      {_button("Go to your dashboard", dashboard_url)}
+      <p style="margin:16px 0 0 0;font-size:13px;line-height:20px;color:#71717a;">
+        Our signals are research tools to inform your own decisions — not financial
+        advice or a guarantee of returns. Trade responsibly.
+      </p>
+    """
+    text = (
+        f"Hi {full_name or 'there'},\n\n"
+        "Welcome to DongAnh Capital — you're all set. We turn AI-driven analysis of "
+        "~225 Vietnamese equities into clear, actionable market intelligence.\n\n"
+        "A few things to try first:\n"
+        "- Check today's AI trading signals (entry, take-profit, stop-loss).\n"
+        "- Browse the market news feed with AI summaries.\n"
+        "- Explore the VN30F1M dashboard and stock charts.\n"
+        f"{trial_text}\n"
+        f"Go to your dashboard: {dashboard_url}\n\n"
+        "Our signals are research tools to inform your own decisions — not financial "
+        "advice or a guarantee of returns. Trade responsibly."
+    )
+    return await send_email(
+        to,
+        "Welcome to DongAnh Capital",
+        _wrap("Welcome to DongAnh Capital", body),
+        text,
+    )
+
+
+async def send_feedback_request_email(to: str, full_name: str | None = None) -> bool:
+    """Feedback-request email sent once, ~3 days after signup (Vietnamese).
+
+    Points the user to the Google feedback form. Written in Vietnamese to match the
+    audience; brand voice per facebook_bot/rule.md ("Chúng tôi", no profit
+    guarantees). Best-effort like every other send — never raises.
+    """
+    name = html.escape(full_name.strip()) if full_name else "bạn"
+    body = f"""
+      <p style="margin:0 0 12px 0;font-size:15px;line-height:24px;color:#3f3f46;">Chào {name},</p>
+      <p style="margin:0 0 4px 0;font-size:15px;line-height:24px;color:#3f3f46;">
+        Cảm ơn bạn đã đồng hành cùng DongAnh Capital trong những ngày qua. Chúng tôi
+        rất mong được lắng nghe trải nghiệm của bạn để tiếp tục hoàn thiện sản phẩm.
+      </p>
+      <p style="margin:0 0 4px 0;font-size:15px;line-height:24px;color:#3f3f46;">
+        Bạn có thể dành khoảng <strong>2 phút</strong> trả lời một vài câu hỏi ngắn
+        không? Mỗi góp ý đều vô cùng quý giá với chúng tôi.
+      </p>
+      {_button("Gửi góp ý của bạn", FEEDBACK_FORM_URL)}
+      <p style="margin:0 0 8px 0;font-size:13px;line-height:20px;color:#71717a;">
+        Nếu nút không hoạt động, hãy sao chép liên kết này vào trình duyệt:<br>
+        <a href="{FEEDBACK_FORM_URL}" style="color:{GOLD};word-break:break-all;">{FEEDBACK_FORM_URL}</a>
+      </p>
+      <p style="margin:16px 0 0 0;font-size:13px;line-height:20px;color:#71717a;">
+        Cảm ơn bạn rất nhiều — đội ngũ DongAnh Capital.
+      </p>
+    """
+    text = (
+        f"Chào {full_name.strip() if full_name else 'bạn'},\n\n"
+        "Cảm ơn bạn đã đồng hành cùng DongAnh Capital trong những ngày qua. Chúng tôi "
+        "rất mong được lắng nghe trải nghiệm của bạn để tiếp tục hoàn thiện sản phẩm.\n\n"
+        "Bạn có thể dành khoảng 2 phút trả lời một vài câu hỏi ngắn không? Mỗi góp ý "
+        "đều vô cùng quý giá với chúng tôi.\n\n"
+        f"Gửi góp ý của bạn tại đây:\n{FEEDBACK_FORM_URL}\n\n"
+        "Cảm ơn bạn rất nhiều — đội ngũ DongAnh Capital."
+    )
+    return await send_email(
+        to,
+        "DongAnh Capital — bạn thấy sản phẩm thế nào?",
+        _wrap("Chia sẻ cảm nhận của bạn", body),
         text,
     )

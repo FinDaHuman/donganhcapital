@@ -47,6 +47,7 @@ from utils.mailer import (
     send_password_reset_email,
     send_google_account_notice_email,
     send_verification_email,
+    send_welcome_email,
     FRONTEND_URL,
 )
 
@@ -731,7 +732,7 @@ async def reset_password(
 # ══════════════════════════════════════
 
 @router.post("/verify-email")
-async def verify_email(body: VerifyEmailRequest, request: Request):
+async def verify_email(body: VerifyEmailRequest, request: Request, background_tasks: BackgroundTasks):
     """Consume an email verification token and mark the account as verified.
 
     No authentication required — the token itself is the credential (256-bit
@@ -752,7 +753,7 @@ async def verify_email(body: VerifyEmailRequest, request: Request):
     with engine.begin() as conn:
         user = conn.execute(
             text("""
-                SELECT id FROM users
+                SELECT id, email, full_name FROM users
                 WHERE email_verify_token_hash = :hash
                   AND email_verify_expires_at > NOW()
                   AND email_verified = FALSE
@@ -782,6 +783,12 @@ async def verify_email(body: VerifyEmailRequest, request: Request):
         )
 
     logger.info("Email verified for user_id=%s", user["id"])
+
+    # Fire the one-time welcome email now that the email/password account is
+    # usable. Placed after the token-consuming UPDATE so the already-verified→400
+    # guard above guarantees exactly-once delivery even on a double-clicked link.
+    background_tasks.add_task(send_welcome_email, user["email"], user.get("full_name"))
+
     return {"message": "Your email has been verified successfully."}
 
 
@@ -899,6 +906,7 @@ async def google_oauth_callback(
     body: GoogleCallbackRequest,
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
 ):
     """Handle Google OAuth callback — exchange code, find/create user, issue JWT."""
     client_ip = get_client_ip(request)
@@ -927,6 +935,7 @@ async def google_oauth_callback(
             {"gid": google_id, "email": email}
         )
         existing = result.mappings().first()
+        is_new_user = existing is None
 
         if existing:
             user = dict(existing)
@@ -979,6 +988,13 @@ async def google_oauth_callback(
 
     if not user.get("is_active"):
         raise HTTPException(status_code=401, detail="Account is deactivated")
+
+    # One-time welcome email for brand-new Google accounts only. Google sign-ups
+    # are verified at creation and never pass through the verify-email path, so
+    # this is their single welcome touch — no duplicate with the email/password
+    # flow (which welcomes at verification instead).
+    if is_new_user:
+        background_tasks.add_task(send_welcome_email, user["email"], user.get("full_name"))
 
     # Issue tokens
     access_token = create_access_token({"sub": str(user["id"]), "email": user["email"]})

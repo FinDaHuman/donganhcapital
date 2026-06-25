@@ -245,12 +245,75 @@ async def subscription_expiry_checker():
         await asyncio.sleep(6 * 3600)
 
 
+# Send the post-signup feedback-request email this many days after the account was
+# created. Timing is opportunistic, not exact — the checker only advances while the
+# service is awake (Render free tier spins down after ~15 min idle).
+FEEDBACK_EMAIL_DELAY_DAYS = 3
+
+
+def claim_feedback_recipients_sync(limit=20):
+    """Atomically stamp and return users due for the feedback email (at-most-once).
+
+    The UPDATE...RETURNING with FOR UPDATE SKIP LOCKED claims the rows in the same
+    statement that stamps feedback_email_sent_at, so an interrupted run (the box can
+    spin down mid-loop) can never re-select an already-claimed user and double-send
+    the form. Email is best-effort (PRODUCTION_CONSTRAINTS §5): a stamped user whose
+    send later fails simply doesn't get it, rather than risking a duplicate ask.
+
+    Only verified, active accounts are targeted — unverified addresses may be typos
+    and bouncing them would hurt domain reputation. LIMIT keeps each run well under
+    the shared ~100/day Resend budget so a backlog can't crowd out auth mail.
+    """
+    try:
+        from db.connection import get_engine
+        from sqlalchemy import text
+        engine = get_engine()
+        if engine is None:
+            return []
+        with engine.begin() as conn:
+            rows = conn.execute(text("""
+                UPDATE users SET feedback_email_sent_at = NOW()
+                WHERE id IN (
+                    SELECT id FROM users
+                    WHERE feedback_email_sent_at IS NULL
+                      AND email_verified = TRUE
+                      AND is_active = TRUE
+                      AND created_at <= NOW() - make_interval(days => :days)
+                    ORDER BY created_at
+                    LIMIT :limit
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id, email, full_name
+            """), {"days": FEEDBACK_EMAIL_DELAY_DAYS, "limit": limit}).mappings().all()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"Feedback recipient claim error: {e}")
+        return []
+
+
+async def feedback_email_checker():
+    """Run every 6 hours to send the post-signup feedback-request email."""
+    from utils.mailer import send_feedback_request_email
+    while True:
+        try:
+            recipients = await asyncio.to_thread(claim_feedback_recipients_sync, 20)
+            for r in recipients:
+                if r.get("email"):
+                    await send_feedback_request_email(r["email"], r.get("full_name"))
+            if recipients:
+                print(f"Sent feedback-request email to {len(recipients)} user(s).")
+        except Exception as e:
+            print(f"Feedback email task error: {e}")
+        await asyncio.sleep(6 * 3600)
+
+
 # --- Lifespan for Model Loading ---
 poll_task = None
 expiry_task = None
+feedback_task = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global predictor, poll_task, expiry_task
+    global predictor, poll_task, expiry_task, feedback_task
 
     # Validate critical secrets before accepting traffic.
     if not os.getenv("JWT_SECRET_KEY"):
@@ -298,12 +361,15 @@ async def lifespan(app: FastAPI):
 
     poll_task = asyncio.create_task(realtime_vn30f1m())
     expiry_task = asyncio.create_task(subscription_expiry_checker())
+    feedback_task = asyncio.create_task(feedback_email_checker())
 
     yield
     if poll_task:
         poll_task.cancel()
     if expiry_task:
         expiry_task.cancel()
+    if feedback_task:
+        feedback_task.cancel()
     print("Shutting down...")
 
 app = FastAPI(title="DongAnh Capital AI API", lifespan=lifespan)

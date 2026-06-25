@@ -128,6 +128,25 @@ def run_user_migration():
             ADD COLUMN IF NOT EXISTS chat_quota_date DATE;
         """))
 
+        # Feedback-request email: sent once, ~3 days after signup, pointing users
+        # to the Google feedback form. The timestamp is an at-most-once idempotency
+        # stamp claimed atomically before the send (see feedback_email_checker in
+        # main.py): NULL = never sent, a timestamp = already claimed/sent.
+        # Existing users created before the feature ship date (2026-06-26 UTC+7) are
+        # grandfathered to NOW() so we never email a "just signed up" feedback ask to
+        # someone who joined weeks ago. The cutoff keeps the backfill idempotent on
+        # every cold-start re-run: post-ship signups have created_at after the cutoff
+        # and are left NULL (eligible), so this UPDATE never re-touches them.
+        conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS feedback_email_sent_at TIMESTAMP WITH TIME ZONE;
+        """))
+        conn.execute(text("""
+            UPDATE users SET feedback_email_sent_at = NOW()
+            WHERE feedback_email_sent_at IS NULL
+              AND created_at < TIMESTAMP WITH TIME ZONE '2026-06-26 00:00:00+07:00';
+        """))
+
         # Create indexes safely (IF NOT EXISTS)
         conn.execute(text("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email

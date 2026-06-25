@@ -33,19 +33,17 @@ from utils.sepay import (
     ORDER_EXPIRY_SECONDS,
 )
 from utils.security import check_auth_rate_limit, get_client_ip
+from utils.trial import PRO_TRIAL_DURATION_DAYS, PRO_TRIAL_PERIOD, PRO_TRIAL_OFFER_END
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 
 # ── Free Pro Trial Offer (limited-time) ──
-# Free-tier users can claim Pro for 1 week, once per account. The offer closes at
-# the end of 2026-07-07 (Vietnam time, UTC+7). A claimed trial is stored with
-# period='trial' so create_order can recognise it and treat it as non-creditable
-# (a free trial must never earn proration credit toward a paid upgrade).
-PRO_TRIAL_DURATION_DAYS = 7
-PRO_TRIAL_PERIOD = "trial"
-PRO_TRIAL_OFFER_END = datetime(2026, 7, 8, 0, 0, 0, tzinfo=timezone(timedelta(hours=7)))
+# Constants + the offer-window check live in utils/trial.py (single source of
+# truth) so the claim endpoint here and the advertising copy in mailer.py sunset
+# together. See that module for the rules; a claimed trial is stored with
+# period='trial' so create_order treats it as non-creditable free-tier.
 
 
 # ── Request/Response Models ──
