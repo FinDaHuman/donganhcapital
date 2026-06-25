@@ -56,6 +56,13 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
+# Precomputed once at import. Used by the login flow to run a bcrypt verify even
+# when the email doesn't exist, so a non-existent account takes the same time as a
+# real one — closing the timing side-channel that would otherwise let an attacker
+# enumerate registered emails by response latency.
+DUMMY_PASSWORD_HASH = pwd_context.hash("dummy-password-for-constant-time-login")
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its bcrypt hash."""
     return pwd_context.verify(plain_password, hashed_password)

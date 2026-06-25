@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from db.connection import get_engine
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from utils.security import (
     hash_password, verify_password,
@@ -42,6 +43,7 @@ from utils.security import (
     is_account_locked, get_lockout_until,
     LOCKOUT_THRESHOLD,
     get_client_ip,
+    DUMMY_PASSWORD_HASH,
 )
 from utils.mailer import (
     send_password_reset_email,
@@ -327,39 +329,52 @@ async def register(body: RegisterRequest, request: Request, response: Response, 
     verify_token_hash = hash_token(raw_verify_token)
     verify_expires = datetime.now(timezone.utc) + timedelta(hours=VERIFY_TOKEN_EXPIRE_HOURS)
 
-    with engine.begin() as conn:
-        # Check if email already exists
-        existing = conn.execute(
-            text("SELECT id FROM users WHERE email = :email"),
-            {"email": body.email}
-        ).first()
+    try:
+        with engine.begin() as conn:
+            # Fast-path existence check for the common case. The unique index on
+            # users(email) is the real guard: two concurrent registrations can both
+            # pass this SELECT, so the INSERT below may still raise IntegrityError —
+            # caught and mapped to the same 409 outside the transaction.
+            existing = conn.execute(
+                text("SELECT id FROM users WHERE email = :email"),
+                {"email": body.email}
+            ).first()
 
-        if existing:
-            # Security: don't reveal if email exists — use opaque message
-            raise HTTPException(
-                status_code=409,
-                detail="Unable to create account. Please try a different email or sign in."
-            )
-
-        # Insert new user — email_verified is explicitly FALSE so the column
-        # default can never silently skip verification for new accounts.
-        result = conn.execute(
-            text("""
-                INSERT INTO users (
-                    email, hashed_password, full_name, auth_provider,
-                    email_verified, email_verify_token_hash, email_verify_expires_at
+            if existing:
+                # The 409 status necessarily reveals that the email is taken (an
+                # account either can or can't be created). The message stays neutral
+                # so we don't additionally confirm the auth method or account state.
+                raise HTTPException(
+                    status_code=409,
+                    detail="Unable to create account. Please try a different email or sign in."
                 )
-                VALUES (:email, :password, :name, 'email',
-                        FALSE, :verify_hash, :verify_expires)
-                RETURNING id, email, full_name, avatar_url, auth_provider,
-                          risk_appetite, subscription_tier, email_verified, created_at
-            """),
-            {
-                "email": body.email, "password": hashed_pw, "name": body.full_name,
-                "verify_hash": verify_token_hash, "verify_expires": verify_expires,
-            }
+
+            # Insert new user — email_verified is explicitly FALSE so the column
+            # default can never silently skip verification for new accounts.
+            result = conn.execute(
+                text("""
+                    INSERT INTO users (
+                        email, hashed_password, full_name, auth_provider,
+                        email_verified, email_verify_token_hash, email_verify_expires_at
+                    )
+                    VALUES (:email, :password, :name, 'email',
+                            FALSE, :verify_hash, :verify_expires)
+                    RETURNING id, email, full_name, avatar_url, auth_provider,
+                              risk_appetite, subscription_tier, email_verified, created_at
+                """),
+                {
+                    "email": body.email, "password": hashed_pw, "name": body.full_name,
+                    "verify_hash": verify_token_hash, "verify_expires": verify_expires,
+                }
+            )
+            user = dict(result.mappings().first())
+    except IntegrityError:
+        # Lost a race against a concurrent signup with the same email — surface the
+        # same 409 as the existence check rather than a 500 on the unique violation.
+        raise HTTPException(
+            status_code=409,
+            detail="Unable to create account. Please try a different email or sign in."
         )
-        user = dict(result.mappings().first())
 
     # Issue tokens
     access_token = create_access_token({"sub": str(user["id"]), "email": user["email"]})
@@ -408,6 +423,9 @@ async def login(body: LoginRequest, request: Request, response: Response):
         user = result.mappings().first()
 
     if not user:
+        # Run a throwaway bcrypt verify so a non-existent email costs the same
+        # wall-clock time as a real one — prevents email enumeration by timing.
+        verify_password(body.password, DUMMY_PASSWORD_HASH)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     user = dict(user)
@@ -537,7 +555,7 @@ async def refresh_token(request: Request, response: Response):
     stored_hash = user.get("refresh_token_hash")
     presented_hash = hash_token(token)
 
-    if not stored_hash or stored_hash != presented_hash:
+    if not stored_hash or not secrets.compare_digest(stored_hash, presented_hash):
         # Before treating this as token theft, check whether it's just a concurrent
         # request from another tab that used the same refresh token a moment ago.
         # If this token matches the PREVIOUS hash and rotation happened within the
@@ -550,7 +568,7 @@ async def refresh_token(request: Request, response: Response):
 
         is_concurrent = (
             prev_hash is not None
-            and prev_hash == presented_hash
+            and secrets.compare_digest(prev_hash, presented_hash)
             and rotated_at is not None
             and (datetime.now(timezone.utc) - rotated_at).total_seconds() < _GRACE_SECONDS
         )
@@ -881,7 +899,9 @@ async def update_me(
             text(f"""
                 UPDATE users SET {', '.join(updates)} WHERE id = :id
                 RETURNING id, email, full_name, avatar_url, auth_provider,
-                          risk_appetite, subscription_tier, email_verified, created_at
+                          risk_appetite, subscription_tier, subscription_period,
+                          subscription_expires_at, pro_trial_claimed_at,
+                          email_verified, created_at
             """),
             params
         )
