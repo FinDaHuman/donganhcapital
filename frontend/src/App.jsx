@@ -5,6 +5,7 @@ import StockChart from './components/StockChart';
 import AIAnalystTab from './components/AIAnalystTab';
 import DataAnalystTab from './components/DataAnalystTab';
 import LTRSignalsTab from './components/LTRSignalsTab';
+import ReportsTab from './components/ReportsTab';
 import NewsTab from './components/NewsTab';
 import ChatbotTab from './components/ChatbotTab';
 import { getPrediction, getTickers } from './services/stock_api';
@@ -26,15 +27,16 @@ import { useAuth } from './context/AuthContext';
 // (Single source of truth for both the initial render and popstate handling.)
 const KNOWN_TABS = new Set([
     'home', 'dashboard', 'chart', 'analyst', 'data-analyst', 'ltr-signals',
-    'news', 'chatbot', 'login', 'auth/google/callback', 'register', 'profile',
-    'reset-password', 'verify-email', 'checkout', 'privacy', 'terms',
+    'reports', 'news', 'chatbot', 'login', 'auth/google/callback', 'register',
+    'profile', 'reset-password', 'verify-email', 'checkout', 'privacy', 'terms',
 ]);
 
 // Human-readable tab names for the chart "Back to …" affordance. Mirrors the
 // labels in Header.jsx navTabs (single source of truth for the origin label).
 const TAB_LABELS = {
     dashboard: 'Dashboard', analyst: 'AI Analyst', 'data-analyst': 'Data Analyst',
-    news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'Pro Signals', home: 'Home',
+    news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'Pro Signals',
+    reports: 'Reports', home: 'Home',
 };
 
 // Derive the active tab from the current URL: path first (e.g. /news), then the
@@ -417,6 +419,14 @@ function App() {
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <LTRSignalsTab onSelectStock={handleSelectStock} onTabChange={handleTabChange} />
+                            </ErrorBoundary>
+                        </div>
+                    )}
+
+                    {activeTab === 'reports' && (
+                        <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
+                            <ErrorBoundary>
+                                <ReportsTab onTabChange={handleTabChange} />
                             </ErrorBoundary>
                         </div>
                     )}

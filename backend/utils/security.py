@@ -115,6 +115,40 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+# ── Subscription Tier Gating ──
+def effective_tier(user: dict) -> str:
+    """Return the user's currently-effective subscription tier.
+
+    The background downgrade task only runs every ~6h, so a row can still read
+    ``pro``/``premium`` after expiry. This re-checks ``subscription_expires_at``
+    inline (UTC-aware) and treats an expired subscription as ``free`` — mirroring
+    the logic in ``main.py`` ``/api/ltr-signals``.
+    """
+    tier = user.get("subscription_tier", "free")
+    expires_at = user.get("subscription_expires_at")
+    if tier != "free" and expires_at is not None:
+        try:
+            now_utc = datetime.now(timezone.utc)
+            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if exp < now_utc:
+                tier = "free"
+        except Exception:
+            pass
+    return tier
+
+
+def report_allowed_tiers() -> set[str]:
+    """Tiers allowed to access PDF reports, from ``REPORTS_ALLOWED_TIERS``.
+
+    Beta default is ``pro,premium``; flip to ``premium`` (one env change, no code
+    redeploy) once the beta ends.
+    """
+    raw = os.environ.get("REPORTS_ALLOWED_TIERS", "pro,premium")
+    return {t.strip() for t in raw.split(",") if t.strip()}
+
+
 # ── Google OAuth ──
 async def verify_google_token(code: str) -> Optional[dict]:
     """

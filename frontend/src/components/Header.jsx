@@ -21,6 +21,7 @@ const Header = ({ activeTab, onTabChange }) => {
         { id: 'news',         label: 'News' },
         { id: 'chatbot',      label: 'AI Chat', pro: true },
         { id: 'ltr-signals',  label: 'Pro Signals', pro: true },
+        { id: 'reports',      label: 'Reports', pro: true },
     ];
 
     return (

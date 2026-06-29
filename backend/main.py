@@ -359,6 +359,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"LTR migration warning: {e}")
 
+    # Auto-migrate reports table (Premium PDF Reports)
+    try:
+        from db.models_report import run_report_migration
+        run_report_migration()
+    except Exception as e:
+        print(f"Report migration warning: {e}")
+
     poll_task = asyncio.create_task(realtime_vn30f1m())
     expiry_task = asyncio.create_task(subscription_expiry_checker())
     feedback_task = asyncio.create_task(feedback_email_checker())
@@ -410,6 +417,10 @@ app.include_router(macro_news_router)
 # --- Chat Router (Gemini-backed AI chatbot + news analysis, Pro/Premium gated) ---
 from routers.chat import router as chat_router
 app.include_router(chat_router)
+
+# --- Reports Router (R2-backed PDF reports, Premium/beta-Pro gated) ---
+from routers.reports import router as reports_router
+app.include_router(reports_router)
 
 # --- Email Subscription Security ---
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')

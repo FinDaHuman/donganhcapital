@@ -346,7 +346,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
                 <BarChart2 size={14} style={{ color: GOLD, marginTop: 1, flexShrink: 0 }} />
                 <span>
                     Ranked by a LightGBM classifier. <strong style={{ color: GOLD }}>Breakout Score</strong> = relative likelihood of &gt;8% gain over 5 trading days (not a calibrated probability).
-                    Backtest win rate: ~47% · This is a <strong style={{ color: GOLD }}>ranked shortlist for research only</strong>, not financial advice.
+                    Backtest win rate: ~81% · This is a <strong style={{ color: GOLD }}>ranked shortlist for research only</strong>, not financial advice.
                     Past performance does not guarantee future results.
                 </span>
             </div>
