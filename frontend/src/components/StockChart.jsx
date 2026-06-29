@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, ArrowLeft } from 'lucide-react';
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 
-const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }) => {
+const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock, onBack, backLabel }) => {
     const containerRef = useRef(null);
     const chartRef = useRef(null);
     const seriesRef = useRef({});
@@ -280,6 +280,19 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock }
         <div className="flex h-full w-full bg-[#111213] flex-col relative overflow-hidden">
             {/* Ticker & Search Overlay */}
             <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 sm:gap-3 bg-[#111213]/80 p-2 rounded backdrop-blur-sm border border-[#2a2e39]/50 max-w-[calc(100vw-2rem)]">
+                {onBack && (
+                    <>
+                        <button
+                            onClick={onBack}
+                            className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-gray-300 hover:text-white hover:bg-[#25282c] rounded transition-colors"
+                            title={`Back to ${backLabel}`}
+                        >
+                            <ArrowLeft size={16} />
+                            <span className="hidden sm:inline">Back to {backLabel}</span>
+                        </button>
+                        <div className="w-[1px] h-6 bg-[#2a2e39] mx-0.5 hidden sm:block" />
+                    </>
+                )}
                 <h1
                     className="text-2xl font-black text-white tracking-wider max-w-[150px] truncate drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]"
                     style={{ WebkitTextStroke: '1px rgba(0,0,0,0.8)' }}

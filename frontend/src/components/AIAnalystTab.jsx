@@ -45,8 +45,8 @@ const AIAnalystTab = ({ onSelectStock }) => {
     const [minWinRate, setMinWinRate] = useState(0.85);
     const [sortConfig, setSortConfig] = useState({ key: 'entry_date', direction: 'desc' });
 
-    // Active section
-    const [activeSection, setActiveSection] = useState('signals');
+    // Active section — default to Trade History
+    const [activeSection, setActiveSection] = useState('history');
 
     useEffect(() => {
         const fetchDates = async () => {

@@ -10,7 +10,7 @@ import ChatbotTab from './components/ChatbotTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
-import { Search, AlertTriangle, X, Mail } from 'lucide-react';
+import { Search, AlertTriangle, X, Mail, ArrowLeft } from 'lucide-react';
 import { SkeletonChart } from './components/SkeletonLoader';
 import AuthPage from './pages/AuthPage';
 import ProfilePage from './pages/ProfilePage';
@@ -29,6 +29,13 @@ const KNOWN_TABS = new Set([
     'news', 'chatbot', 'login', 'auth/google/callback', 'register', 'profile',
     'reset-password', 'verify-email', 'checkout', 'privacy', 'terms',
 ]);
+
+// Human-readable tab names for the chart "Back to …" affordance. Mirrors the
+// labels in Header.jsx navTabs (single source of truth for the origin label).
+const TAB_LABELS = {
+    dashboard: 'Dashboard', analyst: 'AI Analyst', 'data-analyst': 'Data Analyst',
+    news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'Pro Signals', home: 'Home',
+};
 
 // Derive the active tab from the current URL: path first (e.g. /news), then the
 // ?tab= query fallback, else 'home'. Unknown paths resolve to 'home'.
@@ -107,6 +114,9 @@ function App() {
         return () => window.removeEventListener('popstate', onPopState);
     }, []);
     const [selectedTicker, setSelectedTicker] = useState(null);
+    // The tab the user was on when they opened a chart, so we can offer a
+    // "Back to …" affordance that returns them to where they came from.
+    const [chartReturnTo, setChartReturnTo] = useState('dashboard');
     const [predictionData, setPredictionData] = useState(null);
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -135,6 +145,15 @@ function App() {
     }, []);
 
     const handleSelectStock = async (ticker) => {
+        // Only record origin + push history when arriving from another tab.
+        // Switching tickers while already on the chart (in-chart search,
+        // News-modal chips) must preserve the original origin and avoid
+        // stacking duplicate /chart history entries.
+        if (activeTab !== 'chart') {
+            setChartReturnTo(activeTab);
+            window.history.pushState({ path: '/chart' }, '', '/chart');
+            window.scrollTo(0, 0);
+        }
         setSearchTerm(''); // Clear search term when selected
         setSelectedTicker(ticker);
         setActiveTab('chart');
@@ -151,6 +170,10 @@ function App() {
             setLoading(false);
         }
     };
+
+    // Return from the chart to the tab the user came from. Routed through the
+    // canonical navigator so it pushes history + scrolls like every other nav.
+    const handleChartBack = () => handleTabChange(chartReturnTo);
 
     // Realtime Polling for VN30F1M
     useEffect(() => {
@@ -292,11 +315,17 @@ function App() {
                                                 >
                                                     Retry
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => { setError(null); setSelectedTicker(null); }}
                                                     className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium rounded transition-colors"
                                                 >
                                                     Back to Search
+                                                </button>
+                                                <button
+                                                    onClick={handleChartBack}
+                                                    className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium rounded transition-colors"
+                                                >
+                                                    ← Back to {TAB_LABELS[chartReturnTo] || 'Dashboard'}
                                                 </button>
                                             </div>
                                         </div>
@@ -311,10 +340,21 @@ function App() {
                                             ticker={selectedTicker}
                                             stockList={stockList}
                                             onSelectStock={handleSelectStock}
+                                            onBack={handleChartBack}
+                                            backLabel={TAB_LABELS[chartReturnTo] || 'Dashboard'}
                                         />
                                     ) : (
                                         <div className="absolute inset-0 flex items-center justify-center bg-[#111213]/80 backdrop-blur-sm z-20">
                                             <div className="w-[calc(100vw-2rem)] max-w-[450px] bg-[#1a1c1e] border border-[#2a2e39] rounded-2xl shadow-2xl flex flex-col max-h-[60vh] overflow-hidden">
+                                                <div className="px-5 pt-4 pb-2 flex items-center">
+                                                    <button
+                                                        onClick={handleChartBack}
+                                                        className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-white transition-colors"
+                                                    >
+                                                        <ArrowLeft size={16} />
+                                                        Back to {TAB_LABELS[chartReturnTo] || 'Dashboard'}
+                                                    </button>
+                                                </div>
                                                 <div className="p-5 border-b border-[#2a2e39] flex items-center gap-3 bg-[#151719]">
                                                     <Search size={20} className="text-gray-500" />
                                                     <input
