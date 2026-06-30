@@ -85,6 +85,26 @@ authApi.interceptors.response.use(
 );
 
 
+// ── Session hint cookie ──
+// Backend sets a non-httpOnly "dac_session=1" cookie alongside the httpOnly auth
+// cookies (and clears it on logout). It carries no token and no PII — it only lets
+// us answer "could this browser be logged in?" WITHOUT a network round-trip. When it
+// is absent we know there's no session, so we skip the /api/auth/me + /api/auth/refresh
+// bootstrap entirely — removing the 2 guaranteed 401s every anonymous page load used
+// to make. The httpOnly cookies remain the sole source of truth for actual auth.
+const SESSION_HINT_COOKIE = 'dac_session';
+
+const hasSessionHint = () => {
+    try {
+        return document.cookie
+            .split('; ')
+            .some((c) => c.startsWith(`${SESSION_HINT_COOKIE}=`));
+    } catch {
+        return false;
+    }
+};
+
+
 // ── Session cache helpers (non-sensitive profile data only, never tokens) ──
 const CACHE_KEY = 'dac_user_profile';
 
@@ -165,6 +185,17 @@ export const AuthProvider = ({ children }) => {
         initialCheckDone.current = true;
 
         const checkAuth = async () => {
+            // Fast path for logged-out visitors: with no session hint cookie AND no
+            // cached profile, this browser has no session to validate. Skip the
+            // /me + /refresh round-trips (2 guaranteed 401s) and settle as logged out.
+            // We also require no cached profile so that users already logged in BEFORE
+            // this hint cookie existed (no hint yet) still validate via /me and
+            // transparently re-acquire the hint on their next token refresh.
+            if (!hasSessionHint() && !cachedUser) {
+                setLoading(false);
+                return;
+            }
+
             try {
                 const { data } = await authApi.get('/api/auth/me');
                 setUser(data.user);

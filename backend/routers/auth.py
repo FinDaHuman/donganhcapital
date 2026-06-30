@@ -85,6 +85,13 @@ else:
 
 ACCESS_COOKIE = "dac_access_token"
 REFRESH_COOKIE = "dac_refresh_token"
+# Non-httpOnly "is there a session?" hint. Carries NO token and NO PII — just the
+# literal "1" — so it's safe to expose to JS. The httpOnly cookies above remain the
+# sole source of truth; this only lets the SPA skip the /me + /refresh bootstrap for
+# visitors who were never logged in, eliminating 2 guaranteed 401s per anonymous page
+# load (the bulk of the 4xx traffic on the 0.1-vCPU box). Set/cleared in the same
+# response as the real cookies, so it can never drift out of sync with them.
+SESSION_HINT_COOKIE = "dac_session"
 
 RESET_TOKEN_EXPIRE_MINUTES = 60
 VERIFY_TOKEN_EXPIRE_HOURS = 24
@@ -213,6 +220,19 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         path="/api/auth/refresh",  # Only sent to refresh endpoint
         domain=COOKIE_DOMAIN,
     )
+    # JS-readable session hint (see SESSION_HINT_COOKIE). httponly=False on purpose.
+    # Lifetime matches the refresh cookie so it stays valid for exactly as long as the
+    # session can be refreshed; both expire together since they're set in this response.
+    response.set_cookie(
+        key=SESSION_HINT_COOKIE,
+        value="1",
+        httponly=False,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        max_age=7 * 24 * 3600,  # 7 days — match REFRESH_COOKIE
+        path="/",
+        domain=COOKIE_DOMAIN,
+    )
 
 
 def _clear_auth_cookies(response: Response):
@@ -230,6 +250,15 @@ def _clear_auth_cookies(response: Response):
         path="/api/auth/refresh",
         secure=COOKIE_SECURE,
         httponly=True,
+        samesite=COOKIE_SAMESITE,
+        domain=COOKIE_DOMAIN,
+    )
+    # Clear the session hint too — attributes must match set_cookie for deletion to work.
+    response.delete_cookie(
+        key=SESSION_HINT_COOKIE,
+        path="/",
+        secure=COOKIE_SECURE,
+        httponly=False,
         samesite=COOKIE_SAMESITE,
         domain=COOKIE_DOMAIN,
     )
