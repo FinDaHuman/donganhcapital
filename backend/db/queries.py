@@ -9,6 +9,22 @@ VALID_STOCK_ID_PATTERN = re.compile(r'^[A-Z0-9]{1,10}$')
 VALID_STATUS_VALUES = {'TP', 'SL', 'TIMEOUT', 'HOLD'}
 
 
+def _live_quotes() -> dict:
+    """Latest shared live-quote map (normalized to stock_ohlc scale), or {}.
+
+    Lazily read from main so consumers stay decoupled and any import/absence
+    fails soft — callers then transparently use daily-close values.
+    """
+    import sys
+    mod = sys.modules.get("main")
+    if mod is None:
+        return {}
+    try:
+        return mod.get_live_quote_map()
+    except Exception:
+        return {}
+
+
 def validate_stock_id(stock_id: str) -> str:
     if not stock_id:
         raise ValueError("stock_id is required")
@@ -196,7 +212,11 @@ def get_market_status_from_db():
     """
     try:
         df = pd.read_sql(query, engine)
-        
+
+        # Fresh intraday quotes override the day-over-day close/change when
+        # available; empty map (off-hours / provider down) → daily-close values.
+        quotes = _live_quotes()
+
         results = []
         stocks = df['stock_id'].unique()
         for stock in stocks:
@@ -205,15 +225,25 @@ def get_market_status_from_db():
             if len(stock_data) == 2:
                 last_row = stock_data[stock_data['rn'] == 1].iloc[0]
                 prev_row = stock_data[stock_data['rn'] == 2].iloc[0]
-                
+
                 change = (last_row['close'] - prev_row['close']) / prev_row['close'] * 100
-                trading_value = float(last_row['close'] * last_row['volume'])
+                price = float(last_row['close'])
+                volume = int(last_row['volume'])
+
+                q = quotes.get(str(stock).upper()) if quotes else None
+                if q and q.get('price'):
+                    price = float(q['price'])
+                    if q.get('change_pct') is not None:
+                        change = float(q['change_pct'])
+                    if q.get('volume'):
+                        volume = int(q['volume'])
+
                 results.append({
                     "ticker": stock,
                     "value": float(change),
-                    "size": int(last_row['volume']),
-                    "price": float(last_row['close']),
-                    "trading_value": trading_value
+                    "size": volume,
+                    "price": price,
+                    "trading_value": float(price * volume)
                 })
         return results
     except Exception as e:
@@ -303,6 +333,27 @@ def get_ai_signals(date_str: str = None, latest: bool = False):
             df['prob'] = df['prob'].apply(lambda x: _safe_round(x, 4))
             
         signals = df.to_dict(orient="records")
+
+        # Additive live overlay: current price vs signal levels. All fields are
+        # optional — absent when no fresh quote (off-hours / provider down), so
+        # existing clients that ignore them are unaffected.
+        quotes = _live_quotes()
+        if quotes:
+            for s in signals:
+                q = quotes.get(str(s.get('stock_id', '')).upper())
+                if not (q and q.get('price')):
+                    continue
+                lp = q['price']
+                s['live_price'] = lp
+                s['live_change_pct'] = q.get('change_pct')
+                ep = _safe_float(s.get('entry_price'))
+                tp = _safe_float(s.get('tp_price'))
+                sl = _safe_float(s.get('sl_price'))
+                # + means price is above entry / TP still ahead / cushion above SL
+                s['distance_to_entry_pct'] = _safe_round((lp - ep) / ep * 100, 2) if ep else None
+                s['distance_to_tp_pct'] = _safe_round((tp - lp) / lp * 100, 2) if tp else None
+                s['distance_to_sl_pct'] = _safe_round((lp - sl) / lp * 100, 2) if sl else None
+
         return {"date": date_str, "signal_count": len(signals), "signals": _sanitize_records(signals)}
     except Exception as e:
         print(f"Error fetching ai_signals: {e}")
@@ -382,6 +433,17 @@ def get_trade_history(status_filter: str = None):
             df['prob'] = df['prob'].apply(lambda x: _safe_round(x, 4))
         if 'holding_days' in df.columns:
             df['holding_days'] = df['holding_days'].apply(lambda x: int(x) if pd.notnull(x) and _safe_float(x) is not None else None)
+
+        # Prefer a fresh intraday quote over the daily close (fallback) for open
+        # positions. The map is normalized to the stock_ohlc scale; when empty
+        # (off-hours / provider down) live_price stays the daily-close value.
+        if 'live_price' in df.columns:
+            quotes = _live_quotes()
+            if quotes:
+                for i in df.index[df['status'] == 'HOLD']:
+                    q = quotes.get(str(df.at[i, 'stock_id']).upper())
+                    if q and q.get('price'):
+                        df.at[i, 'live_price'] = q['price']
 
         # Compute live_return_pct for HOLD trades from the fetched live_price
         df['live_return_pct'] = None

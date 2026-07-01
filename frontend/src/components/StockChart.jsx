@@ -2,10 +2,11 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Search, X, ArrowLeft } from 'lucide-react';
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 
-const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock, onBack, backLabel }) => {
+const StockChart = ({ history, forecast, ticker, livePrice, liveChangePct, stockList = [], onSelectStock, onBack, backLabel }) => {
     const containerRef = useRef(null);
     const chartRef = useRef(null);
     const seriesRef = useRef({});
+    const priceLineRef = useRef(null);
 
     // Search & Display State
     const [showSearch, setShowSearch] = useState(false);
@@ -274,7 +275,34 @@ const StockChart = ({ history, forecast, ticker, stockList = [], onSelectStock, 
             chartRef.current.hasFittedOnce = true;
         }
 
-    }, [history, forecast, showPrediction]); 
+    }, [history, forecast, showPrediction]);
+
+    // Live price line — a horizontal marker at the current intraday price.
+    // Additive: does nothing when livePrice is absent (off-hours / provider down).
+    useEffect(() => {
+        const mainSeries = seriesRef.current.mainSeries;
+        if (!mainSeries) return;
+
+        if (priceLineRef.current) {
+            try { mainSeries.removePriceLine(priceLineRef.current); } catch { /* stale handle after remount */ }
+            priceLineRef.current = null;
+        }
+
+        const price = Number(livePrice);
+        if (!livePrice || isNaN(price) || price <= 0) return;
+
+        const up = liveChangePct == null || liveChangePct >= 0;
+        priceLineRef.current = mainSeries.createPriceLine({
+            price,
+            color: up ? '#00c853' : '#d50000',
+            lineWidth: 1,
+            lineStyle: 2, // Dashed
+            axisLabelVisible: true,
+            title: liveChangePct != null
+                ? `LIVE ${liveChangePct >= 0 ? '+' : ''}${Number(liveChangePct).toFixed(2)}%`
+                : 'LIVE',
+        });
+    }, [livePrice, liveChangePct, history]);
 
     return (
         <div className="flex h-full w-full bg-[#111213] flex-col relative overflow-hidden">

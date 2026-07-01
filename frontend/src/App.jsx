@@ -335,6 +335,8 @@ function App() {
                                         <StockChart
                                             history={predictionData.history}
                                             forecast={predictionData.forecast}
+                                            livePrice={predictionData.live_price}
+                                            liveChangePct={predictionData.live_change_pct}
                                             showSMA={true}
                                             showRSI={true}
                                             lowerBound={predictionData.lower_bound}

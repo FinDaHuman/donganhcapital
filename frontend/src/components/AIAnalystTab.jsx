@@ -306,6 +306,34 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                             <span className="text-red-400 font-medium">{Number(sig.sl_price).toFixed(2)}</span>
                                         </div>
 
+                                        {sig.live_price != null && (
+                                            <div className="mt-3 bg-[#0a0a0c] border border-gray-800/50 p-3 rounded-lg flex justify-between items-center">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="relative flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                                    </span>
+                                                    <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Live</span>
+                                                    <span className="text-gray-200 font-medium">{Number(sig.live_price).toFixed(2)}</span>
+                                                    {sig.live_change_pct != null && (
+                                                        <span className={`text-xs ${sig.live_change_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                            {sig.live_change_pct >= 0 ? '+' : ''}{sig.live_change_pct.toFixed(2)}%
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {(sig.distance_to_tp_pct != null || sig.distance_to_sl_pct != null) && (
+                                                    <div className="flex gap-3 text-xs">
+                                                        {sig.distance_to_tp_pct != null && (
+                                                            <span className="text-green-400/70">TP {sig.distance_to_tp_pct >= 0 ? '+' : ''}{sig.distance_to_tp_pct.toFixed(1)}%</span>
+                                                        )}
+                                                        {sig.distance_to_sl_pct != null && (
+                                                            <span className="text-red-400/70">SL {sig.distance_to_sl_pct >= 0 ? '+' : ''}{sig.distance_to_sl_pct.toFixed(1)}%</span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
                                         <div className="mt-4 pt-4 border-t border-gray-800/50 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
                                             <span className="text-sm text-gray-500">View detailed chart</span>
                                             <span className="text-blue-400">→</span>

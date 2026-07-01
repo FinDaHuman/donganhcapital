@@ -96,7 +96,17 @@ def run_vn30f1m_sync():
     import pytz
     vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
     today = datetime.now(vn_tz).strftime("%Y-%m-%d")
-    df = Quote(symbol="VN30F1M", source="KBS").history(start=today, end=today, interval="1m")
+    # KBS is the primary source but is intermittently unreachable from Render;
+    # VCI serves the same 1-min candle schema and is the reliable fallback.
+    df = None
+    for source in ("KBS", "VCI"):
+        try:
+            df = Quote(symbol="VN30F1M", source=source).history(start=today, end=today, interval="1m")
+            if df is not None and len(df) > 0:
+                break
+        except Exception as e:
+            print(f"VN30F1M fetch via {source} failed: {e}")
+            df = None
     if df is None or len(df) == 0:
         return
     df = df.rename(columns={"time": "time"})
@@ -213,6 +223,129 @@ async def realtime_vn30f1m():
         await asyncio.sleep(60)
 
 
+# ---------------------------------------------------------------------------
+# Real-time equity quotes (shared, cached, trading-hours gated)
+# ---------------------------------------------------------------------------
+# One batch price-board fetch per cycle refreshes a module-level map that all
+# request handlers read from _cache["live_quotes"] — the vnstock call never runs
+# inside a request (Semaphore(5)) slot. Any failure leaves the map stale/empty
+# and every consumer transparently falls back to daily-close values.
+LIVE_QUOTES_CACHE_KEY = "live_quotes"
+LIVE_QUOTES_TTL = 90  # seconds a fetched map is considered fresh
+_MAX_LIVE_QUOTE_SYMBOLS = 250  # one VCI price_board call covers the full board (~225) in ~7s
+
+# Dedicated circuit breaker (mirrors the VN30F1M one above).
+_equity_quotes_consecutive_failures = 0
+_equity_quotes_circuit_open_until = 0.0
+_equity_quotes_trip_count = 0
+
+
+def _trip_equity_quotes_circuit() -> None:
+    global _equity_quotes_consecutive_failures, _equity_quotes_circuit_open_until, _equity_quotes_trip_count
+    _equity_quotes_trip_count += 1
+    cooldown = _vn30f1m_cooldown(_equity_quotes_trip_count)
+    _equity_quotes_circuit_open_until = time.time() + cooldown
+    print(f"Equity quotes circuit breaker tripped (trip #{_equity_quotes_trip_count}) — skipping for {cooldown}s")
+    _equity_quotes_consecutive_failures = 0
+
+
+def get_live_quote_map() -> dict:
+    """Return the latest live-quote map, or {} if none fresh. Read by consumers.
+
+    Never triggers a fetch; the background task owns refreshing. Values are
+    normalized to the stock_ohlc scale by db.live_quotes.
+    """
+    entry = _cache.get(LIVE_QUOTES_CACHE_KEY)
+    if entry and time.time() < entry[1]:
+        return entry[0] or {}
+    return {}
+
+
+def _attach_live_price(result: dict, stock_id: str) -> dict:
+    """Return a shallow copy of a (possibly cached) predict result with a fresh
+    live_price attached. No-op when no quote is available, so the chart simply
+    shows history as before."""
+    q = get_live_quote_map().get(str(stock_id).upper())
+    if q and q.get("price") is not None:
+        return {**result, "live_price": q["price"], "live_change_pct": q.get("change_pct")}
+    return result
+
+
+def _live_quote_universe_sync() -> list:
+    """Tickers worth a live quote: the full equity board (for the heatmap) plus
+    open (HOLD) positions and latest AI signals (subsets, but explicit for
+    clarity). Excludes the VN30F1M future, which has its own realtime path.
+
+    Best-effort — any DB error yields [] so the fetch is simply skipped that
+    cycle and consumers keep using daily-close values.
+    """
+    try:
+        from db.connection import get_engine
+        from sqlalchemy import text
+        engine = get_engine()
+        if engine is None:
+            return []
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT stock_id FROM stocks
+                UNION
+                SELECT stock_id FROM trade_history WHERE status = 'HOLD'
+                UNION
+                SELECT stock_id FROM ai_signals
+                WHERE date = (SELECT MAX(date) FROM ai_signals)
+            """)).fetchall()
+        return [r[0] for r in rows if r and r[0] and r[0] != "VN30F1M"]
+    except Exception as e:
+        print(f"Live quote universe query error: {e}")
+        return []
+
+
+def refresh_live_quotes_sync() -> int:
+    """Fetch one batch of live quotes and store it in _cache. Returns count."""
+    from db.live_quotes import get_live_quotes
+    symbols = _live_quote_universe_sync()
+    if not symbols:
+        return 0
+    symbols = symbols[:_MAX_LIVE_QUOTE_SYMBOLS]
+    quotes = get_live_quotes(symbols)
+    if quotes:
+        _cache[LIVE_QUOTES_CACHE_KEY] = (quotes, time.time() + LIVE_QUOTES_TTL)
+    return len(quotes)
+
+
+async def realtime_equity_quotes():
+    """Refresh the shared live-quote map every 60s during trading hours."""
+    global _equity_quotes_consecutive_failures, _equity_quotes_circuit_open_until, _equity_quotes_trip_count
+    while True:
+        try:
+            if is_vn30f1m_open():
+                if time.time() < _equity_quotes_circuit_open_until:
+                    await asyncio.sleep(60)
+                    continue
+                try:
+                    count = await asyncio.wait_for(
+                        asyncio.to_thread(refresh_live_quotes_sync),
+                        timeout=35,
+                    )
+                    _equity_quotes_consecutive_failures = 0
+                    _equity_quotes_trip_count = 0
+                    if count:
+                        print(f"Live equity quotes refreshed: {count} symbols.")
+                except asyncio.TimeoutError:
+                    _equity_quotes_consecutive_failures += 1
+                    print(f"Live equity quotes timed out (failure #{_equity_quotes_consecutive_failures})")
+                    if _equity_quotes_consecutive_failures >= _VN30F1M_FAILURE_THRESHOLD:
+                        _trip_equity_quotes_circuit()
+                except Exception as e:
+                    _equity_quotes_consecutive_failures += 1
+                    print(f"Error refreshing live equity quotes (failure #{_equity_quotes_consecutive_failures}): {e}")
+                    if _equity_quotes_consecutive_failures >= _VN30F1M_FAILURE_THRESHOLD:
+                        _trip_equity_quotes_circuit()
+        except Exception as e:
+            print(f"Equity quotes background task error: {e}")
+        await asyncio.sleep(60)
+
+
 def downgrade_expired_subscriptions_sync():
     """Downgrade users whose subscription has expired back to free tier."""
     try:
@@ -311,9 +444,10 @@ async def feedback_email_checker():
 poll_task = None
 expiry_task = None
 feedback_task = None
+equity_quotes_task = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global predictor, poll_task, expiry_task, feedback_task
+    global predictor, poll_task, expiry_task, feedback_task, equity_quotes_task
 
     # Validate critical secrets before accepting traffic.
     if not os.getenv("JWT_SECRET_KEY"):
@@ -369,6 +503,7 @@ async def lifespan(app: FastAPI):
     poll_task = asyncio.create_task(realtime_vn30f1m())
     expiry_task = asyncio.create_task(subscription_expiry_checker())
     feedback_task = asyncio.create_task(feedback_email_checker())
+    equity_quotes_task = asyncio.create_task(realtime_equity_quotes())
 
     yield
     if poll_task:
@@ -377,6 +512,8 @@ async def lifespan(app: FastAPI):
         expiry_task.cancel()
     if feedback_task:
         feedback_task.cancel()
+    if equity_quotes_task:
+        equity_quotes_task.cancel()
     print("Shutting down...")
 
 app = FastAPI(title="DongAnh Capital AI API", lifespan=lifespan)
@@ -839,8 +976,8 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
 
         cached = _cache.get(cache_key)
         if cached and time.time() < cached[1]:
-            return cached[0]
-        
+            return _attach_live_price(cached[0], stock_id)
+
         # Fetch all available data for charting and model
         df = get_stock_ohlc(stock_id, limit=None)
         
@@ -941,8 +1078,8 @@ async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurre
         # Free the fetched DataFrame immediately
         del df, history_df, input_prices, input_ret
         gc.collect()
-        
-        return result
+
+        return _attach_live_price(result, stock_id)
             
     except HTTPException:
         raise
