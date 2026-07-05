@@ -26,10 +26,52 @@ def _trial_hint():
     """A one-line, opt-in trial mention — only while the offer is live."""
     if trial_offer_active():
         return (
-            "\nƯU ĐÃI ĐANG DIỄN RA (có thể nhắc khéo nếu phù hợp, KHÔNG bắt buộc): "
-            "Dùng thử gói Pro MIỄN PHÍ 1 tuần, không cần thẻ."
+            "\n        ƯU ĐÃI ĐANG DIỄN RA (có thể gộp vào dòng CTA nếu phù hợp, KHÔNG bắt buộc, "
+            "KHÔNG thêm dòng riêng): Dùng thử gói Pro MIỄN PHÍ 1 tuần, không cần thẻ."
         )
     return ""
+
+
+# ── Length enforcement ──
+# Facebook engagement drops off a cliff on long posts, so the body (everything
+# except the CTA link line, the source line, and the hashtag line) is hard-capped
+# at 2 sentences / ~280 chars. The prompt asks for it, and this validator enforces
+# it: too-long output gets one rewrite attempt, then the run is aborted rather
+# than publishing a wall of text.
+BODY_MAX_SENTENCES = 2
+BODY_MAX_CHARS = 300  # small buffer over the ~280-char target in rule.md
+
+
+def _post_body(text):
+    """The post minus its tail: CTA/link line, 'Nguồn:' line, hashtag-only lines."""
+    body_lines = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if "donganhcapital.com" in s.lower():
+            continue
+        if s.lower().startswith("nguồn:") or s.lower().startswith("nguon:"):
+            continue
+        tokens = s.split()
+        if tokens and all(t.startswith("#") for t in tokens):
+            continue
+        body_lines.append(s)
+    return " ".join(body_lines)
+
+
+def _count_sentences(body):
+    # Strip thousand/decimal separators inside numbers (e.g. "1.300 điểm") so they
+    # don't register as sentence breaks.
+    cleaned = re.sub(r"(?<=\d)[.,](?=\d)", "", body)
+    parts = re.split(r"[.!?…]+", cleaned)
+    return len([p for p in parts if p.strip()])
+
+
+def validate_post_length(text):
+    """True when the body respects the 1-2 sentence / ~280 char cap."""
+    body = _post_body(text)
+    return _count_sentences(body) <= BODY_MAX_SENTENCES and len(body) <= BODY_MAX_CHARS
 
 def clean_markdown(text):
     """Robustly strips markdown formatting characters to ensure clean Facebook display."""
@@ -78,22 +120,26 @@ def generate_facebook_post(action_data):
         
         prompt = f"""
         Bạn là hệ thống AI phân tích chứng khoán của DongAnh Capital.
-        Hãy đọc thông tin bài báo dưới đây và viết một bài đăng Facebook hấp dẫn đại diện cho thương hiệu.
+        Đọc bài báo dưới đây và viết một bài đăng Facebook SIÊU NGẮN, giật tít,
+        khiến người đang lướt newsfeed phải dừng lại.
 
         TÀI LIỆU BÀI BÁO:
         Tiêu đề: {article.get('title')}
         Nội dung: {article.get('content', article.get('description', 'Không có nội dung chi tiết'))}
         Link: {article.get('link')}
 
+        ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (không thêm bất kỳ phần nào khác):
+        [THÂN BÀI: TỐI ĐA 1-2 câu, tổng cộng dưới 280 ký tự — tóm gọn tin đắt giá nhất
+        kèm góc nhìn/tác động tới thị trường chứng khoán Việt Nam. Phải có chi tiết cụ
+        thể (con số, mã cổ phiếu, sự kiện) lấy từ bài báo. Có thể mở đầu bằng 1 emoji.]
+
+        [CTA: đúng 1 dòng chứa link https://donganhcapital.com — theo mục CALL-TO-ACTION.]
+        Nguồn: {domain} - {article.get('link')}
+        [2-3 hashtag trên 1 dòng]
+
         YÊU CẦU:
-        1. Mở bài bằng một HOOK mạnh ở dòng đầu tiên (xem mục MARKETING trong QUY TẮC).
-        2. Tóm tắt ngắn gọn, trung thực nội dung bài báo (chỉ dựa trên nội dung được cung cấp).
-        3. Đưa ra góc nhìn/nhận định khách quan về việc tin tức này ảnh hưởng thế nào đến
-           thị trường chứng khoán Việt Nam. Kèm khuyến nghị rủi ro khi phù hợp.
-        4. Liên hệ khéo léo tới việc nhà đầu tư có thể theo dõi diễn biến này qua dashboard
-           và tín hiệu AI của DongAnh Capital (chỉ dùng dữ kiện trong PRODUCT FACTS).
-        5. Chèn đúng 1 CTA trỏ về https://donganhcapital.com (theo mục CALL-TO-ACTION).{trial_hint}
-        6. BẮT BUỘC để lại trích dẫn nguồn ở cuối bài: Nguồn: {domain} - {article.get('link')}
+        - Thân bài TUYỆT ĐỐI không quá 2 câu. Không phân tích dài, không gạch đầu dòng.
+        - Chỉ dựa trên nội dung bài báo được cung cấp — không bịa số liệu hay tình tiết.{trial_hint}
 
         QUY TẮC:
         {system_rules}
@@ -118,18 +164,24 @@ def generate_facebook_post(action_data):
         prompt = f"""
         Bạn là kênh truyền thông chính thức của DongAnh Capital — nền tảng phân tích chứng khoán
         và tín hiệu AI cho nhà đầu tư cá nhân Việt Nam (KHÔNG phải quỹ đầu tư).
-        Hãy viết một bài đăng Facebook (khoảng 150-220 từ) quảng bá nền tảng.
+        Hãy viết một bài đăng Facebook SIÊU NGẮN quảng bá nền tảng — một câu "đắt" hơn
+        mười câu nhạt.
 
         CHỦ ĐỀ HÔM NAY: {topic}
 
+        ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (không thêm bất kỳ phần nào khác):
+        [THÂN BÀI: TỐI ĐA 1-2 câu, tổng cộng dưới 280 ký tự — một hook mạnh nêu đúng
+        lợi ích/nỗi đau của nhà đầu tư cá nhân, gắn với chủ đề hôm nay. Có thể mở đầu
+        bằng 1 emoji.]
+
+        [CTA: đúng 1 dòng chứa link https://donganhcapital.com — theo mục CALL-TO-ACTION.]
+        [2-3 hashtag trên 1 dòng]
+
         YÊU CẦU:
-        1. Mở bài bằng một HOOK mạnh ở dòng đầu. Giọng văn thu hút, chuyên nghiệp nhưng gần gũi,
-           không xưng "tôi".
-        2. CHỈ dùng thông tin sản phẩm trong PRODUCT FACTS của QUY TẮC. Tuyệt đối không bịa tính
-           năng, số liệu hay con số lợi nhuận. Nếu nói tới AI Agent, ghi rõ là "sắp ra mắt".
-        3. Dùng emoji tiết chế và gạch đầu dòng cho dễ đọc.
-        4. Chèn đúng 1 CTA trỏ về https://donganhcapital.com (theo mục CALL-TO-ACTION).{trial_hint}
-        5. Kết thúc bằng 3-6 hashtag phù hợp.
+        - Thân bài TUYỆT ĐỐI không quá 2 câu. Không liệt kê tính năng, không gạch đầu dòng.
+        - CHỈ dùng thông tin trong PRODUCT FACTS của QUY TẮC — không bịa tính năng, số liệu
+          hay lợi nhuận. Nếu nói tới AI Agent, ghi rõ là "sắp ra mắt".
+        - Không xưng "tôi".{trial_hint}
 
         QUY TẮC:
         {system_rules}
@@ -147,21 +199,23 @@ def generate_facebook_post(action_data):
         
         prompt = f"""
         Bạn là tiếng nói chuyên môn về phân tích kỹ thuật của DongAnh Capital.
-        Hãy viết một bài chia sẻ kiến thức ngắn (khoảng 180-280 từ) cho cộng đồng nhà đầu tư trên Facebook.
+        Hãy chia sẻ MỘT insight kiến thức đầu tư SIÊU NGẮN cho cộng đồng nhà đầu tư trên
+        Facebook — kiểu mẹo/quy tắc đắt giá khiến người đọc muốn lưu lại, không phải bài giảng.
 
         KIẾN THỨC HÔM NAY: {concept}
 
+        ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (không thêm bất kỳ phần nào khác):
+        [THÂN BÀI: TỐI ĐA 1-2 câu, tổng cộng dưới 280 ký tự — chưng cất kiến thức trên
+        thành một insight sắc bén, gợi tò mò, dễ hiểu với nhà đầu tư cá nhân Việt Nam.
+        Có thể mở đầu bằng 1 emoji.]
+
+        [CTA: đúng 1 dòng chứa link https://donganhcapital.com — theo mục CALL-TO-ACTION.]
+        [2-3 hashtag trên 1 dòng]
+
         YÊU CẦU:
-        1. Mở bài bằng một HOOK gợi tò mò ở dòng đầu. Giải thích khái niệm chuyên sâu nhưng cực kỳ
-           dễ hiểu bằng ví dụ thực tế trên thị trường chứng khoán Việt Nam (VD: VNIndex, cổ phiếu
-           ngân hàng, chứng khoán...). Không xưng "tôi".
-        2. Cấu trúc mạch lạc: Nêu vấn đề -> Giải thích/Phân tích -> Bài học rút ra.
-        3. Liên hệ khéo léo tới việc nhà đầu tư có thể dùng tín hiệu AI và bộ phân tích của
-           DongAnh Capital để lọc cơ hội và bám sát kỷ luật giao dịch (chỉ dùng dữ kiện trong
-           PRODUCT FACTS; không mô tả tính năng chưa có như đã có sẵn).
-        4. Dùng gạch đầu dòng và emoji tiết chế cho trực quan, dễ đọc.
-        5. Chèn đúng 1 CTA trỏ về https://donganhcapital.com (theo mục CALL-TO-ACTION).{trial_hint}
-        6. Kết thúc bằng 3-6 hashtag phù hợp.
+        - Thân bài TUYỆT ĐỐI không quá 2 câu. Không giải thích dài, không gạch đầu dòng.
+        - Không xưng "tôi". Chỉ dùng dữ kiện trong PRODUCT FACTS khi nhắc tới sản phẩm;
+          không mô tả tính năng chưa có như đã có sẵn.{trial_hint}
 
         QUY TẮC:
         {system_rules}
@@ -188,7 +242,33 @@ def generate_facebook_post(action_data):
                     model=model_name,
                     contents=prompt,
                 )
-                return clean_markdown(response.text)
+                post_text = clean_markdown(response.text)
+                if validate_post_length(post_text):
+                    return post_text
+
+                # One corrective rewrite, then give up: never publish a wall of text.
+                logger.warning(
+                    f"Post body from {model_name} exceeds the {BODY_MAX_SENTENCES}-sentence"
+                    f"/{BODY_MAX_CHARS}-char cap. Asking for a shorter rewrite..."
+                )
+                rewrite_prompt = (
+                    "Bài đăng Facebook dưới đây quá dài. Viết lại sao cho THÂN BÀI chỉ còn "
+                    "TỐI ĐA 2 câu và dưới 280 ký tự, giữ nguyên dòng CTA có link, dòng "
+                    "'Nguồn:' (nếu có) và dòng hashtag. Chỉ trả về bài đã viết lại, không "
+                    "giải thích.\n\n" + post_text
+                )
+                try:
+                    rewrite = client.models.generate_content(
+                        model=model_name,
+                        contents=rewrite_prompt,
+                    )
+                    short_text = clean_markdown(rewrite.text)
+                    if validate_post_length(short_text):
+                        return short_text
+                except Exception as rewrite_err:
+                    logger.error(f"Rewrite attempt with {model_name} failed: {rewrite_err}")
+                logger.error("Post still too long after one rewrite. Skipping this run.")
+                return None
             except Exception as e:
                 error_msg = str(e)
                 # 1. Handle 503/500/502/504 (Service Unavailable / Server Errors) -> Retry the same model

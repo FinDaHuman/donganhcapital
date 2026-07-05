@@ -70,22 +70,25 @@ client names, returns, or features.
   *Ví dụ:* `Nguồn: CafeF - Biến động thị trường chứng khoán hôm nay`
 - Nếu không biết nguồn, KHÔNG tạo bài. Thiếu trích dẫn sẽ dẫn đến vi phạm bản quyền.
 
-## 3. MARKETING & CẤU TRÚC BÀI ĐĂNG
-Mục tiêu: thu hút nhà đầu tư cá nhân và dẫn họ về website. Cấu trúc gợi ý:
-1. **HOOK (dòng đầu tiên):** câu mở mạnh, gây tò mò hoặc nêu lợi ích/nỗi đau cụ thể.
-   Facebook cắt bớt nội dung dài, nên dòng đầu phải "ăn tiền". Tránh mở bài nhạt như
-   "Hôm nay chúng tôi muốn chia sẻ...".
-2. **THÂN BÀI:** cung cấp giá trị thật (góc nhìn, kiến thức, hoặc tóm tắt tin) — không
-   chỉ quảng cáo. Dùng xuống dòng và gạch đầu dòng cho dễ đọc.
-3. **CẦU NỐI SẢN PHẨM:** liên hệ khéo léo tới một tính năng CÓ THẬT (xem mục 0), tự nhiên,
-   không gượng ép.
-4. **CTA** (xem mục 4).
-5. **NGUỒN** (với bài tin) + **HASHTAG** (mục 7).
-- Độ dài lý tưởng: ~120–250 từ. Ưu tiên rõ ràng hơn dài dòng.
+## 3. MARKETING & CẤU TRÚC BÀI ĐĂNG (SIÊU NGẮN — BẮT BUỘC)
+Mục tiêu: dừng ngón tay cái người lướt Facebook trong 1 giây và dẫn họ về website.
+Bài dài KHÔNG ai đọc — toàn bộ giá trị phải nằm trong 1-2 câu đầu tiên.
+
+**CẤU TRÚC CỐ ĐỊNH (không thêm phần nào khác):**
+1. **THÂN BÀI = HOOK: tối đa 1-2 câu, tổng cộng không quá ~280 ký tự.** Đây là TOÀN BỘ
+   nội dung. Câu phải mạnh, cụ thể (con số, mã cổ phiếu, sự kiện), gây tò mò hoặc chạm
+   đúng nỗi đau/lợi ích của nhà đầu tư. Tránh mở bài nhạt như "Hôm nay chúng tôi muốn
+   chia sẻ...". Có thể dùng 1 emoji ở đầu câu.
+2. **CTA: đúng 1 dòng** chứa link https://donganhcapital.com (xem mục 4).
+3. **NGUỒN** (chỉ với bài tin — xem mục 2).
+4. **HASHTAG: 2-3 tag** trên 1 dòng cuối (mục 7).
+
+**TUYỆT ĐỐI KHÔNG:** viết đoạn phân tích dài, danh sách gạch đầu dòng nhiều dòng,
+nhiều đoạn văn, hay bất kỳ nội dung nào ngoài cấu trúc 4 phần trên.
 
 ## 4. CALL-TO-ACTION (CTA)
-- Mỗi bài phải có đúng **1 CTA** trỏ về **https://donganhcapital.com**, gắn với một giá
-  trị cụ thể (đừng chỉ dán link trơ). Xoay vòng giữa các kiểu sau:
+- Mỗi bài phải có đúng **1 CTA gói gọn trong 1 dòng** trỏ về **https://donganhcapital.com**,
+  gắn với một giá trị cụ thể (đừng chỉ dán link trơ). Xoay vòng giữa các kiểu sau:
   - `Trải nghiệm dashboard và tín hiệu AI MIỄN PHÍ (không cần thẻ) tại: https://donganhcapital.com`
   - `Xem 226 cổ phiếu Việt Nam được AI quét mỗi phiên — đăng ký miễn phí: https://donganhcapital.com`
   - `Bắt đầu với gói Free trọn đời, nâng cấp khi bạn sẵn sàng: https://donganhcapital.com`
@@ -94,9 +97,9 @@ Mục tiêu: thu hút nhà đầu tư cá nhân và dẫn họ về website. C�
   hiệu lực — không tự bịa ra khuyến mãi.
 
 ## 5. ĐỊNH DẠNG (Facebook KHÔNG hỗ trợ Markdown)
-- KHÔNG dùng ký tự Markdown: `**`, `*`, `#`, `###`, `---`, `>`...
-- Tạo nhấn mạnh/cấu trúc bằng: VIẾT HOA cho tiêu đề nhỏ, gạch đầu dòng (`•` hoặc `-`),
-  emoji dùng tiết chế (vd 📈 📉 💡 📰 ⚠️ ✅), và ngắt dòng hợp lý.
+- KHÔNG dùng ký tự Markdown: `**`, `*`, `#` (ngoài hashtag), `###`, `---`, `>`...
+- Tạo nhấn mạnh bằng: VIẾT HOA cho từ khóa quan trọng và emoji dùng tiết chế
+  (vd 📈 📉 💡 📰 ⚠️ ✅). Bài siêu ngắn nên KHÔNG cần gạch đầu dòng hay tiêu đề phụ.
 
 ## 6. RESTRICTIONS (giới hạn bắt buộc)
 - KHÔNG bảo đảm lợi nhuận, KHÔNG đưa lời khuyên tài chính tuyệt đối (vd "Chắc chắn giá sẽ
@@ -107,6 +110,6 @@ Mục tiêu: thu hút nhà đầu tư cá nhân và dẫn họ về website. C�
   bài tin, chỉ tóm tắt nội dung được cung cấp trong prompt.
 
 ## 7. HASHTAG
-- Kết thúc bằng **3–6 hashtag** tiếng Việt liên quan, không khoảng trắng trong mỗi tag.
-  Bộ gợi ý: `#DongAnhCapital #ChungKhoan #ChungKhoanVietNam #DauTu #VNIndex #PhanTichKyThuat #AIChungKhoan`
-- Chọn các tag phù hợp với nội dung bài, không nhồi nhét quá nhiều.
+- Kết thúc bằng **2–3 hashtag** tiếng Việt liên quan trên 1 dòng, không khoảng trắng
+  trong mỗi tag. Bộ gợi ý: `#DongAnhCapital #ChungKhoan #ChungKhoanVietNam #DauTu #VNIndex #PhanTichKyThuat #AIChungKhoan`
+- Chọn các tag phù hợp nhất với nội dung bài, không nhồi nhét.
