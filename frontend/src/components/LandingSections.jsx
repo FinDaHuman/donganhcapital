@@ -12,6 +12,7 @@ import {
     CreditCard, Building2, Loader2, Crown
 } from 'lucide-react';
 import { subscribeEmail } from '../services/stock_api';
+import { isTrialOfferOpen } from '../utils/trialOffer';
 
 /* ============================================================
    ANIMATION VARIANTS
@@ -1169,12 +1170,11 @@ export const PricingSection = ({ onTabChange }) => {
 
     // Limited-time free Pro trial — offer closes end of 2026-07-07 (VN, UTC+7).
     // Server enforces eligibility; this only controls whether the CTA is shown.
-    const trialOfferOpen = Date.now() < new Date('2026-07-08T00:00:00+07:00').getTime();
     const trialEligible =
         isAuthenticated && !authLoading &&
         currentTier === 'free' &&
         !user?.pro_trial_claimed &&
-        trialOfferOpen;
+        isTrialOfferOpen();
 
     const handleClaimTrial = async () => {
         if (trialClaiming) return;

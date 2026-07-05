@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SkeletonCard } from './SkeletonLoader';
 import { Lock, TrendingUp, BarChart2 } from 'lucide-react';
+import { isTrialOfferOpen } from '../utils/trialOffer';
 
 const GOLD = '#C9A96E';
 
@@ -41,7 +42,7 @@ const UpgradeOverlay = ({ onTabChange, user, claimProTrial }) => {
         }
     };
 
-    const canClaim = user && !user.pro_trial_claimed;
+    const canClaim = user && !user.pro_trial_claimed && isTrialOfferOpen();
 
     return (
         <div

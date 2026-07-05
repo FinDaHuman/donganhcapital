@@ -21,6 +21,7 @@ import CheckoutPage from './pages/CheckoutPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import { useAuth } from './context/AuthContext';
+import { isTrialOfferOpen } from './utils/trialOffer';
 
 // Every navigable tab. Anything else in the URL path falls back to 'home' so a
 // mistyped or stale link renders the landing page instead of a blank screen.
@@ -253,7 +254,9 @@ function App() {
                     <div className="flex items-center gap-2.5">
                         <Mail size={13} style={{ color: '#60a5fa', flexShrink: 0 }} />
                         <span className="text-xs" style={{ color: '#93c5fd' }}>
-                            Please verify your email to claim your free Pro trial.{' '}
+                            {isTrialOfferOpen()
+                                ? 'Please verify your email to claim your free Pro trial.'
+                                : 'Please verify your email to secure your account.'}{' '}
                             <button
                                 onClick={handleResendVerify}
                                 disabled={resendVerifyLoading}

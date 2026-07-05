@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Bot, Send, Lock, RotateCcw } from 'lucide-react';
 import { StarMark } from './StarMark';
 import RichText from './RichText';
+import { isTrialOfferOpen } from '../utils/trialOffer';
 
 /* ── Constants ──────────────────────────────────────────────────────────────── */
 const MAX_HISTORY = 12;   // turns kept client-side & forwarded to the backend
@@ -72,7 +73,7 @@ const SignInPrompt = ({ onTabChange }) => (
 const UpgradeGate = ({ onTabChange, user, claimProTrial }) => {
     const [claiming, setClaiming] = useState(false);
     const [msg, setMsg] = useState('');
-    const canClaim = user && !user.pro_trial_claimed;
+    const canClaim = user && !user.pro_trial_claimed && isTrialOfferOpen();
 
     const handleClaim = async () => {
         setClaiming(true);
