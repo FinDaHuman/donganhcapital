@@ -1,16 +1,14 @@
-import React, { useEffect, useState, useRef } from 'react';
-import _PlotImport from 'react-plotly.js';
-const Plot = _PlotImport.default ?? _PlotImport;
-import { getMarketStatus, getLoadingProgress, getCachedMarketStatus, getSectors } from '../services/stock_api';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { getMarketStatus, getLoadingProgress, getCachedMarketStatus, getSectors, getVnindex } from '../services/stock_api';
 import { SkeletonDashboard } from './SkeletonLoader';
+import Treemap from './dashboard/Treemap';
+import { formatChange, changeColor, PANEL_LABEL_STYLE, MONO } from './dashboard/utils';
 
 const MIN_STOCKS_TO_SHOW = 15;
-const MIN_VOL_PCT_SECTOR = 0.015; // 1.5% minimum volume inside a sector to show individually
 
 const Dashboard = ({ onSelectStock }) => {
-    const [marketStocks, setMarketStocks] = useState([]);
+    const [allStocks, setAllStocks] = useState([]);
     const [sectors, setSectors] = useState({});
-    const [loading, setLoading] = useState(true);
     const [indices, setIndices] = useState([]);
 
     // Loading gate state
@@ -18,50 +16,111 @@ const Dashboard = ({ onSelectStock }) => {
     const [progress, setProgress] = useState({ loaded: 0, total: 0 });
     const gateCheckRef = useRef(null);
 
-    // On mount: immediately show cached data if available, then start loading gate
+    const processMarketData = useCallback((data, vnindex) => {
+        // Deduplicate by ticker
+        const uniqueDataMap = new Map();
+        data.forEach(item => uniqueDataMap.set(item.ticker, item));
+        const uniqueData = Array.from(uniqueDataMap.values());
+
+        const formatted = uniqueData.map(item => ({
+            code: item.ticker,
+            volume: item.size,
+            change_pct: item.value,
+            close: item.price || 0,
+            trading_value: item.trading_value || 0,
+        })).sort((a, b) => b.volume - a.volume);
+
+        setAllStocks(formatted);
+
+        // Whole-market stats
+        const avgChange = formatted.reduce((sum, s) => sum + s.change_pct, 0) / (formatted.length || 1);
+        const top30 = formatted.slice(0, 30);
+        const avg30 = top30.reduce((sum, s) => sum + s.change_pct, 0) / (top30.length || 1);
+        const gainers = formatted.filter(s => s.change_pct > 0).length;
+        const losers = formatted.filter(s => s.change_pct < 0).length;
+
+        // VNINDEX card from the daily series
+        let vnCard = { name: 'VNINDEX', val: '—', chg: '', chgColor: 'var(--market-neutral)' };
+        if (vnindex && vnindex.length >= 2) {
+            const closes = vnindex
+                .map(d => Number(d.Close ?? d.close))
+                .filter(v => !isNaN(v));
+            if (closes.length >= 2) {
+                const last = closes[closes.length - 1];
+                const prev = closes[closes.length - 2];
+                const pct = prev ? ((last - prev) / prev) * 100 : 0;
+                vnCard = { name: 'VNINDEX', val: last.toFixed(2), chg: formatChange(pct), chgColor: changeColor(pct) };
+            }
+        }
+
+        setIndices([
+            vnCard,
+            {
+                name: 'AVG MARKET',
+                val: `${formatted.length} Stocks`,
+                chg: formatChange(avgChange),
+                chgColor: changeColor(avgChange),
+            },
+            {
+                name: 'BREADTH',
+                val: `${gainers} ▲ / ${losers} ▼`,
+                chg: gainers >= losers ? `+${gainers - losers}` : `${gainers - losers}`,
+                chgColor: changeColor(gainers - losers),
+            },
+            {
+                name: 'TOP 30 VOL',
+                val: 'Proxy VN30',
+                chg: formatChange(avg30),
+                chgColor: changeColor(avg30),
+            },
+        ]);
+    }, []);
+
+    // On mount: show cached data instantly if available, then run the loading gate
     useEffect(() => {
-        // Fetch static sector mapping from backend config
         const fetchSystemConfig = async () => {
             const fetchedSectors = await getSectors();
             setSectors(fetchedSectors);
         };
         fetchSystemConfig();
 
-        // 1. Try to show cached data instantly (returning user experience)
+        // VNINDEX daily series feeds the index stat card (2 most recent closes)
+        const fetchVnindex = async () => {
+            const vn = await getVnindex(5);
+            return Array.isArray(vn) ? vn : [];
+        };
+
+        // 1. Cached data for instant returning-user experience
         const cached = getCachedMarketStatus();
         if (cached && cached.length >= MIN_STOCKS_TO_SHOW) {
-            processMarketData(cached);
+            processMarketData(cached, []);
             setGateOpen(true);
-            setLoading(false);
         }
 
-        // 2. Start checking loading progress
+        // 2. Loading gate: poll progress until enough stocks are warm
         const checkProgress = async () => {
             try {
                 const prog = await getLoadingProgress();
                 setProgress(prog);
 
                 if (prog.loaded >= MIN_STOCKS_TO_SHOW) {
-                    // Gate opens — fetch real data
                     clearInterval(gateCheckRef.current);
-                    const data = await getMarketStatus();
+                    const [data, vn] = await Promise.all([getMarketStatus(), fetchVnindex()]);
                     if (data && Array.isArray(data) && data.length > 0) {
-                        processMarketData(data);
+                        processMarketData(data, vn);
                     }
                     setGateOpen(true);
-                    setLoading(false);
                 }
             } catch (err) {
                 console.error("Progress check failed:", err);
             }
         };
 
-        // Poll progress every 5 seconds until gate opens
         checkProgress();
         gateCheckRef.current = setInterval(checkProgress, 5000);
 
         return () => clearInterval(gateCheckRef.current);
-    }, []);
+    }, [processMarketData]);
 
     // After gate opens: refresh market data periodically
     useEffect(() => {
@@ -69,217 +128,25 @@ const Dashboard = ({ onSelectStock }) => {
 
         const fetchData = async () => {
             try {
-                const data = await getMarketStatus();
+                const [data, vn] = await Promise.all([getMarketStatus(), getVnindex(5)]);
                 if (data && Array.isArray(data) && data.length > 0) {
-                    processMarketData(data);
+                    processMarketData(data, Array.isArray(vn) ? vn : []);
                 }
             } catch (err) {
-                console.error("Failed to refresh heatmap:", err);
+                console.error("Failed to refresh market data:", err);
             }
         };
         const interval = setInterval(fetchData, 120000);
         return () => clearInterval(interval);
-    }, [gateOpen]);
+    }, [gateOpen, processMarketData]);
 
-    const processMarketData = (data) => {
-        // Deduplicate data by ticker
-        const uniqueDataMap = new Map();
-        data.forEach(item => {
-            uniqueDataMap.set(item.ticker, item);
-        });
-        const uniqueData = Array.from(uniqueDataMap.values());
-
-        // Sort by volume DESC and get top ones for the heatmap
-        let formatted = uniqueData.map(item => ({
-            code: item.ticker,
-            volume: item.size,
-            change_pct: item.value,
-            close: item.price || 0,
-            trading_value: item.trading_value || 0
-        })).sort((a, b) => b.volume - a.volume);
-
-        // Calculate whole market stats before filtering for UI
-        const avgChange = formatted.reduce((sum, s) => sum + s.change_pct, 0) / (formatted.length || 1);
-        const top30 = formatted.slice(0, 30);
-        const avg30 = top30.reduce((sum, s) => sum + s.change_pct, 0) / (top30.length || 1);
-        const gainers = formatted.filter(s => s.change_pct > 0).length;
-        const losers = formatted.filter(s => s.change_pct < 0).length;
-
-        // Apply dashboard filtering logic (top 80-100 by volume to avoid clutter)
-        formatted = formatted.slice(0, 100);
-
-        setMarketStocks(formatted);
-
-        if (formatted.length > 0) {
-            setIndices([
-                { name: 'AVG MARKET', val: `${uniqueData.length} Stocks`, chg: `${avgChange > 0 ? '+' : ''}${avgChange.toFixed(2)}%` },
-                { name: 'TOP 30 VOL', val: 'Proxy VN30', chg: `${avg30 > 0 ? '+' : ''}${avg30.toFixed(2)}%` },
-                { name: 'GAINERS', val: gainers.toString(), chg: 'Stocks' },
-                { name: 'LOSERS', val: losers.toString(), chg: 'Stocks' },
-            ]);
-        }
-    };
-
-    const getSector = (code) => {
-        if (!sectors || Object.keys(sectors).length === 0) return "Khác";
+    const getSector = useCallback((code) => {
+        if (!sectors || Object.keys(sectors).length === 0) return "Other";
         for (const [sector, stocks] of Object.entries(sectors)) {
             if (stocks.includes(code)) return sector;
         }
-        return "Khác";
-    };
-
-    const calculateColor = (pct) => {
-        if (pct <= -6.8) return '#00e5ff'; // Floor
-        if (pct < -0.05) return '#ef5350'; // Red
-        if (pct <= 0.05) return '#ffb300'; // Yellow
-        if (pct < 6.8) return '#00c853';   // Green
-        return '#d500f9';                  // Ceiling (Purple)
-    };
-
-    const formatVolume = (vol) => {
-        if (vol >= 1000000000) return (vol / 1000000000).toFixed(2) + 'B';
-        if (vol >= 1000000) return (vol / 1000000).toFixed(2) + 'M';
-        if (vol >= 1000) return (vol / 1000).toFixed(2) + 'K';
-        return vol.toString();
-    };
-
-    const treemapData = () => {
-        if (!marketStocks.length) return null;
-
-        const ids = [];
-        const labels = [];
-        const parents = [];
-        const values = [];
-        const exactColors = [];
-        const text = [];
-        const customdata = [];
-
-        const presentSectors = new Set(marketStocks.map(s => getSector(s.code)));
-
-        const sectorVolumes = {};
-        marketStocks.forEach(s => {
-            const sector = getSector(s.code);
-            sectorVolumes[sector] = (sectorVolumes[sector] || 0) + (s.volume || 1);
-        });
-
-        const totalVolume = Object.values(sectorVolumes).reduce((a, b) => a + b, 0);
-
-        // Single Root Node
-        ids.push("Thị Trường");
-        labels.push("Thị Trường");
-        parents.push("");
-        values.push(totalVolume);
-        exactColors.push('#111213');
-        text.push("<b>Thị Trường</b>");
-        customdata.push({ hoverText: "<b>Thị Trường</b>" });
-
-        presentSectors.forEach(sector => {
-            ids.push(sector);
-            labels.push(sector);
-            parents.push("Thị Trường");
-            values.push(sectorVolumes[sector]);
-            exactColors.push('#1a1c1e');
-            text.push(`<b>${sector}</b>`);
-            customdata.push({ hoverText: `<b>Ngành: ${sector}</b>` });
-        });
-
-        presentSectors.forEach(sector => {
-            const sectorStocks = marketStocks.filter(s => getSector(s.code) === sector);
-            const secVol = sectorVolumes[sector];
-
-            let othersVol = 0;
-            let othersCount = 0;
-            const visibleStocks = [];
-            const otherStocks = [];
-
-            sectorStocks.forEach(s => {
-                const vol = s.volume || 1;
-                // Threshold implementation: below X% of sector volume goes to Others
-                if (vol / secVol < MIN_VOL_PCT_SECTOR) {
-                    othersVol += vol;
-                    othersCount++;
-                    otherStocks.push(s);
-                } else {
-                    visibleStocks.push(s);
-                }
-            });
-
-            // If there's only 1 small stock, don't group it into an "Others" category
-            if (othersCount === 1) {
-                visibleStocks.push(otherStocks[0]);
-                otherStocks.length = 0;
-                othersCount = 0;
-                othersVol = 0;
-            }
-
-            // Add visible stocks normally
-            visibleStocks.forEach(s => {
-                ids.push(s.code);
-                labels.push(s.code);
-                parents.push(sector);
-                values.push(s.volume || 1);
-
-                const pct = s.change_pct || 0;
-                let color = calculateColor(pct);
-                exactColors.push(color);
-                const sign = pct > 0 ? '+' : '';
-                text.push(`<b>${s.code}</b><br>${sign}${pct.toFixed(2)}%`);
-                
-                const hoverText = `<b>${s.code}</b><br>Giá: ${s.close ? s.close.toFixed(2) : "N/A"}<br>Thay đổi: ${sign}${pct.toFixed(2)}%<br>KLGD: ${formatVolume(s.volume || 0)}<br>GTGD: ${s.trading_value ? formatVolume(s.trading_value) : "N/A"}`;
-                customdata.push({ hoverText });
-            });
-
-            // Roll up small stocks into an "Others" category per sector, as a parent node
-            if (othersCount > 0) {
-                const otherId = `Khác (${sector})`;
-                ids.push(otherId);
-                labels.push(`+${othersCount} MÃ`);
-                parents.push(sector);
-                values.push(othersVol);
-                exactColors.push('#25282c'); // Dark gray color for 'others' group
-                text.push(`<b>Các mã tỷ trọng nhỏ (${othersCount} mã)</b>`);
-                customdata.push({ hoverText: `<b>Nhóm Khác (${sector})</b><br>${othersCount} mã cổ phiếu` });
-
-                // Add the actual other stocks as children of this 'otherId'
-                otherStocks.forEach(s => {
-                    ids.push(s.code);
-                    labels.push(s.code);
-                    parents.push(otherId);
-                    values.push(s.volume || 1);
-
-                    const pct = s.change_pct || 0;
-                    let color = calculateColor(pct);
-                    exactColors.push(color);
-                    const sign = pct > 0 ? '+' : '';
-                    text.push(`<b>${s.code}</b><br>${sign}${pct.toFixed(2)}%`);
-                    
-                    const hoverText = `<b>${s.code}</b><br>Giá: ${s.close ? s.close.toFixed(2) : "N/A"}<br>Thay đổi: ${sign}${pct.toFixed(2)}%<br>KLGD: ${formatVolume(s.volume || 0)}<br>GTGD: ${s.trading_value ? formatVolume(s.trading_value) : "N/A"}`;
-                    customdata.push({ hoverText });
-                });
-            }
-        });
-
-        return [{
-            type: "treemap",
-            ids: ids,
-            labels: labels,
-            parents: parents,
-            values: values,
-            text: text,
-            customdata: customdata,
-            textinfo: "label+text",
-            hovertemplate: "%{customdata.hoverText}<extra></extra>",
-            textposition: "middle center",
-            insidetextanchor: "middle",
-            branchvalues: "total",
-            pathbar: { visible: false },
-            tiling: { pad: 3 },
-            marker: {
-                colors: exactColors,
-                line: { width: 2, color: '#111213' }
-            },
-        }];
-    };
+        return "Other";
+    }, [sectors]);
 
     // --- Loading Gate UI ---
     if (!gateOpen) {
@@ -290,7 +157,7 @@ const Dashboard = ({ onSelectStock }) => {
                 <div className="absolute inset-0 opacity-40 pointer-events-none">
                     <SkeletonDashboard className="h-full" />
                 </div>
-                
+
                 {/* Foreground Overlay */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-8 p-8 z-10 backdrop-blur-sm bg-black/20">
                     <div className="flex flex-col items-center gap-6 max-w-sm w-full">
@@ -324,15 +191,15 @@ const Dashboard = ({ onSelectStock }) => {
                                     className="h-full rounded-full transition-all duration-700 ease-out"
                                     style={{
                                         width: `${Math.min(pct, 100)}%`,
-                                        background: 'linear-gradient(90deg, #A38550, #C9A96E, #E8C97A)',
+                                        background: 'linear-gradient(90deg, var(--gold-muted), var(--gold-primary), var(--gold-bright))',
                                     }}
                                 />
                             </div>
                             <div className="flex justify-between">
-                                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'var(--text-muted)' }}>
+                                <span style={{ fontFamily: MONO, fontSize: '11px', color: 'var(--text-muted)' }}>
                                     {progress.loaded} / {progress.total || '...'} stocks
                                 </span>
-                                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: 'var(--gold-muted)', fontWeight: 500 }}>
+                                <span style={{ fontFamily: MONO, fontSize: '11px', color: 'var(--gold-muted)', fontWeight: 500 }}>
                                     {pct}%
                                 </span>
                             </div>
@@ -343,101 +210,59 @@ const Dashboard = ({ onSelectStock }) => {
         );
     }
 
-    // --- Normal Dashboard ---
+    // --- Dashboard: minor stats on top, heatmap fills the rest ---
     return (
         <div className="flex-1 w-full flex flex-col overflow-hidden p-2 gap-2" style={{ background: 'var(--bg-void)' }}>
-            <div className="grid grid-cols-2 sm:grid-cols-4 w-full shrink-0 gap-2">
-                {indices.map(idx => (
+                {/* Stat cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 w-full shrink-0 gap-2">
+                    {indices.map(idx => (
+                        <div
+                            key={idx.name}
+                            className="rounded-lg p-3 flex flex-col justify-center"
+                            style={{
+                                background: 'var(--bg-surface)',
+                                border: '1px solid rgba(201,169,110,0.1)',
+                                transition: 'background-color 200ms ease, border-color 200ms ease',
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.backgroundColor = 'var(--bg-elevated)';
+                                e.currentTarget.style.borderColor = 'rgba(201,169,110,0.2)';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
+                                e.currentTarget.style.borderColor = 'rgba(201,169,110,0.1)';
+                            }}
+                        >
+                            <div className="flex justify-between items-center mb-1">
+                                <span style={PANEL_LABEL_STYLE}>{idx.name}</span>
+                                <span style={{ fontFamily: MONO, fontSize: '11px', fontWeight: 600, color: idx.chgColor }}>
+                                    {idx.chg}
+                                </span>
+                            </div>
+                            <div style={{ fontFamily: MONO, fontSize: '18px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                                {idx.val}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Market heatmap — the main event */}
+                {allStocks.length > 0 ? (
+                    <Treemap stocks={allStocks} getSector={getSector} onSelectStock={onSelectStock} />
+                ) : (
                     <div
-                        key={idx.name}
-                        className="flex-1 rounded-lg p-3 cursor-pointer flex flex-col justify-center"
+                        className="flex-1 rounded-lg flex items-center justify-center min-h-[300px]"
                         style={{
                             background: 'var(--bg-surface)',
                             border: '1px solid rgba(201,169,110,0.1)',
-                            willChange: 'background-color, border-color',
-                            transition: 'background-color 200ms ease, border-color 200ms ease',
-                        }}
-                        onMouseEnter={e => {
-                            e.currentTarget.style.backgroundColor = 'var(--bg-elevated)';
-                            e.currentTarget.style.borderColor = 'rgba(201,169,110,0.2)';
-                        }}
-                        onMouseLeave={e => {
-                            e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
-                            e.currentTarget.style.borderColor = 'rgba(201,169,110,0.1)';
+                            fontFamily: "'Outfit', sans-serif",
+                            fontSize: '13px',
+                            color: 'var(--text-muted)',
                         }}
                     >
-                        <div className="flex justify-between items-center mb-1">
-                            <span
-                                style={{
-                                    fontFamily: "'Outfit', sans-serif",
-                                    fontSize: '11px',
-                                    fontWeight: 600,
-                                    letterSpacing: '0.14em',
-                                    textTransform: 'uppercase',
-                                    color: 'var(--text-muted)',
-                                }}
-                            >
-                                {idx.name}
-                            </span>
-                            <span
-                                style={{
-                                    fontFamily: "'DM Mono', monospace",
-                                    fontSize: '11px',
-                                    fontWeight: 600,
-                                    color: idx.chg.includes('+') ? 'var(--market-up)' : idx.chg.includes('-') ? 'var(--market-down)' : 'var(--market-neutral)',
-                                }}
-                            >
-                                {idx.chg}
-                            </span>
-                        </div>
-                        <div
-                            style={{
-                                fontFamily: "'DM Mono', monospace",
-                                fontSize: '18px',
-                                fontWeight: 500,
-                                color: 'var(--text-primary)',
-                            }}
-                        >
-                            {idx.val}
-                        </div>
+                        No market data available
                     </div>
-                ))}
-            </div>
-
-            <div className="flex-1 bg-[#1a1c1e] rounded-sm relative shadow-lg min-h-[300px] sm:min-h-[400px] overflow-hidden">
-                <div className="absolute inset-0">
-                    {!loading && marketStocks.length > 0 ? (
-                        <Plot
-                            data={treemapData()}
-                            layout={{
-                                autosize: true,
-                                margin: { l: 0, r: 0, b: 0, t: 0, pad: 0 },
-                                paper_bgcolor: '#1a1c1e',
-                                font: { color: '#ffffff', family: 'sans-serif' }
-                            }}
-                            config={{ displayModeBar: false, responsive: true }}
-                            style={{ width: '100%', height: '100%', display: 'block' }}
-                            useResizeHandler={true}
-                            onClick={(data) => {
-                                if (!data || !data.points || data.points.length === 0) return;
-                                const point = data.points[0];
-                                if (!point || !point.label) return;
-                                const code = point.label;
-                                
-                                // Only trigger selection if the clicked label is an actual stock ticker
-                                const isStock = marketStocks.some(s => s.code === code);
-                                if (isStock) {
-                                    onSelectStock(code);
-                                }
-                            }}
-                        />
-                    ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-gray-500 bg-[#1a1c1e]">
-                            {loading ? "Loading Market Data..." : "No Data Available"}
-                        </div>
-                    )}
-                </div>
-            </div>
+                )}
         </div>
     );
 };

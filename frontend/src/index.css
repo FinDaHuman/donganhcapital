@@ -37,7 +37,7 @@
   --text-muted:     #4E617A;
   --text-gold:      #C9A96E;
   --text-inverse:   #060B14;
-  --text-disabled:  #2A3A52;
+  --text-disabled:  #3E5170; /* dimmer than muted but keeps ≥3:1 contrast on dark surfaces */
 
   /* ── Market Data Colors (Immutable) ────────────────────── */
   --market-up:      #4DB882;
@@ -45,6 +45,14 @@
   --market-neutral: #C9A96E;
   --market-ceiling: #C77DFF;
   --market-floor:   #00D4FF;
+
+  /* Vivid variants for large color-coded surfaces (heatmap tiles),
+     where the muted brand tones read as pale. Same semantics. */
+  --market-up-vivid:      #00C853;
+  --market-down-vivid:    #EF5350;
+  --market-neutral-vivid: #FFB300;
+  --market-ceiling-vivid: #D500F9;
+  --market-floor-vivid:   #00E5FF;
 
   /* ── Semantic UI ───────────────────────────────────────── */
   --info:    #4A7FD4;

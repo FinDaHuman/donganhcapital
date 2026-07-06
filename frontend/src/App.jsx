@@ -1,27 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
-import Dashboard from './components/Dashboard';
-import StockChart from './components/StockChart';
-import AIAnalystTab from './components/AIAnalystTab';
-import DataAnalystTab from './components/DataAnalystTab';
-import LTRSignalsTab from './components/LTRSignalsTab';
-import ReportsTab from './components/ReportsTab';
-import NewsTab from './components/NewsTab';
-import ChatbotTab from './components/ChatbotTab';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Search, AlertTriangle, X, Mail, ArrowLeft } from 'lucide-react';
 import { SkeletonChart } from './components/SkeletonLoader';
-import AuthPage from './pages/AuthPage';
-import ProfilePage from './pages/ProfilePage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
-import VerifyEmailPage from './pages/VerifyEmailPage';
-import CheckoutPage from './pages/CheckoutPage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
-import TermsOfServicePage from './pages/TermsOfServicePage';
 import { useAuth } from './context/AuthContext';
 import { isTrialOfferOpen } from './utils/trialOffer';
+
+// Route-level code splitting: every view except the landing page (the first
+// paint for new visitors) loads on demand. This keeps heavy chart libraries —
+// plotly (DataAnalystTab) and lightweight-charts (Dashboard, StockChart) —
+// out of the entry bundle.
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const StockChart = lazy(() => import('./components/StockChart'));
+const AIAnalystTab = lazy(() => import('./components/AIAnalystTab'));
+const DataAnalystTab = lazy(() => import('./components/DataAnalystTab'));
+const LTRSignalsTab = lazy(() => import('./components/LTRSignalsTab'));
+const ReportsTab = lazy(() => import('./components/ReportsTab'));
+const NewsTab = lazy(() => import('./components/NewsTab'));
+const ChatbotTab = lazy(() => import('./components/ChatbotTab'));
+const AuthPage = lazy(() => import('./pages/AuthPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
+const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
+const TermsOfServicePage = lazy(() => import('./pages/TermsOfServicePage'));
+
+// Shown while a lazy route chunk downloads (fast after first visit — chunks are cached)
+const TabFallback = () => (
+    <div className="flex-1 w-full p-6 flex flex-col" style={{ background: 'var(--bg-void)', minHeight: '600px' }}>
+        <SkeletonChart className="flex-1 w-full h-full" />
+    </div>
+);
 
 // Every navigable tab. Anything else in the URL path falls back to 'home' so a
 // mistyped or stale link renders the landing page instead of a blank screen.
@@ -285,6 +297,7 @@ function App() {
 
             <div className="flex-1 flex flex-col w-full min-h-0 relative">
                 <main className="flex-1 overflow-hidden relative flex flex-col min-h-0" style={{ backgroundColor: '#000' }}>
+                    <Suspense fallback={<TabFallback />}>
 
                     {activeTab === 'home' && (
                         <div className="h-full w-full overflow-hidden">
@@ -491,6 +504,8 @@ function App() {
                     {activeTab === 'terms' && (
                         <TermsOfServicePage onTabChange={handleTabChange} returnTo={policyReturnTo} />
                     )}
+
+                    </Suspense>
                 </main>
             </div>
         </div>

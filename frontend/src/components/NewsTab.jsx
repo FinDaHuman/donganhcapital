@@ -4,6 +4,7 @@ import { SkeletonCard } from './SkeletonLoader';
 import { Newspaper, Globe, X, ArrowUpRight, ExternalLink, RefreshCw, Sparkles, Lock } from 'lucide-react';
 import { StarMark } from './StarMark';
 import RichText from './RichText';
+import { SignInGate } from './AccessGate';
 
 const GOLD = '#C9A96E';
 const SURFACE = '#0E1729';
@@ -453,39 +454,6 @@ const NewsDetailModal = ({ article, loading, onClose, onSelectStock, onTabChange
     );
 };
 
-// ── Sign-in gate ──────────────────────────────────────────────────────────────
-const SignInPrompt = ({ onTabChange }) => (
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
-            <Newspaper size={28} style={{ color: GOLD }} />
-        </div>
-        <div>
-            <h3 className="text-xl font-bold mb-2" style={{ color: '#EDE8DA', fontFamily: "'Outfit', sans-serif" }}>
-                Đăng nhập để đọc Bản tin Thị trường
-            </h3>
-            <p className="text-sm max-w-sm" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>
-                Tin tức tài chính cập nhật cùng tóm tắt AI — miễn phí cho mọi thành viên đã đăng nhập.
-            </p>
-        </div>
-        <div className="flex gap-3">
-            <button
-                onClick={() => onTabChange('login')}
-                className="px-6 py-2.5 rounded-full text-sm font-medium cursor-pointer"
-                style={{ color: GOLD, background: 'transparent', border: `1px solid ${GOLD}35`, fontFamily: "'Outfit', sans-serif" }}
-            >
-                Đăng nhập
-            </button>
-            <button
-                onClick={() => onTabChange('register')}
-                className="px-6 py-2.5 rounded-full text-sm font-semibold cursor-pointer"
-                style={{ color: '#0A1020', background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`, border: 'none', fontFamily: "'Outfit', sans-serif" }}
-            >
-                Đăng ký miễn phí
-            </button>
-        </div>
-    </div>
-);
-
 // ── Main tab ──────────────────────────────────────────────────────────────────
 const NewsTab = ({ onSelectStock, onTabChange }) => {
     const { isAuthenticated, authApi } = useAuth();
@@ -582,7 +550,12 @@ const NewsTab = ({ onSelectStock, onTabChange }) => {
         return (
             <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
                 <style>{STYLE}</style>
-                <SignInPrompt onTabChange={onTabChange} />
+                <SignInGate
+                    onTabChange={onTabChange}
+                    icon={Newspaper}
+                    title="Sign In to Read Market News"
+                    description="Curated financial news with AI summaries — free for all signed-in members."
+                />
             </div>
         );
     }

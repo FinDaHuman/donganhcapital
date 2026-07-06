@@ -1,6 +1,12 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Search, X, ArrowLeft } from 'lucide-react';
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { cssVar, withAlpha } from './dashboard/utils';
+
+// Market colors from the design tokens (lightweight-charts renders to canvas,
+// so var() strings can't be used directly — resolve them once at module scope)
+const MARKET_UP = () => cssVar('--market-up', '#4DB882');
+const MARKET_DOWN = () => cssVar('--market-down', '#E05555');
 
 const StockChart = ({ history, forecast, ticker, livePrice, liveChangePct, stockList = [], onSelectStock, onBack, backLabel }) => {
     const containerRef = useRef(null);
@@ -65,12 +71,14 @@ const StockChart = ({ history, forecast, ticker, livePrice, liveChangePct, stock
             }
         });
 
+        const upColor = MARKET_UP();
+        const downColor = MARKET_DOWN();
         const mainSeries = chart.addSeries(CandlestickSeries, {
-            upColor: '#00c853',
-            downColor: '#d50000',
+            upColor,
+            downColor,
             borderVisible: false,
-            wickUpColor: '#00c853',
-            wickDownColor: '#d50000',
+            wickUpColor: upColor,
+            wickDownColor: downColor,
         });
 
         const forecastLineSeries = chart.addSeries(LineSeries, {
@@ -227,7 +235,7 @@ const StockChart = ({ history, forecast, ticker, livePrice, liveChangePct, stock
                     volumeData.push({
                         time: pt.time,
                         value: pt.volume,
-                        color: pt.isGreen ? 'rgba(0, 200, 83, 0.3)' : 'rgba(213, 0, 0, 0.3)'
+                        color: pt.isGreen ? withAlpha(MARKET_UP(), 0.3) : withAlpha(MARKET_DOWN(), 0.3)
                     });
                 }
             }
@@ -294,7 +302,7 @@ const StockChart = ({ history, forecast, ticker, livePrice, liveChangePct, stock
         const up = liveChangePct == null || liveChangePct >= 0;
         priceLineRef.current = mainSeries.createPriceLine({
             price,
-            color: up ? '#00c853' : '#d50000',
+            color: up ? MARKET_UP() : MARKET_DOWN(),
             lineWidth: 1,
             lineStyle: 2, // Dashed
             axisLabelVisible: true,

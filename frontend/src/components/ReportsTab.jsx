@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getSectors } from '../services/stock_api';
 import { SkeletonCard } from './SkeletonLoader';
-import { Lock, FileText, Download, Eye, Search } from 'lucide-react';
+import { FileText, Download, Eye, Search } from 'lucide-react';
+import { SignInGate, UpgradeGate } from './AccessGate';
 
 const GOLD = '#C9A96E';
 
@@ -17,88 +18,6 @@ const formatBytes = (b) => {
     const mb = b / (1024 * 1024);
     return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
 };
-
-const UpgradeOverlay = ({ onTabChange }) => (
-    <div
-        className="absolute inset-0 flex flex-col items-center justify-center rounded-xl z-20"
-        style={{ background: 'rgba(6,11,20,0.82)', backdropFilter: 'blur(6px)' }}
-    >
-        <div
-            className="flex flex-col items-center gap-4 p-8 rounded-2xl shadow-2xl max-w-sm w-full mx-4 text-center"
-            style={{ background: '#0d1117', border: `1px solid ${GOLD}30` }}
-        >
-            <div
-                className="w-14 h-14 rounded-full flex items-center justify-center"
-                style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}
-            >
-                <Lock size={24} style={{ color: GOLD }} />
-            </div>
-            <div>
-                <span
-                    className="inline-block px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-3"
-                    style={{ background: `${GOLD}18`, color: GOLD, border: `1px solid ${GOLD}30` }}
-                >
-                    Premium Feature
-                </span>
-                <h3 className="text-lg font-bold text-white mb-2" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                    Premium Research Reports
-                </h3>
-                <p className="text-sm text-gray-400 leading-relaxed">
-                    In-depth PDF research reports on individual stocks, hand-prepared by our
-                    analysts. Available to Premium subscribers (and Pro members during the beta).
-                </p>
-            </div>
-            <button
-                onClick={() => onTabChange('checkout', { plan: 'premium', period: 'monthly' })}
-                className="w-full py-3 rounded-xl font-semibold text-sm transition-all cursor-pointer"
-                style={{
-                    background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`,
-                    color: '#0A1020',
-                    border: 'none',
-                    fontFamily: "'Outfit', sans-serif",
-                }}
-            >
-                Upgrade to Premium
-            </button>
-        </div>
-    </div>
-);
-
-const SignInPrompt = ({ onTabChange }) => (
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
-        <div
-            className="w-16 h-16 rounded-full flex items-center justify-center"
-            style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}
-        >
-            <FileText size={28} style={{ color: GOLD }} />
-        </div>
-        <div>
-            <h3 className="text-xl font-bold text-white mb-2" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                Sign In to Access Reports
-            </h3>
-            <p className="text-sm text-gray-400 max-w-sm">
-                Premium research reports are exclusive to subscribers. Sign in to browse and
-                download the latest analyst PDFs.
-            </p>
-        </div>
-        <div className="flex gap-3">
-            <button
-                onClick={() => onTabChange('login')}
-                className="px-6 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all"
-                style={{ color: GOLD, background: 'transparent', border: `1px solid ${GOLD}35`, fontFamily: "'Outfit', sans-serif" }}
-            >
-                Sign In
-            </button>
-            <button
-                onClick={() => onTabChange('register')}
-                className="px-6 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all"
-                style={{ color: '#0A1020', background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`, border: 'none', fontFamily: "'Outfit', sans-serif" }}
-            >
-                Sign Up Free
-            </button>
-        </div>
-    </div>
-);
 
 const ReportsTab = ({ onTabChange }) => {
     const { user, isAuthenticated, authApi, refreshUser } = useAuth();
@@ -194,7 +113,12 @@ const ReportsTab = ({ onTabChange }) => {
     if (!isAuthenticated) {
         return (
             <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
-                <SignInPrompt onTabChange={onTabChange} />
+                <SignInGate
+                    onTabChange={onTabChange}
+                    icon={FileText}
+                    title="Sign In to Access Reports"
+                    description="Premium research reports are exclusive to subscribers. Sign in to browse and download the latest analyst PDFs."
+                />
             </div>
         );
     }
@@ -238,7 +162,13 @@ const ReportsTab = ({ onTabChange }) => {
                             </tbody>
                         </table>
                     </div>
-                    <UpgradeOverlay onTabChange={onTabChange} />
+                    <UpgradeGate
+                        onTabChange={onTabChange}
+                        overlay
+                        plan="premium"
+                        title="Premium Research Reports"
+                        description="In-depth PDF research reports on individual stocks, hand-prepared by our analysts. Available to Premium subscribers (and Pro members during the beta)."
+                    />
                 </div>
             </div>
         );

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SkeletonCard } from './SkeletonLoader';
-import { Lock, TrendingUp, BarChart2 } from 'lucide-react';
-import { isTrialOfferOpen } from '../utils/trialOffer';
+import { TrendingUp, BarChart2 } from 'lucide-react';
+import { SignInGate, UpgradeGate } from './AccessGate';
 
 const GOLD = '#C9A96E';
 
@@ -26,147 +26,8 @@ const ScoreBadge = ({ score }) => {
     );
 };
 
-const UpgradeOverlay = ({ onTabChange, user, claimProTrial }) => {
-    const [claiming, setClaiming] = useState(false);
-    const [claimMsg, setClaimMsg] = useState('');
-
-    const handleClaim = async () => {
-        setClaiming(true);
-        const res = await claimProTrial();
-        if (res.success) {
-            setClaimMsg('Trial activated! Refreshing…');
-            setTimeout(() => window.location.reload(), 1200);
-        } else {
-            setClaimMsg(res.error || 'Could not activate trial.');
-            setClaiming(false);
-        }
-    };
-
-    const canClaim = user && !user.pro_trial_claimed && isTrialOfferOpen();
-
-    return (
-        <div
-            className="absolute inset-0 flex flex-col items-center justify-center rounded-xl z-20"
-            style={{ background: 'rgba(6,11,20,0.82)', backdropFilter: 'blur(6px)' }}
-        >
-            <div
-                className="flex flex-col items-center gap-4 p-8 rounded-2xl shadow-2xl max-w-sm w-full mx-4 text-center"
-                style={{ background: '#0d1117', border: `1px solid ${GOLD}30` }}
-            >
-                <div
-                    className="w-14 h-14 rounded-full flex items-center justify-center"
-                    style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}
-                >
-                    <Lock size={24} style={{ color: GOLD }} />
-                </div>
-                <div>
-                    <span
-                        className="inline-block px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-3"
-                        style={{ background: `${GOLD}18`, color: GOLD, border: `1px solid ${GOLD}30` }}
-                    >
-                        Pro Feature
-                    </span>
-                    <h3 className="text-lg font-bold text-white mb-2" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                        LTR Pro Signals
-                    </h3>
-                    <p className="text-sm text-gray-400 leading-relaxed">
-                        Our LightGBM ranker scores all 167 stocks daily by breakout score
-                        (&gt;8% over 5 trading days). Top 5 picks are updated every afternoon.
-                    </p>
-                </div>
-
-                <div className="flex flex-col gap-2 w-full">
-                    {canClaim ? (
-                        <>
-                            <button
-                                onClick={handleClaim}
-                                disabled={claiming}
-                                className="w-full py-3 rounded-xl font-semibold text-sm transition-all cursor-pointer"
-                                style={{
-                                    background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`,
-                                    color: '#0A1020',
-                                    border: 'none',
-                                    fontFamily: "'Outfit', sans-serif",
-                                    opacity: claiming ? 0.7 : 1,
-                                }}
-                            >
-                                {claiming ? 'Activating…' : 'Claim Free 1-Week Trial'}
-                            </button>
-                            {claimMsg && (
-                                <p className="text-xs text-center" style={{ color: claimMsg.includes('Refresh') ? '#4ade80' : '#f87171' }}>
-                                    {claimMsg}
-                                </p>
-                            )}
-                            <button
-                                onClick={() => onTabChange('checkout', { plan: 'pro', period: 'monthly' })}
-                                className="w-full py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer"
-                                style={{
-                                    background: 'transparent',
-                                    color: GOLD,
-                                    border: `1px solid ${GOLD}35`,
-                                    fontFamily: "'Outfit', sans-serif",
-                                }}
-                            >
-                                Upgrade to Pro
-                            </button>
-                        </>
-                    ) : (
-                        <button
-                            onClick={() => onTabChange('checkout', { plan: 'pro', period: 'monthly' })}
-                            className="w-full py-3 rounded-xl font-semibold text-sm transition-all cursor-pointer"
-                            style={{
-                                background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`,
-                                color: '#0A1020',
-                                border: 'none',
-                                fontFamily: "'Outfit', sans-serif",
-                            }}
-                        >
-                            Upgrade to Pro
-                        </button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const SignInPrompt = ({ onTabChange }) => (
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
-        <div
-            className="w-16 h-16 rounded-full flex items-center justify-center"
-            style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}
-        >
-            <TrendingUp size={28} style={{ color: GOLD }} />
-        </div>
-        <div>
-            <h3 className="text-xl font-bold text-white mb-2" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                Sign In to Access Pro Signals
-            </h3>
-            <p className="text-sm text-gray-400 max-w-sm">
-                LTR Pro Signals are exclusive to Pro and Premium subscribers. Sign in to view your ranked picks.
-            </p>
-        </div>
-        <div className="flex gap-3">
-            <button
-                onClick={() => onTabChange('login')}
-                className="px-6 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all"
-                style={{ color: GOLD, background: 'transparent', border: `1px solid ${GOLD}35`, fontFamily: "'Outfit', sans-serif" }}
-            >
-                Sign In
-            </button>
-            <button
-                onClick={() => onTabChange('register')}
-                className="px-6 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all"
-                style={{ color: '#0A1020', background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`, border: 'none', fontFamily: "'Outfit', sans-serif" }}
-            >
-                Sign Up Free
-            </button>
-        </div>
-    </div>
-);
-
 const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
-    const { user, isAuthenticated, authApi, claimProTrial, refreshUser } = useAuth();
+    const { user, isAuthenticated, authApi, refreshUser } = useAuth();
 
     const [signals, setSignals] = useState([]);
     const [date, setDate] = useState('');
@@ -236,7 +97,12 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
     if (!isAuthenticated) {
         return (
             <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
-                <SignInPrompt onTabChange={onTabChange} />
+                <SignInGate
+                    onTabChange={onTabChange}
+                    icon={TrendingUp}
+                    title="Sign In to Access Pro Signals"
+                    description="LTR Pro Signals are exclusive to Pro and Premium subscribers. Sign in to view your ranked picks."
+                />
             </div>
         );
     }
@@ -289,7 +155,12 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
                         </table>
                     </div>
                     {/* Upgrade overlay */}
-                    <UpgradeOverlay onTabChange={onTabChange} user={user} claimProTrial={claimProTrial} />
+                    <UpgradeGate
+                        onTabChange={onTabChange}
+                        overlay
+                        title="LTR Pro Signals"
+                        description="Our LightGBM ranker scores all 167 stocks daily by breakout score (>8% over 5 trading days). Top 5 picks are updated every afternoon."
+                    />
                 </div>
             </div>
         );

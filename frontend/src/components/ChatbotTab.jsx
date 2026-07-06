@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
-import { Bot, Send, Lock, RotateCcw } from 'lucide-react';
+import { Bot, Send, RotateCcw } from 'lucide-react';
 import { StarMark } from './StarMark';
 import RichText from './RichText';
-import { isTrialOfferOpen } from '../utils/trialOffer';
+import { SignInGate, UpgradeGate } from './AccessGate';
 
 /* ── Constants ──────────────────────────────────────────────────────────────── */
 const MAX_HISTORY = 12;   // turns kept client-side & forwarded to the backend
@@ -37,99 +37,6 @@ const bubbleVariants = {
 /* ── Stable message ID generator ────────────────────────────────────────────── */
 let _msgIdCounter = 0;
 const nextMsgId = () => `msg-${++_msgIdCounter}-${Date.now()}`;
-
-/* ── Sign-in gate ─────────────────────────────────────────────────────────── */
-const SignInPrompt = ({ onTabChange }) => (
-    <motion.div
-        className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center"
-        variants={containerVariants} initial="hidden" animate="visible"
-    >
-        <motion.div variants={itemVariants}
-            className="w-16 h-16 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--gold-dim)', border: '1px solid rgba(201,169,110,0.2)' }}
-        >
-            <Bot size={28} style={{ color: 'var(--gold-primary)' }} />
-        </motion.div>
-        <motion.div variants={itemVariants}>
-            <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
-                Đăng nhập để dùng Trợ lý Đầu tư AI
-            </h3>
-            <p className="text-sm max-w-sm" style={{ color: 'var(--text-secondary)', fontFamily: "'Outfit', sans-serif" }}>
-                Trợ lý AI phân tích tin tức và cổ phiếu dành cho thành viên Pro/Premium.
-            </p>
-        </motion.div>
-        <motion.div variants={itemVariants} className="flex gap-3">
-            <button onClick={() => onTabChange('login')} className="chat-btn-secondary">
-                Đăng nhập
-            </button>
-            <button onClick={() => onTabChange('register')} className="chat-btn-primary">
-                Đăng ký miễn phí
-            </button>
-        </motion.div>
-    </motion.div>
-);
-
-/* ── Free-tier upgrade gate ───────────────────────────────────────────────── */
-const UpgradeGate = ({ onTabChange, user, claimProTrial }) => {
-    const [claiming, setClaiming] = useState(false);
-    const [msg, setMsg] = useState('');
-    const canClaim = user && !user.pro_trial_claimed && isTrialOfferOpen();
-
-    const handleClaim = async () => {
-        setClaiming(true);
-        const res = await claimProTrial();
-        if (res.success) {
-            setMsg('Đã kích hoạt dùng thử! Đang tải lại…');
-            setTimeout(() => window.location.reload(), 1200);
-        } else {
-            setMsg(res.error || 'Không thể kích hoạt dùng thử.');
-            setClaiming(false);
-        }
-    };
-
-    return (
-        <motion.div
-            className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center"
-            variants={containerVariants} initial="hidden" animate="visible"
-        >
-            <motion.div variants={itemVariants}
-                className="w-14 h-14 rounded-full flex items-center justify-center"
-                style={{ background: 'var(--gold-dim)', border: '1px solid rgba(201,169,110,0.2)' }}
-            >
-                <Lock size={24} style={{ color: 'var(--gold-primary)' }} />
-            </motion.div>
-            <motion.div variants={itemVariants}>
-                <span className="chat-quota-badge inline-block mb-3"
-                    style={{ color: 'var(--gold-primary)', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Outfit', sans-serif", fontWeight: 700, fontSize: 10 }}>
-                    Pro Feature
-                </span>
-                <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>
-                    Trợ lý Đầu tư AI
-                </h3>
-                <p className="text-sm max-w-sm mt-2" style={{ color: 'var(--text-secondary)', fontFamily: "'Outfit', sans-serif" }}>
-                    Trò chuyện với AI để phân tích tin tức và cổ phiếu, dựa trên dữ liệu thị trường thực tế của DongAnh Capital.
-                    Gói Pro: 20 lượt/ngày · Premium: không giới hạn.
-                </p>
-            </motion.div>
-            <motion.div variants={itemVariants} className="flex flex-col gap-2 w-full max-w-xs mt-2">
-                {canClaim && (
-                    <button onClick={handleClaim} disabled={claiming} className="chat-btn-primary w-full">
-                        {claiming ? 'Đang kích hoạt…' : 'Dùng thử Pro miễn phí 1 tuần'}
-                    </button>
-                )}
-                {msg && (
-                    <p className="text-xs" style={{ color: msg.includes('tải lại') ? 'var(--success)' : 'var(--error)' }}>
-                        {msg}
-                    </p>
-                )}
-                <button onClick={() => onTabChange('checkout', { plan: 'pro', period: 'monthly' })}
-                    className={canClaim ? 'chat-btn-secondary w-full' : 'chat-btn-primary w-full'}>
-                    Nâng cấp Pro
-                </button>
-            </motion.div>
-        </motion.div>
-    );
-};
 
 /* ── Message bubble ───────────────────────────────────────────────────────── */
 const Bubble = ({ role, content }) => {
@@ -174,7 +81,7 @@ const useAutoResize = (value) => {
 
 /* ── Main tab ─────────────────────────────────────────────────────────────── */
 const ChatbotTab = ({ onTabChange }) => {
-    const { user, isAuthenticated, authApi, claimProTrial, refreshUser } = useAuth();
+    const { user, isAuthenticated, authApi, refreshUser } = useAuth();
     const isPro = user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
     const isPremium = user?.subscription_tier === 'premium';
 
@@ -282,14 +189,23 @@ const ChatbotTab = ({ onTabChange }) => {
     if (!isAuthenticated) {
         return (
             <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
-                <SignInPrompt onTabChange={onTabChange} />
+                <SignInGate
+                    onTabChange={onTabChange}
+                    icon={Bot}
+                    title="Sign In to Use the AI Assistant"
+                    description="The AI Investment Assistant analyzes news and stocks for Pro and Premium members."
+                />
             </div>
         );
     }
     if (!isPro) {
         return (
             <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
-                <UpgradeGate onTabChange={onTabChange} user={user} claimProTrial={claimProTrial} />
+                <UpgradeGate
+                    onTabChange={onTabChange}
+                    title="AI Investment Assistant"
+                    description="Chat with AI to analyze news and stocks, grounded in DongAnh Capital's real market data. Pro: 20 messages/day · Premium: unlimited."
+                />
             </div>
         );
     }

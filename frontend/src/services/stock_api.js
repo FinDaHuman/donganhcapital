@@ -107,6 +107,23 @@ export const getCachedMarketStatus = () => {
     return null;
 };
 
+export const getVnindex = async (limit = 264) => {
+    try {
+        const response = await axios.get(`${API_Base_URL}/vnindex?limit=${limit}`);
+        const data = response.data;
+        if (Array.isArray(data) && data.length > 0) {
+            setCache('vnindex', data);
+        }
+        return data;
+    } catch (error) {
+        console.error("Error fetching VNINDEX:", error);
+        const cached = getCached('vnindex', 24 * 60 * 60 * 1000); // 24h fallback
+        if (cached && !cached.stale) return cached;
+        if (cached?.data) return cached.data;
+        return [];
+    }
+};
+
 export const getPrediction = async (ticker) => {
     try {
         const response = await axios.get(`${API_Base_URL}/predict/${ticker}`);
