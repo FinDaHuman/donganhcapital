@@ -10,6 +10,11 @@ if (!API_Base_URL.endsWith('/api')) {
     API_Base_URL += '/api';
 }
 
+// Shared client with a hard timeout: when the network path stalls (proxy
+// mitigation, cold start, flaky mobile), requests must fail fast so the UI
+// can fall back to cache instead of hanging for minutes.
+const api = axios.create({ baseURL: API_Base_URL, timeout: 15000 });
+
 // --- localStorage Cache Helpers ---
 const CACHE_PREFIX = 'dac_cache_';
 const ANALYTICS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -55,18 +60,15 @@ export function readCachedAnalytics(path, filters = {}, maxAgeMs = ANALYTICS_CAC
 // --- API Functions ---
 
 export const getLoadingProgress = async () => {
-    try {
-        const response = await axios.get(`${API_Base_URL}/loading-progress`);
-        return response.data; // { loaded: N, total: M }
-    } catch (error) {
-        console.error("Error fetching loading progress:", error);
-        return { loaded: 0, total: 0 };
-    }
+    // No catch: the caller polls this and needs to distinguish a real
+    // "0 stocks loaded" answer from a failed request so it can back off.
+    const response = await api.get(`/loading-progress`);
+    return response.data; // { loaded: N, total: M }
 };
 
 export const getTickers = async () => {
     try {
-        const response = await axios.get(`${API_Base_URL}/stocks`);
+        const response = await api.get(`/stocks`);
         const data = response.data;
         if (data && Array.isArray(data.stocks)) {
             setCache('tickers', data);
@@ -84,7 +86,7 @@ export const getTickers = async () => {
 
 export const getMarketStatus = async () => {
     try {
-        const response = await axios.get(`${API_Base_URL}/market-status`);
+        const response = await api.get(`/market-status`);
         const data = response.data;
         if (data && Array.isArray(data) && data.length > 0) {
             setCache('market_status', data);
@@ -109,7 +111,7 @@ export const getCachedMarketStatus = () => {
 
 export const getVnindex = async (limit = 264) => {
     try {
-        const response = await axios.get(`${API_Base_URL}/vnindex?limit=${limit}`);
+        const response = await api.get(`/vnindex?limit=${limit}`);
         const data = response.data;
         if (Array.isArray(data) && data.length > 0) {
             setCache('vnindex', data);
@@ -126,7 +128,7 @@ export const getVnindex = async (limit = 264) => {
 
 export const getPrediction = async (ticker) => {
     try {
-        const response = await axios.get(`${API_Base_URL}/predict/${ticker}`);
+        const response = await api.get(`/predict/${ticker}`);
         return response.data;
     } catch (error) {
         console.error(`Error predicting for ${ticker}:`, error);
@@ -135,7 +137,7 @@ export const getPrediction = async (ticker) => {
 
 export const getAISignalsDates = async () => {
     try {
-        const response = await axios.get(`${API_Base_URL}/ai-signals/dates`);
+        const response = await api.get(`/ai-signals/dates`);
         return response.data;
     } catch (error) {
         console.error("Error fetching AI signal dates:", error);
@@ -145,11 +147,11 @@ export const getAISignalsDates = async () => {
 
 export const getAISignals = async (date = null, latest = false) => {
     try {
-        let url = `${API_Base_URL}/ai-signals`;
+        let url = `/ai-signals`;
         if (latest) url += '?latest=true';
         else if (date) url += `?date=${date}`;
-        
-        const response = await axios.get(url);
+
+        const response = await api.get(url);
         return response.data;
     } catch (error) {
         console.error("Error fetching AI signals:", error);
@@ -159,7 +161,7 @@ export const getAISignals = async (date = null, latest = false) => {
 
 export const getSectors = async () => {
     try {
-        const response = await axios.get(`${API_Base_URL}/sectors`);
+        const response = await api.get(`/sectors`);
         return response.data;
     } catch (error) {
         console.error("Error fetching sectors:", error);
@@ -169,7 +171,7 @@ export const getSectors = async () => {
 
 export const getAISignalsSummary = async () => {
     try {
-        const response = await axios.get(`${API_Base_URL}/ai-signals/summary`);
+        const response = await api.get(`/ai-signals/summary`);
         return response.data;
     } catch (error) {
         console.error("Error fetching AI signals summary:", error);
@@ -179,9 +181,9 @@ export const getAISignalsSummary = async () => {
 
 export const getTradeHistory = async (status = null) => {
     try {
-        let url = `${API_Base_URL}/trade-history`;
+        let url = `/trade-history`;
         if (status) url += `?status=${status}`;
-        const response = await axios.get(url);
+        const response = await api.get(url);
         return response.data;
     } catch (error) {
         console.error("Error fetching trade history:", error);
@@ -191,7 +193,7 @@ export const getTradeHistory = async (status = null) => {
 
 export const getTradeHistoryStats = async () => {
     try {
-        const response = await axios.get(`${API_Base_URL}/trade-history/stats`);
+        const response = await api.get(`/trade-history/stats`);
         return response.data;
     } catch (error) {
         console.error("Error fetching trade history stats:", error);
@@ -212,7 +214,7 @@ const buildAnalyticsParams = (filters = {}) => {
 
 const fetchAnalytics = async (path, filters = {}, fallback = {}) => {
     try {
-        const response = await axios.get(`${API_Base_URL}${path}${buildAnalyticsParams(filters)}`);
+        const response = await api.get(`${path}${buildAnalyticsParams(filters)}`);
         const data = response.data;
         setCache(getAnalyticsCacheKey(path, filters), data);
         return data;
@@ -286,7 +288,7 @@ export const subscribeEmail = async (email, honeypot = '') => {
     const sanitized = email.trim().toLowerCase();
     if (!sanitized || sanitized.length > 254) throw new Error('Invalid email');
 
-    const response = await axios.post(`${API_Base_URL}/subscribe`, { email: sanitized });
+    const response = await api.post(`/subscribe`, { email: sanitized });
     return response.data;
 };
 

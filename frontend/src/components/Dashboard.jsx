@@ -97,29 +97,41 @@ const Dashboard = ({ onSelectStock }) => {
             setGateOpen(true);
         }
 
-        // 2. Loading gate: poll progress until enough stocks are warm
+        // 2. Loading gate: poll progress until enough stocks are warm.
+        // Self-scheduling timeout instead of setInterval so a slow request
+        // can never stack overlapping polls, with exponential backoff while
+        // the API is unreachable (cold start, proxy mitigation, bad network).
+        let cancelled = false;
+        let pollDelay = 5000;
         const checkProgress = async () => {
             try {
                 const prog = await getLoadingProgress();
+                if (cancelled) return;
                 setProgress(prog);
 
                 if (prog.loaded >= MIN_STOCKS_TO_SHOW) {
-                    clearInterval(gateCheckRef.current);
                     const [data, vn] = await Promise.all([getMarketStatus(), fetchVnindex()]);
+                    if (cancelled) return;
                     if (data && Array.isArray(data) && data.length > 0) {
                         processMarketData(data, vn);
                     }
                     setGateOpen(true);
+                    return;
                 }
+                pollDelay = 5000;
             } catch (err) {
                 console.error("Progress check failed:", err);
+                pollDelay = Math.min(pollDelay * 2, 60000);
             }
+            if (!cancelled) gateCheckRef.current = setTimeout(checkProgress, pollDelay);
         };
 
         checkProgress();
-        gateCheckRef.current = setInterval(checkProgress, 5000);
 
-        return () => clearInterval(gateCheckRef.current);
+        return () => {
+            cancelled = true;
+            clearTimeout(gateCheckRef.current);
+        };
     }, [processMarketData]);
 
     // After gate opens: refresh market data periodically
