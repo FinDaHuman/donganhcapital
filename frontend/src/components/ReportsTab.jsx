@@ -7,9 +7,9 @@ import { SignInGate, UpgradeGate } from './AccessGate';
 
 const GOLD = '#C9A96E';
 
-// Tiers allowed during beta (pro + premium). Mirrors the backend
-// REPORTS_ALLOWED_TIERS default — flip both to 'premium' only when the beta ends.
-const ALLOWED_TIERS = ['pro', 'premium'];
+// Tiers allowed to access reports. Mirrors the backend REPORTS_ALLOWED_TIERS
+// default — keep both in sync (beta with Pro access has ended; Premium only now).
+const ALLOWED_TIERS = ['premium'];
 
 const PLACEHOLDER_ROWS = Array.from({ length: 5 }, (_, i) => ({ id: i, stock_id: '•••' }));
 
@@ -167,7 +167,7 @@ const ReportsTab = ({ onTabChange }) => {
                         overlay
                         plan="premium"
                         title="Premium Research Reports"
-                        description="In-depth PDF research reports on individual stocks, hand-prepared by our analysts. Available to Premium subscribers (and Pro members during the beta)."
+                        description="In-depth PDF research reports on individual stocks, hand-prepared by our analysts. Available exclusively to Premium subscribers."
                     />
                 </div>
             </div>

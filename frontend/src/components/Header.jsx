@@ -19,9 +19,9 @@ const Header = ({ activeTab, onTabChange }) => {
         { id: 'analyst',      label: 'AI Analyst' },
         { id: 'data-analyst', label: 'Data Analyst' },
         { id: 'news',         label: 'News' },
-        { id: 'chatbot',      label: 'AI Chat', pro: true },
-        { id: 'ltr-signals',  label: 'Pro Signals', pro: true },
-        { id: 'reports',      label: 'Reports', pro: true },
+        { id: 'chatbot',      label: 'AI Chat', badge: 'PRO' },
+        { id: 'ltr-signals',  label: 'Pro Signals', badge: 'PRO' },
+        { id: 'reports',      label: 'Reports', badge: 'PREMIUM' },
     ];
 
     return (
@@ -86,12 +86,12 @@ const Header = ({ activeTab, onTabChange }) => {
                                 }}
                             >
                                 {tab.label}
-                                {tab.pro && (
+                                {tab.badge && (
                                     <span
                                         className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase leading-none"
                                         style={{ background: 'rgba(201,169,110,0.15)', color: '#C9A96E', border: '1px solid rgba(201,169,110,0.25)' }}
                                     >
-                                        PRO
+                                        {tab.badge}
                                     </span>
                                 )}
                                 {/* Gold underline indicator */}
@@ -224,12 +224,12 @@ const Header = ({ activeTab, onTabChange }) => {
                                 }}
                             >
                                 {tab.label}
-                                {tab.pro && (
+                                {tab.badge && (
                                     <span
                                         className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase leading-none"
                                         style={{ background: 'rgba(201,169,110,0.15)', color: '#C9A96E', border: '1px solid rgba(201,169,110,0.25)' }}
                                     >
-                                        PRO
+                                        {tab.badge}
                                     </span>
                                 )}
                             </button>

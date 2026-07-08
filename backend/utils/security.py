@@ -142,10 +142,11 @@ def effective_tier(user: dict) -> str:
 def report_allowed_tiers() -> set[str]:
     """Tiers allowed to access PDF reports, from ``REPORTS_ALLOWED_TIERS``.
 
-    Beta default is ``pro,premium``; flip to ``premium`` (one env change, no code
-    redeploy) once the beta ends.
+    Reports are Premium-only (the Pro-access beta has ended). Override via the
+    ``REPORTS_ALLOWED_TIERS`` env var (e.g. ``pro,premium``) — one env change, no
+    code redeploy — if Pro access is ever reopened.
     """
-    raw = os.environ.get("REPORTS_ALLOWED_TIERS", "pro,premium")
+    raw = os.environ.get("REPORTS_ALLOWED_TIERS", "premium")
     return {t.strip() for t in raw.split(",") if t.strip()}
 
 

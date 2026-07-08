@@ -555,7 +555,7 @@ app.include_router(macro_news_router)
 from routers.chat import router as chat_router
 app.include_router(chat_router)
 
-# --- Reports Router (R2-backed PDF reports, Premium/beta-Pro gated) ---
+# --- Reports Router (R2-backed PDF reports, Premium-gated) ---
 from routers.reports import router as reports_router
 app.include_router(reports_router)
 

@@ -1,7 +1,7 @@
 """Premium PDF Reports router — tier-gated, R2-backed.
 
 Gating: every route requires login (``get_current_user`` → 401) AND a subscription
-tier in ``REPORTS_ALLOWED_TIERS`` (beta: pro+premium; later: premium) → 403.
+tier in ``REPORTS_ALLOWED_TIERS`` (Premium-only by default) → 403.
 The gate is re-checked on the download-URL route, not just the list.
 
 Resilience: the PDF bytes live in Cloudflare R2 and are NEVER streamed through
