@@ -126,7 +126,7 @@ const ReportsTab = ({ onTabChange }) => {
     // ── Not eligible: blurred placeholder + upgrade overlay ───────────────────
     if (!eligible) {
         return (
-            <div className="flex-1 w-full flex flex-col p-4 sm:p-6" style={{ background: '#000' }}>
+            <div className="flex-1 w-full flex flex-col p-4 sm:p-6 overflow-auto" style={{ background: '#000' }}>
                 <div className="mb-6">
                     <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: "'Outfit', sans-serif" }}>
                         Research Reports
@@ -139,7 +139,7 @@ const ReportsTab = ({ onTabChange }) => {
                     </h2>
                     <p className="text-sm text-gray-500">Hand-prepared PDF research on individual stocks</p>
                 </div>
-                <div className="relative rounded-xl overflow-hidden" style={{ border: '1px solid #1f2937' }}>
+                <div className="relative rounded-xl overflow-hidden min-h-[460px]" style={{ border: '1px solid #1f2937' }}>
                     <div style={{ filter: 'blur(4px)', userSelect: 'none', pointerEvents: 'none' }}>
                         <table className="w-full text-sm">
                             <thead>

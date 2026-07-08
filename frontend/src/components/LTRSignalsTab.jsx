@@ -110,7 +110,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
     // ── Free tier: show blurred table + upgrade overlay ─────────────────────
     if (!isPro) {
         return (
-            <div className="flex-1 w-full flex flex-col p-4 sm:p-6" style={{ background: '#000' }}>
+            <div className="flex-1 w-full flex flex-col p-4 sm:p-6 overflow-auto" style={{ background: '#000' }}>
                 <div className="mb-6">
                     <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: "'Outfit', sans-serif" }}>
                         LTR Pro Signals
@@ -124,7 +124,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
                     <p className="text-sm text-gray-500">Daily ranked shortlist — top 5 stocks by 5-day breakout score</p>
                 </div>
 
-                <div className="relative rounded-xl overflow-hidden" style={{ border: '1px solid #1f2937' }}>
+                <div className="relative rounded-xl overflow-hidden min-h-[460px]" style={{ border: '1px solid #1f2937' }}>
                     {/* Blurred placeholder table */}
                     <div style={{ filter: 'blur(4px)', userSelect: 'none', pointerEvents: 'none' }}>
                         <table className="w-full text-sm">

@@ -151,10 +151,13 @@ export const UpgradeGate = ({ onTabChange, title, description, plan = 'pro', ove
     if (overlay) {
         return (
             <div
-                className="absolute inset-0 flex flex-col items-center justify-center rounded-xl z-20"
+                className="absolute inset-0 flex flex-col items-center rounded-xl z-20 overflow-y-auto p-4"
                 style={{ background: 'rgba(6,11,20,0.82)', backdropFilter: 'blur(6px)' }}
             >
-                {card}
+                {/* m-auto keeps the card centred when there's room and preserves top
+                    margin when it overflows a short container, so it stays scroll-reachable
+                    (unlike justify-center, which clips the top when content overflows). */}
+                <div className="m-auto w-full flex justify-center">{card}</div>
             </div>
         );
     }
