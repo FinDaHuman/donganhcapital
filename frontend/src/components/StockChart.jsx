@@ -329,10 +329,7 @@ const StockChart = ({ history, forecast, ticker, livePrice, liveChangePct, stock
                         <div className="w-[1px] h-6 bg-[#2a2e39] mx-0.5 hidden sm:block" />
                     </>
                 )}
-                <h1
-                    className="text-2xl font-black text-white tracking-wider max-w-[150px] truncate drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]"
-                    style={{ WebkitTextStroke: '1px rgba(0,0,0,0.8)' }}
-                >
+                <h1 className="text-2xl font-black text-white tracking-wider max-w-[150px] truncate">
                     {ticker}
                 </h1>
                 <button
