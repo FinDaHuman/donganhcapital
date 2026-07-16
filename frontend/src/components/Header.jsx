@@ -21,6 +21,7 @@ const Header = ({ activeTab, onTabChange }) => {
         { id: 'news',         label: 'News' },
         { id: 'chatbot',      label: 'AI Chat', badge: 'PRO' },
         { id: 'ltr-signals',  label: 'Pro Signals', badge: 'PRO' },
+        { id: 'bcd-signals',  label: 'BCD Signals', badge: 'PRO' },
         { id: 'reports',      label: 'Reports', badge: 'PREMIUM' },
     ];
 

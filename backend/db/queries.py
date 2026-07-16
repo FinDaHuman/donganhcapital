@@ -614,3 +614,59 @@ def get_ltr_signals(date_str: str = None, latest: bool = False) -> dict:
     except Exception as e:
         print(f"Error fetching ltr_signals: {e}")
         return {"date": date_str, "signal_count": 0, "signals": []}
+
+
+# ── BCD signals ──────────────────────────────────────────────────────────────
+
+def get_bcd_signals_dates() -> list:
+    """Return distinct dates that have BCD signals, newest first."""
+    engine = get_engine()
+    if not engine:
+        return []
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT DISTINCT date FROM bcd_signals ORDER BY date DESC")
+            )
+            return [row[0].isoformat() for row in result if row[0] is not None]
+    except Exception as e:
+        print(f"Error fetching bcd_signals dates: {e}")
+        return []
+
+
+def get_bcd_signals(date_str: str = None, latest: bool = False) -> dict:
+    """Return BCD breakdown-recovery signals for a given date."""
+    engine = get_engine()
+    if not engine:
+        return {"date": None, "signal_count": 0, "signals": []}
+
+    if latest:
+        dates = get_bcd_signals_dates()
+        if not dates:
+            return {"date": None, "signal_count": 0, "signals": []}
+        date_str = dates[0]
+
+    if not date_str:
+        return {"date": None, "signal_count": 0, "signals": []}
+
+    query = text("""
+        SELECT date, stock_id, prob, passed_threshold,
+               entry_price, tp_price, sl_price,
+               peak_date, peak_price, b_date, b_price,
+               c_date, c_price, breakdown_price
+        FROM bcd_signals
+        WHERE date = :date_str
+        ORDER BY prob DESC
+    """)
+    try:
+        df = pd.read_sql(query, engine, params={"date_str": date_str})
+        if df.empty:
+            return {"date": date_str, "signal_count": 0, "signals": []}
+        for col in ("date", "peak_date", "b_date", "c_date"):
+            df[col] = df[col].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
+        df["passed_threshold"] = df["passed_threshold"].astype(bool)
+        signals = df.to_dict(orient="records")
+        return {"date": date_str, "signal_count": len(signals), "signals": _sanitize_records(signals)}
+    except Exception as e:
+        print(f"Error fetching bcd_signals: {e}")
+        return {"date": date_str, "signal_count": 0, "signals": []}

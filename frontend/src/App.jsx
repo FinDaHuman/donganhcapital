@@ -17,6 +17,7 @@ const StockChart = lazy(() => import('./components/StockChart'));
 const AIAnalystTab = lazy(() => import('./components/AIAnalystTab'));
 const DataAnalystTab = lazy(() => import('./components/DataAnalystTab'));
 const LTRSignalsTab = lazy(() => import('./components/LTRSignalsTab'));
+const BCDSignalsTab = lazy(() => import('./components/BCDSignalsTab'));
 const ReportsTab = lazy(() => import('./components/ReportsTab'));
 const NewsTab = lazy(() => import('./components/NewsTab'));
 const ChatbotTab = lazy(() => import('./components/ChatbotTab'));
@@ -39,7 +40,7 @@ const TabFallback = () => (
 // mistyped or stale link renders the landing page instead of a blank screen.
 // (Single source of truth for both the initial render and popstate handling.)
 const KNOWN_TABS = new Set([
-    'home', 'dashboard', 'chart', 'analyst', 'data-analyst', 'ltr-signals',
+    'home', 'dashboard', 'chart', 'analyst', 'data-analyst', 'ltr-signals', 'bcd-signals',
     'reports', 'news', 'chatbot', 'login', 'auth/google/callback', 'register',
     'profile', 'reset-password', 'verify-email', 'checkout', 'privacy', 'terms',
 ]);
@@ -48,7 +49,7 @@ const KNOWN_TABS = new Set([
 // labels in Header.jsx navTabs (single source of truth for the origin label).
 const TAB_LABELS = {
     dashboard: 'Dashboard', analyst: 'AI Analyst', 'data-analyst': 'Data Analyst',
-    news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'Pro Signals',
+    news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'Pro Signals', 'bcd-signals': 'BCD Signals',
     reports: 'Reports', home: 'Home',
 };
 
@@ -437,6 +438,14 @@ function App() {
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <LTRSignalsTab onSelectStock={handleSelectStock} onTabChange={handleTabChange} />
+                            </ErrorBoundary>
+                        </div>
+                    )}
+
+                    {activeTab === 'bcd-signals' && (
+                        <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
+                            <ErrorBoundary>
+                                <BCDSignalsTab onSelectStock={handleSelectStock} onTabChange={handleTabChange} />
                             </ErrorBoundary>
                         </div>
                     )}

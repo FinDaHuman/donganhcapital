@@ -109,6 +109,24 @@ def run():
         exit_code = 1
 
     # ==============================
+    # STEP 5: BCD BREAKDOWN SIGNALS
+    # ==============================
+
+    logger.info("=" * 50)
+    logger.info("STEP 5: BCD BREAKDOWN SIGNALS")
+    logger.info("=" * 50)
+
+    try:
+        from bcd_daily_predict import detect_and_score
+        result = detect_and_score()
+        if result is None:
+            raise RuntimeError("BCD inference could not run (missing model or data)")
+        logger.info(f"BCD: {len(result)} breakdown signals")
+    except Exception as e:
+        logger.error(f"BCD step failed (non-fatal): {e}")
+        exit_code = 1
+
+    # ==============================
     # DONE
     # ==============================
 
