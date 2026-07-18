@@ -25,6 +25,7 @@ from db.queries import (
     insert_subscriber,
     get_ltr_signals, get_ltr_signals_dates,
     get_bcd_signals, get_bcd_signals_dates,
+    get_bcd_signals_summary, get_bcd_trade_history,
 )
 from utils.security import get_client_ip
 from db.analytics import (
@@ -685,20 +686,16 @@ async def get_ai_signals_summary_endpoint(concurrency: Any = Depends(limit_concu
     return get_cached("ai_signals_summary", 120, compute)
 
 
-@app.get("/api/ltr-signals")
-async def get_ltr_signals_endpoint(
-    request: Request,
-    date: Optional[str] = None,
-    latest: bool = False,
-    concurrency: Any = Depends(limit_concurrency),
-):
-    """Pro-gated LTR ranked signals. Requires Pro or Premium subscription."""
+async def _require_pro(request: Request):
+    """Raise 401 if unauthenticated, 403 unless active Pro/Premium.
+
+    Tier check includes inline expiry to close the ~6h background-task gap.
+    """
     from routers.auth import get_current_user as _get_current_user
     from datetime import timezone as _tz
 
     user = await _get_current_user(request)  # raises 401 if unauthenticated
 
-    # Tier check with inline expiry to close the ~6h background-task gap
     tier = user.get("subscription_tier", "free")
     expires_at = user.get("subscription_expires_at")
     if tier != "free" and expires_at is not None:
@@ -714,6 +711,18 @@ async def get_ltr_signals_endpoint(
 
     if tier not in ("pro", "premium"):
         raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
+    return user
+
+
+@app.get("/api/ltr-signals")
+async def get_ltr_signals_endpoint(
+    request: Request,
+    date: Optional[str] = None,
+    latest: bool = False,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    """Pro-gated LTR ranked signals. Requires Pro or Premium subscription."""
+    await _require_pro(request)
 
     if date and not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
@@ -732,26 +741,7 @@ async def get_ltr_signals_dates_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated list of dates that have LTR signals."""
-    from routers.auth import get_current_user as _get_current_user
-    from datetime import timezone as _tz
-
-    user = await _get_current_user(request)  # raises 401 if unauthenticated
-
-    tier = user.get("subscription_tier", "free")
-    expires_at = user.get("subscription_expires_at")
-    if tier != "free" and expires_at is not None:
-        try:
-            now_utc = datetime.now(_tz.utc)
-            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=_tz.utc)
-            if exp < now_utc:
-                tier = "free"
-        except Exception:
-            pass
-
-    if tier not in ("pro", "premium"):
-        raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
+    await _require_pro(request)
 
     def compute():
         return get_ltr_signals_dates()
@@ -767,27 +757,7 @@ async def get_bcd_signals_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated BCD breakdown-recovery signals. Requires Pro or Premium subscription."""
-    from routers.auth import get_current_user as _get_current_user
-    from datetime import timezone as _tz
-
-    user = await _get_current_user(request)  # raises 401 if unauthenticated
-
-    # Tier check with inline expiry to close the ~6h background-task gap
-    tier = user.get("subscription_tier", "free")
-    expires_at = user.get("subscription_expires_at")
-    if tier != "free" and expires_at is not None:
-        try:
-            now_utc = datetime.now(_tz.utc)
-            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=_tz.utc)
-            if exp < now_utc:
-                tier = "free"
-        except Exception:
-            pass
-
-    if tier not in ("pro", "premium"):
-        raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
+    await _require_pro(request)
 
     if date and not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
@@ -806,31 +776,41 @@ async def get_bcd_signals_dates_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated list of dates that have BCD signals."""
-    from routers.auth import get_current_user as _get_current_user
-    from datetime import timezone as _tz
-
-    user = await _get_current_user(request)  # raises 401 if unauthenticated
-
-    tier = user.get("subscription_tier", "free")
-    expires_at = user.get("subscription_expires_at")
-    if tier != "free" and expires_at is not None:
-        try:
-            now_utc = datetime.now(_tz.utc)
-            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=_tz.utc)
-            if exp < now_utc:
-                tier = "free"
-        except Exception:
-            pass
-
-    if tier not in ("pro", "premium"):
-        raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
+    await _require_pro(request)
 
     def compute():
         return get_bcd_signals_dates()
 
     return get_cached("bcd_signals_dates", 120, compute)
+
+
+@app.get("/api/bcd-signals/summary")
+async def get_bcd_signals_summary_endpoint(
+    request: Request,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    """Pro-gated per-date BCD event counts (event days only)."""
+    await _require_pro(request)
+
+    def compute():
+        return get_bcd_signals_summary()
+
+    return get_cached("bcd_signals_summary", 120, compute)
+
+
+@app.get("/api/bcd-trade-history")
+async def get_bcd_trade_history_endpoint(
+    request: Request,
+    status: Optional[str] = None,
+    concurrency: Any = Depends(limit_concurrency),
+):
+    """Pro-gated BCD trade history, optionally filtered by status (TP, SL, TIMEOUT, HOLD)."""
+    await _require_pro(request)
+
+    def compute():
+        return get_bcd_trade_history(status)
+
+    return get_cached(f"bcd_trade_history_{status}", 120, compute)
 
 
 @app.get("/api/trade-history")

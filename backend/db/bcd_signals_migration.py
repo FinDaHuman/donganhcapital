@@ -42,5 +42,26 @@ def run_bcd_migration():
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_bcd_signals_date ON bcd_signals (date DESC)
         """))
+        # Kept in sync with the inline DDL in
+        # daily_suggestion_system/src/daily_pipeline/bcd_trade_tracker.py.
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS bcd_trade_history (
+                id           BIGSERIAL PRIMARY KEY,
+                stock_id     VARCHAR(10) NOT NULL,
+                entry_date   DATE        NOT NULL,
+                entry_price  DOUBLE PRECISION,
+                tp_price     DOUBLE PRECISION,
+                sl_price     DOUBLE PRECISION,
+                exit_date    DATE,
+                exit_price   DOUBLE PRECISION,
+                status       VARCHAR(10) NOT NULL DEFAULT 'HOLD',
+                return_pct   DOUBLE PRECISION,
+                holding_days INTEGER,
+                CONSTRAINT bcd_trade_history_stock_entry_uq UNIQUE (stock_id, entry_date)
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_bcd_trade_history_status ON bcd_trade_history (status)
+        """))
 
     logger.info("BCD signals migration completed successfully")

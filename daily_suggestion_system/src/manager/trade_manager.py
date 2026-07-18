@@ -28,12 +28,17 @@ MIN_HOLD_DAYS = 2
 
 class TradeManager:
 
-    def __init__(self, engine=None):
+    def __init__(self, engine=None, table="trade_history", timeout_days=30):
         """
         Args:
             engine: SQLAlchemy engine for DB operations.
+            table: trade-history table to read/write (per-model tables,
+                   e.g. "bcd_trade_history"). Defaults preserve AI behavior.
+            timeout_days: calendar days before an open HOLD becomes TIMEOUT.
         """
         self.engine = engine
+        self.table = table
+        self.timeout_days = timeout_days
 
         if engine:
             self._load_from_db()
@@ -43,12 +48,12 @@ class TradeManager:
 
 
     def _load_from_db(self):
-        """Load trade history from NeonDB trade_history table."""
+        """Load trade history from the configured NeonDB table."""
         try:
-            query = """
+            query = f"""
             SELECT stock_id, entry_date, entry_price, tp_price, sl_price,
                    exit_date, exit_price, status, return_pct, holding_days
-            FROM trade_history
+            FROM {self.table}
             ORDER BY entry_date ASC
             """
             df = pd.read_sql(query, self.engine)
@@ -128,7 +133,7 @@ class TradeManager:
 
                 holding = (today_dt - entry_dt).days
 
-                if holding >= 30:
+                if holding >= self.timeout_days:
 
                     trade["status"] = "TIMEOUT"
                     trade["exit_date"] = str(today).split(" ")[0]
@@ -212,7 +217,7 @@ class TradeManager:
     # ==================================
 
     def save_to_db(self):
-        """Upsert all trades into NeonDB trade_history table using batch INSERT."""
+        """Upsert all trades into the configured NeonDB table using batch INSERT."""
         if not self.engine:
             logger.warning("No DB engine available for saving trade history.")
             return
@@ -239,8 +244,8 @@ class TradeManager:
                 "holding_days": _to_native(trade.get("holding_days")),
             })
 
-        query = text("""
-        INSERT INTO trade_history 
+        query = text(f"""
+        INSERT INTO {self.table}
             (stock_id, entry_date, entry_price, tp_price, sl_price,
              exit_date, exit_price, status, return_pct, holding_days)
         VALUES 

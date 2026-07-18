@@ -127,6 +127,25 @@ def run():
         exit_code = 1
 
     # ==============================
+    # STEP 6: BCD TRADE TRACKER
+    # ==============================
+
+    logger.info("=" * 50)
+    logger.info("STEP 6: BCD TRADE TRACKER")
+    logger.info("=" * 50)
+
+    # Runs unconditionally so open BCD positions resolve TP/SL/TIMEOUT even on
+    # zero-event days (Step 5 producing no signals is the normal case).
+    try:
+        from bcd_trade_tracker import update_bcd_trades
+        result = update_bcd_trades()
+        if result is None:
+            raise RuntimeError("BCD trade tracker could not run (no DB or market data)")
+    except Exception as e:
+        logger.error(f"BCD trade tracker failed (non-fatal): {e}")
+        exit_code = 1
+
+    # ==============================
     # DONE
     # ==============================
 

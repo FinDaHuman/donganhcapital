@@ -665,8 +665,126 @@ def get_bcd_signals(date_str: str = None, latest: bool = False) -> dict:
         for col in ("date", "peak_date", "b_date", "c_date"):
             df[col] = df[col].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
         df["passed_threshold"] = df["passed_threshold"].astype(bool)
+        for col in ("entry_price", "tp_price", "sl_price", "peak_price", "b_price", "c_price", "breakdown_price"):
+            df[col] = df[col].apply(lambda x: _safe_round(x, 2))
+        df["prob"] = df["prob"].apply(lambda x: _safe_round(x, 4))
         signals = df.to_dict(orient="records")
+
+        # Additive live overlay — same contract as get_ai_signals: fields are
+        # optional and absent when no fresh quote is available.
+        quotes = _live_quotes()
+        if quotes:
+            for s in signals:
+                q = quotes.get(str(s.get('stock_id', '')).upper())
+                if not (q and q.get('price')):
+                    continue
+                lp = q['price']
+                s['live_price'] = lp
+                s['live_change_pct'] = q.get('change_pct')
+                ep = _safe_float(s.get('entry_price'))
+                tp = _safe_float(s.get('tp_price'))
+                sl = _safe_float(s.get('sl_price'))
+                s['distance_to_entry_pct'] = _safe_round((lp - ep) / ep * 100, 2) if ep else None
+                s['distance_to_tp_pct'] = _safe_round((tp - lp) / lp * 100, 2) if tp else None
+                s['distance_to_sl_pct'] = _safe_round((lp - sl) / lp * 100, 2) if sl else None
+
         return {"date": date_str, "signal_count": len(signals), "signals": _sanitize_records(signals)}
     except Exception as e:
         print(f"Error fetching bcd_signals: {e}")
         return {"date": date_str, "signal_count": 0, "signals": []}
+
+
+def get_bcd_signals_summary() -> list:
+    """Per-date BCD event counts, newest first. BCD only has rows on event
+    days, so this lists event days (not all trading days like the AI summary)."""
+    engine = get_engine()
+    if not engine:
+        return []
+    query = """
+    SELECT date,
+           COUNT(*) AS signal_count,
+           COUNT(*) FILTER (WHERE passed_threshold) AS passed_count
+    FROM bcd_signals
+    GROUP BY date
+    ORDER BY date DESC
+    """
+    try:
+        df = pd.read_sql(query, engine)
+        if df.empty:
+            return []
+        df['date'] = df['date'].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
+        return df.to_dict(orient="records")
+    except Exception as e:
+        print(f"Error fetching bcd_signals summary: {e}")
+        return []
+
+
+def get_bcd_trade_history(status_filter: str = None):
+    """Trade history for BCD recovery trades. Same shape as get_trade_history."""
+    status_filter = validate_status(status_filter)
+    engine = get_engine()
+    if not engine:
+        return []
+
+    live_price_subquery = """
+        CASE WHEN t.status = 'HOLD' THEN (
+            SELECT s.close FROM stock_ohlc s
+            WHERE s.stock_id = t.stock_id
+            ORDER BY s."Ngay" DESC LIMIT 1
+        ) END
+    """
+    where_clause = "WHERE t.status = :status" if status_filter else ""
+    query = text(f"""
+    SELECT t.stock_id, t.entry_date, t.entry_price, t.tp_price, t.sl_price,
+           t.exit_date, t.exit_price, t.status, t.return_pct, t.holding_days,
+           b.prob,
+           {live_price_subquery} AS live_price
+    FROM bcd_trade_history t
+    LEFT JOIN bcd_signals b ON t.stock_id = b.stock_id AND t.entry_date = b.date
+    {where_clause}
+    ORDER BY t.entry_date DESC
+    """)
+    params = {"status": status_filter} if status_filter else None
+
+    try:
+        df = pd.read_sql(query, engine, params=params)
+        if df.empty:
+            return []
+
+        for col in ['entry_date', 'exit_date']:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
+        for col in ['entry_price', 'tp_price', 'sl_price', 'exit_price']:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: _safe_round(x, 2))
+        if 'return_pct' in df.columns:
+            df['return_pct'] = df['return_pct'].apply(lambda x: _safe_round(x, 6))
+        if 'prob' in df.columns:
+            df['prob'] = df['prob'].apply(lambda x: _safe_round(x, 4))
+        if 'holding_days' in df.columns:
+            df['holding_days'] = df['holding_days'].apply(lambda x: int(x) if pd.notnull(x) and _safe_float(x) is not None else None)
+
+        # Prefer a fresh intraday quote over the daily close for open positions
+        # (same logic as get_trade_history).
+        if 'live_price' in df.columns:
+            quotes = _live_quotes()
+            if quotes:
+                for i in df.index[df['status'] == 'HOLD']:
+                    q = quotes.get(str(df.at[i, 'stock_id']).upper())
+                    if q and q.get('price'):
+                        df.at[i, 'live_price'] = q['price']
+
+        df['live_return_pct'] = None
+        if 'live_price' in df.columns:
+            hold_mask = (df['status'] == 'HOLD') & df['live_price'].notna() & df['entry_price'].notna()
+            if hold_mask.any():
+                ep = df.loc[hold_mask, 'entry_price'].apply(_safe_float)
+                lp = df.loc[hold_mask, 'live_price'].apply(_safe_float)
+                df.loc[hold_mask, 'live_return_pct'] = ((lp - ep) / ep).apply(lambda x: _safe_round(x, 6))
+            df = df.drop(columns=['live_price'])
+
+        df = df.where(df.notnull(), None)
+        return _sanitize_records(df.to_dict(orient="records"))
+    except Exception as e:
+        print(f"Error fetching bcd_trade_history: {e}")
+        return []
