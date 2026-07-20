@@ -1,6 +1,6 @@
 """
-BCD trade tracker: manage the lifecycle of trades opened from bcd_signals
-(threshold-passers only) in the bcd_trade_history table.
+BCD trade tracker: manage the lifecycle of trades opened from every actionable
+bcd_signals row in the bcd_trade_history table.
 
 Called from run_daily_pipeline.py as Step 6 (non-fatal). Unlike the AI tracker
 (embedded in daily_predict.predict_today, which early-returns on no-signal
@@ -61,24 +61,31 @@ def _ensure_table(engine) -> None:
         conn.execute(text(_CREATE_TABLE_SQL))
 
 
-def _load_new_signals(engine) -> pd.DataFrame:
-    """Latest-date bcd_signals rows that are actionable trades."""
+def _load_untracked_signals(engine) -> pd.DataFrame:
+    """Return actionable BCD signals without a trade-history row.
+
+    Confidence remains useful metadata for filtering and display, but it must
+    not suppress a valid recovery signal from Trade History. Loading every
+    missing date also backfills signals created before this tracker existed or
+    after a previous tracker failure.
+    """
     query = text("""
-    SELECT date AS "Ngay", stock_id, entry_price, tp_price, sl_price
-    FROM bcd_signals
-    WHERE date = (SELECT MAX(date) FROM bcd_signals)
-      AND passed_threshold = TRUE
-      AND entry_price IS NOT NULL
+    SELECT b.date AS "Ngay", b.stock_id, b.entry_price, b.tp_price, b.sl_price
+    FROM bcd_signals b
+    LEFT JOIN bcd_trade_history t
+      ON t.stock_id = b.stock_id AND t.entry_date = b.date
+    WHERE b.entry_price IS NOT NULL
+      AND t.id IS NULL
+    ORDER BY b.date ASC, b.prob DESC
     """)
     return pd.read_sql(query, engine)
 
 
 def update_bcd_trades():
     """
-    Update open BCD positions against latest market data, open new trades from
-    today's threshold-passing signals, and upsert everything to
-    bcd_trade_history. Returns the number of tracked trades, or None if the
-    step could not run.
+    Update open BCD positions against latest market data, open trades for every
+    BCD signal not tracked yet, and upsert everything to bcd_trade_history.
+    Returns the number of tracked trades, or None if the step could not run.
     """
     engine = get_engine()
     if engine is None:
@@ -97,10 +104,9 @@ def update_bcd_trades():
 
     tm.update_positions(market_df)
 
-    new_signals = _load_new_signals(engine)
-    # bcd_signals' MAX(date) can stay the same for days (zero-event days are
-    # normal), so drop signals already tracked — otherwise a closed trade would
-    # be re-added as HOLD and the upsert would wipe its exit fields.
+    new_signals = _load_untracked_signals(engine)
+    # Keep the in-memory guard as a second line of defense against re-opening a
+    # closed trade if the database changes between the query and the upsert.
     if not new_signals.empty:
         tracked = {(t["stock_id"], t["entry_date"]) for t in tm.data["trades"]}
         keep = new_signals.apply(
@@ -108,7 +114,7 @@ def update_bcd_trades():
             axis=1,
         )
         new_signals = new_signals[keep]
-    log.info(f"BCD tracker: {len(new_signals)} new actionable signals to open")
+    log.info(f"BCD tracker: {len(new_signals)} untracked actionable signals to open")
     tm.add_new_signals(new_signals)
 
     tm.finalize()

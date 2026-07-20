@@ -24,6 +24,9 @@ dist/
 # Data — prevent large xlsx/csv from being committed
 data/
 
+# Private business planning and financial models
+business_planning/
+
 # To Do List
 ToDoList.txt
 
@@ -54,6 +57,7 @@ xgb_model.ipynb
 
 # Project documentation
 docs/
+BCD_MODEL_NOTES.md
 implementation_plan.md
 EMAIL_SETUP.md
 LTR_MODEL_PLAN.md

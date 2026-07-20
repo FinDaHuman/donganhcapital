@@ -185,6 +185,9 @@ class TradeManager:
             }
 
             self.data["trades"].append(trade)
+            # Backfills may contain several missed dates for one ticker. Keep
+            # the one-position-per-stock invariant within this input batch.
+            holding.add(stock)
 
 
     # ==================================

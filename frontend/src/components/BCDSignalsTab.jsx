@@ -629,8 +629,8 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                             <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center">
                                 <h3 className="text-xl text-gray-300 mb-2">No trades yet</h3>
                                 <p className="text-gray-500 max-w-md mx-auto">
-                                    BCD trades open only when a high-confidence breakdown-recovery signal
-                                    fires, so this list grows slowly. Check back after the next signals.
+                                    Every breakdown-recovery signal with valid Entry, TP, and SL levels
+                                    appears here while its trade lifecycle is tracked.
                                 </p>
                             </div>
                         ) : (
