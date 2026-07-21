@@ -274,7 +274,6 @@ Feature-specific backend variables:
 | `SEPAY_API_TOKEN`, `SEPAY_WEBHOOK_SECRET`, `SEPAY_BANK_ID`, `SEPAY_BANK_ACCOUNT_NO`, `SEPAY_BANK_ACCOUNT_NAME` | SePay/VietQR subscriptions |
 | `MONGODB_URI` | CafeF news feed |
 | `CHAT_GEMINI_API_KEY`, `CHAT_GEMINI_MODELS` | Pro/Premium AI chat and news analysis |
-| `HIRO_INTERNAL_TOKEN` | Shared server-only token for the presentation Hiro bridge; set the same value on the Lily backend |
 
 For local browser auth, use `http://localhost:5173` for the frontend and
 `http://localhost:8000` for the API. Avoid mixing `localhost` and `127.0.0.1`
