@@ -13,4 +13,4 @@ Disallow: /checkout
 Disallow: /login
 Disallow: /register
 
-Sitemap: https://donganhcapital.com/sitemap.xml
+Sitemap: https://www.donganhcapital.com/sitemap.xml
