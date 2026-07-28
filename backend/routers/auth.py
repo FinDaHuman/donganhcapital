@@ -536,10 +536,10 @@ async def login(body: LoginRequest, request: Request, response: Response):
         result = conn.execute(
             text("""
                 SELECT id, email, hashed_password, full_name, avatar_url,
-                       auth_provider, risk_appetite, subscription_tier,
-                       subscription_period, subscription_expires_at,
-                       pro_trial_claimed_at, email_verified, created_at,
-                       failed_login_attempts, locked_until, is_active
+                       auth_provider, risk_appetite, email_verified, created_at,
+                       failed_login_attempts, locked_until, is_active,
+                       terms_version, privacy_version, marketing_consent,
+                       deleted_at, deactivated_at
                 FROM users WHERE email = :email
             """),
             {"email": body.email.strip().lower()}
@@ -554,8 +554,11 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
     user = dict(user)
 
-    if not user.get("is_active"):
-        raise HTTPException(status_code=401, detail="Account is deactivated")
+    # A deleted account is gone for good; a merely deactivated one reactivates
+    # on a successful sign-in, which is what makes "deactivate" a meaningfully
+    # lighter option than "delete" rather than a support ticket.
+    if user.get("deleted_at") is not None:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
     # Check account lockout
     if is_account_locked(user.get("failed_login_attempts", 0), user.get("locked_until")):
@@ -602,8 +605,11 @@ async def login(body: LoginRequest, request: Request, response: Response):
     with engine.begin() as conn:
         conn.execute(
             text("""
-                UPDATE users 
+                UPDATE users
                 SET failed_login_attempts = 0, locked_until = NULL,
+                    -- A successful sign-in reactivates a deactivated account.
+                    -- Deleted accounts never reach here (rejected above).
+                    is_active = TRUE, deactivated_at = NULL,
                     refresh_token_hash = :hash, updated_at = NOW()
                 WHERE id = :id
             """),
@@ -612,6 +618,8 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
     _set_auth_cookies(response, access_token, refresh_token)
 
+    # Reflect the reactivation in the response rather than echoing the stale row.
+    user["is_active"] = True
     return {"user": _format_user(user)}
 
 

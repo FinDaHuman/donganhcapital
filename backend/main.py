@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
@@ -28,7 +28,7 @@ from db.queries import (
     get_bcd_signals_summary, get_bcd_trade_history,
 )
 from utils.security import get_client_ip
-from utils.legal import NOTICE_HEADER, with_notice, FRONTEND_URL as _LEGAL_FRONTEND_URL
+from utils.legal import NOTICE_HEADER, with_notice, FRONTEND_URL as _LEGAL_FRONTEND_URL, PUBLIC_API_URL
 from db.analytics import (
     get_market_intelligence_bootstrap,
     get_market_intelligence_overview,
@@ -375,9 +375,21 @@ def downgrade_expired_subscriptions_sync():
 
 
 async def subscription_expiry_checker():
-    """Run every 6 hours to downgrade expired subscriptions."""
+    """Run every 6 hours: downgrade expired subscriptions and action any
+    deletion requests whose grace period has elapsed.
+
+    The deletion sweep piggybacks on this loop deliberately — a fifth asyncio
+    task is not free on a 512 MB box, and neither job is time-critical to the
+    hour.
+    """
+    from routers.account import sweep_pending_deletions_sync
+
     while True:
         await asyncio.to_thread(downgrade_expired_subscriptions_sync)
+        try:
+            await asyncio.to_thread(sweep_pending_deletions_sync)
+        except Exception as e:
+            print(f"Deletion sweep warning: {e}")
         await asyncio.sleep(6 * 3600)
 
 
@@ -582,6 +594,14 @@ async def add_legal_headers(request: Request, call_next):
 from routers.auth import router as auth_router
 app.include_router(auth_router)
 
+# --- Account Router (data-subject rights: export, deactivate, delete) ---
+from routers.account import router as account_router
+app.include_router(account_router)
+
+# --- Legal Router (public: unsubscribe, subscribe confirmation, doc versions) ---
+from routers.legal import router as legal_router
+app.include_router(legal_router)
+
 # --- Payments Router: DELIBERATELY NOT MOUNTED ---
 # routers/payments.py, utils/sepay.py and utils/trial.py remain in the tree but
 # are not registered, so /api/payments/* does not exist. DongAnh Capital is a
@@ -609,7 +629,13 @@ app.include_router(reports_router)
 
 # --- Email Subscription Security ---
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
-DANGEROUS_CHARS = re.compile(r"[<>'\"`;\-\-]")  # SQL injection / XSS chars
+# Was [<>'"`;\-\-] — inside a character class the trailing \-\- is just a literal
+# hyphen, so this silently rejected every address containing one
+# (nguyen-van-a@gmail.com, anything @some-domain.com). The intent was to block the
+# SQL comment sequence "--", which needs to be matched outside the class.
+# Injection itself is already prevented by parameterised SQL; this is defence in
+# depth, not the control.
+DANGEROUS_CHARS = re.compile(r"[<>'\"`;]|--")
 
 
 class SubscribeRequest(BaseModel):
@@ -989,9 +1015,13 @@ async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):
     return get_cached("sectors", 3600, compute)
 
 @app.post("/api/subscribe")
-async def subscribe_email(body: SubscribeRequest, request: Request):
+async def subscribe_email(body: SubscribeRequest, request: Request, background_tasks: BackgroundTasks):
     """Subscribe an email for product launch notifications.
-    
+
+    Double opt-in: nothing is mailed to the address until it confirms. This
+    endpoint is unauthenticated, so without confirmation anyone could sign anyone
+    else up for a list they had no way to leave.
+
     Security layers:
       1. Pydantic validation (length, required field)
       2. Regex email format check
@@ -999,6 +1029,7 @@ async def subscribe_email(body: SubscribeRequest, request: Request):
       4. IP-based rate limiting
       5. Parameterized SQL in queries module
       6. Opaque response (never reveal if email existed)
+      7. Double opt-in, with a 1/hour resend throttle enforced in SQL
     """
     # Layer 4: Rate limiting
     client_ip = get_client_ip(request)
@@ -1019,11 +1050,24 @@ async def subscribe_email(body: SubscribeRequest, request: Request):
     if "." not in domain:
         raise HTTPException(status_code=422, detail="Invalid email format.")
 
-    # Layer 5: Parameterized insert (in db/queries.py)
-    insert_subscriber(email)
+    # Layers 5 + 7: parameterized insert that only yields a row when a
+    # confirmation is actually due (see insert_subscriber for the conditions).
+    import secrets as _secrets
+    import hashlib as _hashlib
+    from utils.legal import hash_ip as _hash_ip
 
-    # Layer 6: Opaque response — always succeed
-    return {"status": "ok", "message": "You're on the list! We'll notify you at launch."}
+    raw_token = _secrets.token_urlsafe(32)
+    token_hash = _hashlib.sha256(raw_token.encode()).hexdigest()
+
+    should_send = insert_subscriber(email, token_hash, _hash_ip(client_ip))
+    if should_send:
+        from utils.mailer import send_subscribe_confirm_email
+        confirm_url = f"{PUBLIC_API_URL}/api/subscribe/confirm?token={raw_token}"
+        background_tasks.add_task(send_subscribe_confirm_email, email, confirm_url)
+
+    # Layer 6: Opaque response — identical whether the address is new, pending,
+    # already confirmed, or throttled.
+    return {"status": "ok", "message": "Please check your inbox to confirm your subscription."}
 
 
 @app.get("/api/ohlc/{stock_id}")

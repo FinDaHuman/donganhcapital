@@ -523,12 +523,20 @@ def get_trade_history_stats():
         return {"total_trades": 0}
 
 
-def insert_subscriber(email: str) -> bool:
-    """Insert a subscriber email using parameterized query.
-    
-    Uses ON CONFLICT DO NOTHING to silently handle duplicates.
-    Returns True on success, False on failure. Never reveals
-    whether the email already existed (security: anti-enumeration).
+def insert_subscriber(email: str, confirm_token_hash: str = None, ip_hash: str = None):
+    """Start a double opt-in subscription. Returns True if a confirmation email
+    should be sent, False otherwise. Never reveals whether the address already
+    existed (anti-enumeration).
+
+    Previously this was a plain upsert on an unauthenticated endpoint, so anyone
+    could add anyone else's address to a list that had no way off. Two controls
+    fix that:
+
+      - Nothing is ever mailed to an address until it confirms, so subscribing a
+        third party achieves nothing.
+      - The WHERE on the DO UPDATE means an already-confirmed address can never
+        be re-mailed a confirmation, and a pending one is throttled to one per
+        hour regardless of source IP.
     """
     engine = get_engine()
     if not engine:
@@ -536,17 +544,75 @@ def insert_subscriber(email: str) -> bool:
 
     try:
         with engine.begin() as conn:
+            result = conn.execute(
+                text("""
+                    INSERT INTO subscribers (email, source, confirm_token_hash, confirm_sent_at, ip_hash)
+                    VALUES (:email, 'website', :token, NOW(), :ip)
+                    ON CONFLICT (email) DO UPDATE
+                       SET confirm_token_hash = :token,
+                           confirm_sent_at = NOW(),
+                           ip_hash = COALESCE(subscribers.ip_hash, :ip)
+                     WHERE subscribers.confirmed_at IS NULL
+                       AND (subscribers.confirm_sent_at IS NULL
+                            OR subscribers.confirm_sent_at < NOW() - INTERVAL '1 hour')
+                    RETURNING id
+                """),
+                {"email": email, "token": confirm_token_hash, "ip": ip_hash},
+            )
+            # No row returned => already confirmed, or throttled. Either way the
+            # caller must not send anything, but must still respond opaquely.
+            return result.first() is not None
+    except Exception as e:
+        print(f"Error inserting subscriber: {e}")
+        return False
+
+
+def confirm_subscriber(token_hash: str) -> bool:
+    """Complete a double opt-in. Returns True if a pending row was confirmed."""
+    engine = get_engine()
+    if not engine:
+        return False
+    try:
+        with engine.begin() as conn:
+            result = conn.execute(
+                text("""
+                    UPDATE subscribers
+                       SET confirmed_at = NOW(), confirm_token_hash = NULL, unsubscribed_at = NULL
+                     WHERE confirm_token_hash = :token AND confirmed_at IS NULL
+                    RETURNING id
+                """),
+                {"token": token_hash},
+            )
+            return result.first() is not None
+    except Exception as e:
+        print(f"Error confirming subscriber: {e}")
+        return False
+
+
+def unsubscribe_email_address(email: str) -> bool:
+    """Mark an address unsubscribed. Idempotent; always reports success."""
+    engine = get_engine()
+    if not engine:
+        return False
+    try:
+        with engine.begin() as conn:
             conn.execute(
-                text(
-                    "INSERT INTO subscribers (email, source) "
-                    "VALUES (:email, 'website') "
-                    "ON CONFLICT (email) DO NOTHING"
-                ),
+                text("""
+                    UPDATE subscribers SET unsubscribed_at = NOW()
+                     WHERE email = :email AND unsubscribed_at IS NULL
+                """),
+                {"email": email},
+            )
+            conn.execute(
+                text("""
+                    UPDATE users SET marketing_consent = FALSE, marketing_consent_at = NOW()
+                     WHERE email = :email AND marketing_consent = TRUE
+                """),
                 {"email": email},
             )
         return True
     except Exception as e:
-        print(f"Error inserting subscriber: {e}")
+        print(f"Error unsubscribing {email}: {e}")
         return False
 
 

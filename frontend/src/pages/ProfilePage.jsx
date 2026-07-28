@@ -5,6 +5,7 @@ import {
     BarChart2, TrendingUp, Settings, Mail, Calendar, CheckCircle2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import DataRightsPanel from '../components/DataRightsPanel';
 
 const itemVariants = {
     initial: { opacity: 0, y: 16 },
@@ -46,7 +47,7 @@ const formatDate = (dateStr) => {
 };
 
 const ProfilePage = ({ onTabChange }) => {
-    const { user, loading, logout, updateProfile } = useAuth();
+    const { user, loading, logout, updateProfile, authApi } = useAuth();
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState('');
     const [activeSection, setActiveSection] = useState('account');
@@ -86,6 +87,7 @@ const ProfilePage = ({ onTabChange }) => {
         { id: 'account', label: 'Account', icon: User },
         { id: 'access', label: 'Access', icon: Crown },
         { id: 'preferences', label: 'Preferences', icon: Settings },
+        { id: 'privacy', label: 'Your data', icon: Shield },
     ];
 
     return (
@@ -403,6 +405,32 @@ const ProfilePage = ({ onTabChange }) => {
                                             })}
                                         </div>
                                     </div>
+                                </motion.div>
+                            )}
+
+                            {/* YOUR DATA — the rights required by Luật 91/2025:
+                                access/portability, and erasure. */}
+                            {activeSection === 'privacy' && (
+                                <motion.div key="privacy" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.25 }}>
+                                    <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--text-primary)', fontFamily: "'Cormorant Garamond', serif" }}>
+                                        Your data
+                                    </h2>
+                                    <p className="text-sm mb-6 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                                        Quyền của bạn theo Luật Bảo vệ dữ liệu cá nhân 91/2025. Chi tiết trong{' '}
+                                        <button
+                                            onClick={() => onTabChange && onTabChange('privacy')}
+                                            className="underline underline-offset-2 cursor-pointer"
+                                            style={{ background: 'none', border: 'none', color: 'var(--gold-primary)', font: 'inherit', padding: 0 }}
+                                        >
+                                            Chính sách bảo mật
+                                        </button>.
+                                    </p>
+
+                                    <DataRightsPanel
+                                        email={user.email}
+                                        authApi={authApi}
+                                        onDeleted={() => onTabChange && onTabChange('home')}
+                                    />
                                 </motion.div>
                             )}
                         </AnimatePresence>
