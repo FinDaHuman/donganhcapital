@@ -23,6 +23,8 @@ from utils.security import effective_tier, report_allowed_tiers
 from db.report_queries import list_reports, get_report_object
 from db.r2 import presign_get
 
+from utils.security import BYPASS_PAYMENT, has_feature_access
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -43,8 +45,21 @@ async def limit_concurrency():
 
 
 async def require_report_access(request: Request) -> dict:
-    """Auth + tier gate. Returns the user dict, or raises 401 / 403."""
+    """Auth + access gate. Returns the user dict, or raises 401 / 403.
+
+    When ``BYPASS_PAYMENT`` is True, email-verified users are granted access.
+    When False, the original Premium-only tier gate applies.
+    """
     user = await get_current_user(request)  # 401 if unauthenticated
+
+    if BYPASS_PAYMENT:
+        if not has_feature_access(user):
+            raise HTTPException(
+                status_code=403,
+                detail="Vui lòng xác thực email để truy cập tính năng này",
+            )
+        return user
+
     if effective_tier(user) not in report_allowed_tiers():
         raise HTTPException(status_code=403, detail="This feature requires a Premium subscription")
     return user

@@ -126,6 +126,9 @@ class AnalyzeRequest(BaseModel):
 # --------------------------------------------------------------------------- #
 # Auth / tier gate (mirrors the inline pattern on /api/ltr-signals)
 # --------------------------------------------------------------------------- #
+from utils.security import BYPASS_PAYMENT, BYPASS_DAILY_LIMIT, has_feature_access
+
+
 def _effective_tier(user: dict) -> str:
     """Tier with an inline expiry check to close the ~6 h background-downgrade gap."""
     tier = user.get("subscription_tier", "free")
@@ -144,7 +147,21 @@ def _effective_tier(user: dict) -> str:
 
 
 async def _require_paid(request: Request) -> tuple[dict, str]:
+    """Auth + tier/access gate for chat & analysis endpoints.
+
+    When ``BYPASS_PAYMENT`` is True, email-verified users are granted access
+    with tier='bypass'. When False, the original Pro/Premium gate applies.
+    """
     user = await get_current_user(request)  # raises 401 if unauthenticated
+
+    if BYPASS_PAYMENT:
+        if not has_feature_access(user):
+            raise HTTPException(
+                status_code=403,
+                detail="Vui lòng xác thực email để truy cập tính năng này",
+            )
+        return user, "bypass"
+
     tier = _effective_tier(user)
     if tier not in ("pro", "premium"):
         raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
@@ -162,20 +179,24 @@ class QuotaExceeded(Exception):
 def _consume_quota_sync(user_id, tier: str) -> dict:
     """Atomically reset-if-new-day, enforce the cap, and increment in one UPDATE.
 
-    Returns ``{"used", "limit"}``. Raises ``QuotaExceeded`` if the Pro cap is hit,
+    Returns ``{"used", "limit"}``. Raises ``QuotaExceeded`` if the cap is hit,
     or ``RuntimeError`` if the DB is unavailable (caller maps to 503).
+
+    Tier values: 'bypass' (BYPASS_PAYMENT on, limit=5), 'pro' (limit=20),
+    'premium' (unlimited).
     """
     engine = get_engine()
     if engine is None:
         raise RuntimeError("db unavailable")
     today = datetime.now(_VN_TZ).date()
-    is_premium = tier == "premium"
+    is_unlimited = tier == "premium"
+    daily_limit = BYPASS_DAILY_LIMIT if tier == "bypass" else PRO_DAILY_LIMIT
     sql = text("""
         UPDATE users SET
           chat_quota_count = CASE WHEN chat_quota_date = :today THEN chat_quota_count + 1 ELSE 1 END,
           chat_quota_date  = :today
         WHERE id = :id AND (
-          :is_premium
+          :is_unlimited
           OR (CASE WHEN chat_quota_date = :today THEN chat_quota_count ELSE 0 END) < :limit
         )
         RETURNING chat_quota_count
@@ -184,12 +205,12 @@ def _consume_quota_sync(user_id, tier: str) -> dict:
         row = conn.execute(sql, {
             "today": today,
             "id": user_id,
-            "is_premium": is_premium,
-            "limit": PRO_DAILY_LIMIT,
+            "is_unlimited": is_unlimited,
+            "limit": daily_limit,
         }).first()
     if row is None:
-        raise QuotaExceeded(PRO_DAILY_LIMIT)
-    return {"used": int(row[0]), "limit": None if is_premium else PRO_DAILY_LIMIT}
+        raise QuotaExceeded(daily_limit)
+    return {"used": int(row[0]), "limit": None if is_unlimited else daily_limit}
 
 
 def _refund_quota_sync(user_id) -> None:
@@ -450,13 +471,18 @@ async def analyze_news(body: AnalyzeRequest, request: Request, _c=Depends(limit_
 
 @router.get("/quota")
 async def chat_quota(request: Request):
-    """Current daily quota for the signed-in Pro/Premium user (for the UI chip)."""
+    """Current daily quota for the signed-in user (for the UI chip)."""
     user, tier = await _require_paid(request)
     try:
         used = await asyncio.to_thread(_read_quota_sync, user["id"])
     except Exception as e:
         logger.error(f"quota read error: {e}")
         raise HTTPException(status_code=503, detail="Dịch vụ tạm thời không khả dụng")
-    limit = None if tier == "premium" else PRO_DAILY_LIMIT
+    if tier == "premium":
+        limit = None
+    elif tier == "bypass":
+        limit = BYPASS_DAILY_LIMIT
+    else:
+        limit = PRO_DAILY_LIMIT
     remaining = None if limit is None else max(limit - used, 0)
     return {"tier": tier, "used": used, "limit": limit, "remaining": remaining}

@@ -34,7 +34,10 @@ const ReportsTab = ({ onTabChange }) => {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
 
-    const eligible = ALLOWED_TIERS.includes(user?.subscription_tier);
+    const bypass = user?.bypass_payment;
+    const eligible = bypass
+        ? user?.email_verified === true
+        : ALLOWED_TIERS.includes(user?.subscription_tier);
 
     const fetchReports = useCallback(async () => {
         setLoading(true);

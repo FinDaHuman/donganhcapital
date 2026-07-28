@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock } from 'lucide-react';
+import { Lock, Mail } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isTrialOfferOpen } from '../utils/trialOffer';
 
@@ -164,6 +164,52 @@ export const UpgradeGate = ({ onTabChange, title, description, plan = 'pro', ove
     return (
         <div className="flex-1 flex flex-col items-center justify-center p-8">
             {card}
+        </div>
+    );
+};
+
+
+/**
+ * EmailVerifyGate — shown when BYPASS_PAYMENT is on and the user hasn't
+ * verified their email yet. Prompts them to check their inbox.
+ */
+export const EmailVerifyGate = ({ icon = Mail, title, description }) => {
+    const { resendVerification } = useAuth();
+    const [sending, setSending] = useState(false);
+    const [msg, setMsg] = useState('');
+
+    const handleResend = async () => {
+        setSending(true);
+        setMsg('');
+        const res = await resendVerification();
+        setSending(false);
+        setMsg(res.success ? 'Email đã gửi! Kiểm tra hộp thư của bạn.' : (res.error || 'Không thể gửi email.'));
+    };
+
+    return (
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
+            <IconBadge icon={icon} size={28} />
+            <div>
+                <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)', fontFamily: FONT }}>
+                    {title || 'Xác thực Email để Truy cập'}
+                </h3>
+                <p className="text-sm max-w-sm" style={{ color: 'var(--text-secondary)', fontFamily: FONT }}>
+                    {description || 'Vui lòng kiểm tra hộp thư và nhấn vào link xác thực để mở khóa tính năng này.'}
+                </p>
+            </div>
+            <button
+                onClick={handleResend}
+                disabled={sending}
+                className="px-6 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all"
+                style={{ ...btnPrimary, opacity: sending ? 0.7 : 1 }}
+            >
+                {sending ? 'Đang gửi…' : 'Gửi lại Email Xác thực'}
+            </button>
+            {msg && (
+                <p className="text-xs" style={{ color: msg.includes('gửi!') ? 'var(--success)' : 'var(--error)' }}>
+                    {msg}
+                </p>
+            )}
         </div>
     );
 };

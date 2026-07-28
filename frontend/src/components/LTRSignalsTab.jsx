@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SkeletonCard } from './SkeletonLoader';
 import { TrendingUp, BarChart2 } from 'lucide-react';
-import { SignInGate, UpgradeGate } from './AccessGate';
+import { SignInGate, UpgradeGate, EmailVerifyGate } from './AccessGate';
 
 const GOLD = '#C9A96E';
 
@@ -35,7 +35,10 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const isPro = user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
+    const bypass = user?.bypass_payment;
+    const isPro = bypass
+        ? user?.email_verified === true
+        : user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
 
     const fetchDates = useCallback(async () => {
         try {
@@ -109,6 +112,18 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
 
     // ── Free tier: show blurred table + upgrade overlay ─────────────────────
     if (!isPro) {
+        // Bypass mode: unverified email → EmailVerifyGate
+        if (bypass) {
+            return (
+                <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
+                    <EmailVerifyGate
+                        icon={TrendingUp}
+                        title="Xác thực Email để Xem Tín hiệu"
+                        description="Xác thực email để mở khóa toàn bộ tín hiệu LTR Pro."
+                    />
+                </div>
+            );
+        }
         return (
             <div className="flex-1 w-full flex flex-col p-4 sm:p-6 overflow-auto" style={{ background: '#000' }}>
                 <div className="mb-6">

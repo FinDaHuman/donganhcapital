@@ -19,10 +19,10 @@ const Header = ({ activeTab, onTabChange }) => {
         { id: 'analyst',      label: 'AI Analyst' },
         { id: 'data-analyst', label: 'Data Analyst' },
         { id: 'news',         label: 'News' },
-        { id: 'chatbot',      label: 'AI Chat', badge: 'PRO' },
-        { id: 'ltr-signals',  label: 'Pro Signals', badge: 'PRO' },
-        { id: 'bcd-signals',  label: 'BCD Signals', badge: 'PRO' },
-        { id: 'reports',      label: 'Reports', badge: 'PREMIUM' },
+        { id: 'chatbot',      label: 'AI Chat', badge: user?.bypass_payment ? null : 'PRO' },
+        { id: 'ltr-signals',  label: 'Pro Signals', badge: user?.bypass_payment ? null : 'PRO' },
+        { id: 'bcd-signals',  label: 'BCD Signals', badge: user?.bypass_payment ? null : 'PRO' },
+        { id: 'reports',      label: 'Reports', badge: user?.bypass_payment ? null : 'PREMIUM' },
     ];
 
     return (

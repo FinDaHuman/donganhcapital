@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Bot, Send, RotateCcw } from 'lucide-react';
 import { StarMark } from './StarMark';
 import RichText from './RichText';
-import { SignInGate, UpgradeGate } from './AccessGate';
+import { SignInGate, UpgradeGate, EmailVerifyGate } from './AccessGate';
 
 /* ── Constants ──────────────────────────────────────────────────────────────── */
 const MAX_HISTORY = 12;   // turns kept client-side & forwarded to the backend
@@ -82,8 +82,11 @@ const useAutoResize = (value) => {
 /* ── Main tab ─────────────────────────────────────────────────────────────── */
 const ChatbotTab = ({ onTabChange }) => {
     const { user, isAuthenticated, authApi, refreshUser } = useAuth();
-    const isPro = user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
-    const isPremium = user?.subscription_tier === 'premium';
+    const bypass = user?.bypass_payment;
+    const isPro = bypass
+        ? user?.email_verified === true
+        : user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
+    const isPremium = !bypass && user?.subscription_tier === 'premium';
 
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
@@ -158,7 +161,9 @@ const ChatbotTab = ({ onTabChange }) => {
             setInput((cur) => (cur ? cur : content));
             if (status === 429) {
                 const d = err.response?.data?.detail;
-                setError((d && d.message) || 'Bạn đã dùng hết lượt trò chuyện hôm nay. Nâng cấp Premium để dùng không giới hạn.');
+                setError((d && d.message) || (bypass
+                    ? 'Bạn đã dùng hết 5 lượt miễn phí hôm nay. Vui lòng quay lại vào ngày mai.'
+                    : 'Bạn đã dùng hết lượt trò chuyện hôm nay. Nâng cấp Premium để dùng không giới hạn.'));
                 setQuota((q) => (q ? { ...q, used: q.limit ?? q.used } : q));
             } else if (status === 403) {
                 // Subscription likely expired mid-session — re-sync auth
@@ -199,6 +204,18 @@ const ChatbotTab = ({ onTabChange }) => {
         );
     }
     if (!isPro) {
+        // Bypass mode: unverified email → EmailVerifyGate
+        if (bypass) {
+            return (
+                <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
+                    <EmailVerifyGate
+                        icon={Bot}
+                        title="Xác thực Email để Sử dụng Trợ lý AI"
+                        description="Xác thực email để mở khóa Trợ lý Đầu tư AI (5 lượt/ngày)."
+                    />
+                </div>
+            );
+        }
         return (
             <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
                 <UpgradeGate

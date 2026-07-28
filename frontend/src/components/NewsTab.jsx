@@ -250,7 +250,10 @@ const MacroNewsCard = ({ item, onOpen }) => {
 // ── AI deep-analysis section (Pro/Premium, VN news only) ─────────────────────
 const AnalysisSection = ({ article, onClose, onTabChange }) => {
     const { user, authApi, refreshUser } = useAuth();
-    const isPro = user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
+    const bypass = user?.bypass_payment;
+    const isPro = bypass
+        ? user?.email_verified === true
+        : user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
 
     const [analysis, setAnalysis] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
@@ -268,7 +271,9 @@ const AnalysisSection = ({ article, onClose, onTabChange }) => {
             const status = err.response?.status;
             if (status === 429) {
                 const d = err.response?.data?.detail;
-                setError((d && d.message) || 'Bạn đã dùng hết lượt phân tích hôm nay. Nâng cấp Premium để dùng không giới hạn.');
+                setError((d && d.message) || (bypass
+                    ? 'Bạn đã dùng hết 5 lượt miễn phí hôm nay. Vui lòng quay lại vào ngày mai.'
+                    : 'Bạn đã dùng hết lượt phân tích hôm nay. Nâng cấp Premium để dùng không giới hạn.'));
             } else if (status === 403) {
                 setError('Phiên đăng ký đã thay đổi. Đang cập nhật…');
                 await refreshUser();
@@ -298,11 +303,18 @@ const AnalysisSection = ({ article, onClose, onTabChange }) => {
                     </button>
                 ) : (
                     <button
-                        onClick={() => { onClose(); onTabChange?.('checkout', { plan: 'pro', period: 'monthly' }); }}
+                        onClick={() => {
+                            if (bypass) {
+                                // In bypass mode, the locked state means unverified email — no checkout
+                                onClose();
+                            } else {
+                                onClose(); onTabChange?.('checkout', { plan: 'pro', period: 'monthly' });
+                            }
+                        }}
                         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium cursor-pointer"
                         style={{ color: GOLD, background: 'transparent', border: `1px solid ${GOLD}40`, fontFamily: "'Outfit', sans-serif" }}
                     >
-                        <Lock size={14} /> Phân tích AI chuyên sâu — Nâng cấp Pro
+                        <Lock size={14} /> {bypass ? 'Xác thực email để sử dụng' : 'Phân tích AI chuyên sâu — Nâng cấp Pro'}
                     </button>
                 )
             )}

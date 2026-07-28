@@ -115,6 +115,28 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+# ── Payment Bypass Feature Flag ──
+# When True, all email-verified users get full access (no subscription required).
+# Controlled via env var so it can be toggled on Render without a code change.
+# Set BYPASS_PAYMENT=false to re-enable the subscription payment flow.
+BYPASS_PAYMENT = os.getenv("BYPASS_PAYMENT", "true").strip().lower() in ("true", "1", "yes")
+
+# Daily quota for chatbot + news analysis when payment is bypassed.
+BYPASS_DAILY_LIMIT = 5
+
+
+def has_feature_access(user: dict) -> bool:
+    """Check if a user can access gated features (signals, reports, chat, etc.).
+
+    When ``BYPASS_PAYMENT`` is True, any email-verified user is granted access.
+    When False, the user must hold an active Pro or Premium subscription (the
+    original monetisation model).
+    """
+    if BYPASS_PAYMENT:
+        return bool(user.get("email_verified"))
+    return effective_tier(user) in ("pro", "premium")
+
+
 # ── Subscription Tier Gating ──
 def effective_tier(user: dict) -> str:
     """Return the user's currently-effective subscription tier.

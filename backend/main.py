@@ -687,14 +687,27 @@ async def get_ai_signals_summary_endpoint(concurrency: Any = Depends(limit_concu
 
 
 async def _require_pro(request: Request):
-    """Raise 401 if unauthenticated, 403 unless active Pro/Premium.
+    """Raise 401 if unauthenticated, 403 unless the user has feature access.
 
-    Tier check includes inline expiry to close the ~6h background-task gap.
+    When ``BYPASS_PAYMENT`` is True, email-verified users are granted access.
+    When False, the original Pro/Premium tier gate applies (with inline expiry
+    to close the ~6h background-task gap).
     """
     from routers.auth import get_current_user as _get_current_user
-    from datetime import timezone as _tz
+    from utils.security import BYPASS_PAYMENT, has_feature_access
 
     user = await _get_current_user(request)  # raises 401 if unauthenticated
+
+    if BYPASS_PAYMENT:
+        if not has_feature_access(user):
+            raise HTTPException(
+                status_code=403,
+                detail="Vui lòng xác thực email để truy cập tính năng này",
+            )
+        return user
+
+    # Original tier-based gating (when payment flow is active)
+    from datetime import timezone as _tz
 
     tier = user.get("subscription_tier", "free")
     expires_at = user.get("subscription_expires_at")

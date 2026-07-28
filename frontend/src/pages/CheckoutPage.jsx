@@ -58,6 +58,44 @@ const CheckoutPage = ({ onTabChange, plan = 'pro', period = 'monthly' }) => {
         }
     }, [isAuthenticated, onTabChange]);
 
+    // When payment is bypassed, show a message instead of the checkout flow
+    if (user?.bypass_payment) {
+        return (
+            <div className="w-full min-h-screen flex items-center justify-center" style={{ backgroundColor: '#000' }}>
+                <div className="max-w-md text-center p-8">
+                    <div
+                        className="w-14 h-14 mx-auto mb-5 rounded-2xl flex items-center justify-center"
+                        style={{ background: 'rgba(77,184,130,0.12)', border: '1px solid rgba(77,184,130,0.25)' }}
+                    >
+                        <PlanIcon size={26} style={{ color: '#4DB882' }} />
+                    </div>
+                    <h2
+                        className="text-xl font-semibold mb-2"
+                        style={{ color: '#EDE8DA', fontFamily: "'Outfit', sans-serif" }}
+                    >
+                        Thanh toán không cần thiết
+                    </h2>
+                    <p className="text-sm mb-6" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>
+                        Tất cả tính năng hiện đang được mở khóa miễn phí cho tài khoản đã xác thực email.
+                        Bạn không cần thanh toán để sử dụng.
+                    </p>
+                    <button
+                        onClick={() => onTabChange && onTabChange('dashboard')}
+                        className="px-6 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
+                        style={{
+                            color: '#0A1020',
+                            background: 'linear-gradient(135deg, #C9A96E, #E8C97A)',
+                            border: 'none',
+                            fontFamily: "'Outfit', sans-serif",
+                        }}
+                    >
+                        Quay về Dashboard
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     // Create order on mount
     useEffect(() => {
         if (!isAuthenticated) return;

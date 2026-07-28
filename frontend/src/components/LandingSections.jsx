@@ -1299,6 +1299,25 @@ export const PricingSection = ({ onTabChange }) => {
                     Start free. Upgrade when you're ready. Pro & Premium plans are live — cancel anytime.
                 </motion.p>
 
+                {/* Bypass-mode banner: all features currently free */}
+                {user?.bypass_payment && (
+                    <motion.div
+                        variants={itemVariants}
+                        className="max-w-lg mx-auto mb-6 px-5 py-3.5 rounded-2xl text-center"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(77,184,130,0.08), rgba(77,184,130,0.02))',
+                            border: '1px solid rgba(77,184,130,0.2)',
+                        }}
+                    >
+                        <p className="text-sm font-semibold mb-0.5" style={{ color: '#4DB882', fontFamily: "'Outfit', sans-serif" }}>
+                            🎉 Hiện tại tất cả tính năng được mở khóa miễn phí
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
+                            Chỉ cần tạo tài khoản và xác thực email để truy cập toàn bộ tính năng.
+                        </p>
+                    </motion.div>
+                )}
+
                 {/* Monthly / Yearly Toggle */}
                 <motion.div variants={itemVariants} className="flex items-center justify-center gap-3 mb-3">
                     <span className="text-sm font-medium" style={{ color: !isYearly ? 'var(--gold-primary)' : 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>Monthly</span>

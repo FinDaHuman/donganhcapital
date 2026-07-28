@@ -69,8 +69,9 @@ function App() {
     const [resendVerifyLoading, setResendVerifyLoading] = useState(false);
     const [resendVerifyMsg, setResendVerifyMsg] = useState('');
 
-    // Compute expiry warning
+    // Compute expiry warning (suppressed when payment is bypassed — subscription tier is irrelevant)
     const expiryWarning = (() => {
+        if (user?.bypass_payment) return null;
         if (!user?.subscription_expires_at || !user?.subscription_tier || user.subscription_tier === 'free') return null;
         const daysLeft = Math.ceil((new Date(user.subscription_expires_at) - new Date()) / (1000 * 60 * 60 * 24));
         if (daysLeft <= 3 && daysLeft >= 0) {

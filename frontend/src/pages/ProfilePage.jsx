@@ -216,7 +216,8 @@ const ProfilePage = ({ onTabChange }) => {
     const sections = [
         { id: 'account', label: 'Account', icon: User },
         { id: 'subscription', label: 'Subscription', icon: Crown },
-        { id: 'billing', label: 'Billing History', icon: History },
+        // Billing history is irrelevant when payment is bypassed
+        ...(user?.bypass_payment ? [] : [{ id: 'billing', label: 'Billing History', icon: History }]),
         { id: 'preferences', label: 'Preferences', icon: Settings },
     ];
 
@@ -244,9 +245,9 @@ const ProfilePage = ({ onTabChange }) => {
                     </button>
                 </motion.div>
 
-                {/* Expiry warning banner */}
+                {/* Expiry warning banner (suppressed when payment is bypassed) */}
                 <AnimatePresence>
-                    {(isExpiringSoon || isExpired) && (
+                    {!user.bypass_payment && (isExpiringSoon || isExpired) && (
                         <motion.div
                             initial={{ opacity: 0, y: -8 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -317,13 +318,23 @@ const ProfilePage = ({ onTabChange }) => {
                                     <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
                                 </div>
                             </div>
-                            <span
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase"
-                                style={{ background: tier.bg, color: tier.color, border: `1px solid ${tier.border}`, letterSpacing: '0.08em' }}
-                            >
-                                <Crown size={10} />
-                                {tier.label}
-                            </span>
+                            {user.bypass_payment && user.email_verified ? (
+                                <span
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase"
+                                    style={{ background: 'rgba(77,184,130,0.1)', color: '#4DB882', border: '1px solid rgba(77,184,130,0.25)', letterSpacing: '0.08em' }}
+                                >
+                                    <CheckCircle2 size={10} />
+                                    All Unlocked
+                                </span>
+                            ) : (
+                                <span
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase"
+                                    style={{ background: tier.bg, color: tier.color, border: `1px solid ${tier.border}`, letterSpacing: '0.08em' }}
+                                >
+                                    <Crown size={10} />
+                                    {tier.label}
+                                </span>
+                            )}
                         </div>
 
                         {/* Nav */}
@@ -419,33 +430,80 @@ const ProfilePage = ({ onTabChange }) => {
                                                 }
                                             </p>
                                         </div>
+                                    <div>
                                         <div className="flex items-center gap-3">
-                                            <span
-                                                className="px-3 py-1 rounded-full text-xs font-bold uppercase"
-                                                style={{ background: tier.bg, color: tier.color, border: `1px solid ${tier.border}`, letterSpacing: '0.08em' }}
-                                            >
-                                                {tier.label}
-                                            </span>
-                                            {availableUpgrades.length > 0 && (
-                                                <button
-                                                    onClick={() => setActiveSection('subscription')}
-                                                    className="text-xs font-semibold cursor-pointer flex items-center gap-1"
-                                                    style={{ background: 'none', border: 'none', color: 'var(--gold-primary)' }}
-                                                >
-                                                    Upgrade <ChevronRight size={13} />
-                                                </button>
+                                            {user.bypass_payment ? (
+                                                <>
+                                                    <span
+                                                        className="px-3 py-1 rounded-full text-xs font-bold uppercase"
+                                                        style={{ background: 'rgba(77,184,130,0.1)', color: '#4DB882', border: '1px solid rgba(77,184,130,0.25)', letterSpacing: '0.08em' }}
+                                                    >
+                                                        ✓ Tất cả tính năng đã mở khóa
+                                                    </span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span
+                                                        className="px-3 py-1 rounded-full text-xs font-bold uppercase"
+                                                        style={{ background: tier.bg, color: tier.color, border: `1px solid ${tier.border}`, letterSpacing: '0.08em' }}
+                                                    >
+                                                        {tier.label}
+                                                    </span>
+                                                    {availableUpgrades.length > 0 && (
+                                                        <button
+                                                            onClick={() => setActiveSection('subscription')}
+                                                            className="text-xs font-semibold cursor-pointer flex items-center gap-1"
+                                                            style={{ background: 'none', border: 'none', color: 'var(--gold-primary)' }}
+                                                        >
+                                                            Upgrade <ChevronRight size={13} />
+                                                        </button>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
+                                    </div>
                                     </div>
                                 </motion.div>
                             )}
 
-                            {/* SUBSCRIPTION SECTION */}
                             {activeSection === 'subscription' && (
                                 <motion.div key="subscription" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.25 }}>
                                     <h2 className="text-xl font-semibold mb-6" style={{ color: 'var(--text-primary)', fontFamily: "'Cormorant Garamond', serif" }}>
                                         Subscription
                                     </h2>
+
+                                    {/* Bypass mode: simple unlocked message */}
+                                    {user.bypass_payment && (
+                                        <div
+                                            className="rounded-2xl p-6 mb-6 relative overflow-hidden"
+                                            style={{
+                                                background: 'linear-gradient(135deg, rgba(77,184,130,0.08) 0%, var(--bg-surface) 100%)',
+                                                border: '1px solid rgba(77,184,130,0.2)',
+                                            }}
+                                        >
+                                            <div className="absolute top-0 left-0 right-0 h-[2px]"
+                                                style={{ background: 'linear-gradient(90deg, transparent, #4DB882, transparent)' }}
+                                            />
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(77,184,130,0.15)' }}>
+                                                    <CheckCircle2 size={20} style={{ color: '#4DB882' }} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+                                                        Tất cả tính năng đã được mở khóa
+                                                    </p>
+                                                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                                                        Tài khoản của bạn đã xác thực email thành công. Bạn được truy cập toàn bộ tính năng bao gồm
+                                                        LTR Signals, BCD Signals, Báo cáo PDF, và Trợ lý AI (5 lượt/ngày).
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Original subscription content (hidden when bypass is on) */}
+                                    {!user.bypass_payment && (
+                                        <>
 
                                     {/* Current plan status */}
                                     <div
@@ -671,7 +729,9 @@ const ProfilePage = ({ onTabChange }) => {
                                         </div>
                                     )}
 
-                                    {availableUpgrades.length === 0 && (
+                                    </>)}
+
+                                    {availableUpgrades.length === 0 && !user.bypass_payment && (
                                         <div
                                             className="rounded-2xl p-6 text-center"
                                             style={{ background: 'var(--bg-surface)', border: '1px solid rgba(168,85,247,0.2)' }}

@@ -310,6 +310,8 @@ async def get_optional_user(request: Request) -> Optional[dict]:
 # ── Helper: format user for response ──
 def _format_user(user: dict) -> dict:
     """Format a user row for API response."""
+    from utils.security import BYPASS_PAYMENT
+
     return {
         "id": str(user["id"]),
         "email": user["email"],
@@ -327,6 +329,9 @@ def _format_user(user: dict) -> dict:
         # Google OAuth users are always True (verified by Google on signup).
         "email_verified": bool(user.get("email_verified")),
         "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
+        # Feature flag: when True the payment flow is bypassed and all email-verified
+        # users have full access. The frontend uses this to hide pricing/upgrade UI.
+        "bypass_payment": BYPASS_PAYMENT,
     }
 
 
