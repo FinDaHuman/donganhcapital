@@ -1,8 +1,9 @@
 """
-BCD trade tracker: manage the lifecycle of trades opened from every actionable
+BCD trade tracker: manage the lifecycle of trades opened from every TRIGGERED
 bcd_signals row in the bcd_trade_history table.
 
-Called from run_daily_pipeline.py as Step 6 (non-fatal). Unlike the AI tracker
+Called from run_daily_pipeline.py as Step 7 (non-fatal), after Step 6 has
+decided which waiting signals the market actually filled. Unlike the AI tracker
 (embedded in daily_predict.predict_today, which early-returns on no-signal
 days), this step runs unconditionally every day so open BCD positions still
 resolve TP/SL/TIMEOUT on the frequent zero-event days.
@@ -62,7 +63,12 @@ def _ensure_table(engine) -> None:
 
 
 def _load_untracked_signals(engine) -> pd.DataFrame:
-    """Return actionable BCD signals without a trade-history row.
+    """Return filled BCD signals without a trade-history row.
+
+    Only TRIGGERED signals are trades: a WAITING signal is a limit order the
+    market has not reached yet, and an EXPIRED one never will be. The entry is
+    b.entry_date — the session whose low reached the B->C line — not the
+    breakdown day.
 
     Confidence remains useful metadata for filtering and display, but it must
     not suppress a valid recovery signal from Trade History. Loading every
@@ -70,13 +76,15 @@ def _load_untracked_signals(engine) -> pd.DataFrame:
     after a previous tracker failure.
     """
     query = text("""
-    SELECT b.date AS "Ngay", b.stock_id, b.entry_price, b.tp_price, b.sl_price
+    SELECT b.entry_date AS "Ngay", b.stock_id, b.entry_price, b.tp_price, b.sl_price
     FROM bcd_signals b
     LEFT JOIN bcd_trade_history t
-      ON t.stock_id = b.stock_id AND t.entry_date = b.date
-    WHERE b.entry_price IS NOT NULL
+      ON t.stock_id = b.stock_id AND t.entry_date = b.entry_date
+    WHERE b.status = 'TRIGGERED'
+      AND b.entry_date IS NOT NULL
+      AND b.entry_price IS NOT NULL
       AND t.id IS NULL
-    ORDER BY b.date ASC, b.prob DESC
+    ORDER BY b.entry_date ASC, b.prob DESC
     """)
     return pd.read_sql(query, engine)
 
@@ -84,7 +92,8 @@ def _load_untracked_signals(engine) -> pd.DataFrame:
 def update_bcd_trades():
     """
     Update open BCD positions against latest market data, open trades for every
-    BCD signal not tracked yet, and upsert everything to bcd_trade_history.
+    filled BCD signal not tracked yet, and upsert everything to
+    bcd_trade_history.
     Returns the number of tracked trades, or None if the step could not run.
     """
     engine = get_engine()
@@ -114,7 +123,7 @@ def update_bcd_trades():
             axis=1,
         )
         new_signals = new_signals[keep]
-    log.info(f"BCD tracker: {len(new_signals)} untracked actionable signals to open")
+    log.info(f"BCD tracker: {len(new_signals)} untracked filled signals to open")
     tm.add_new_signals(new_signals)
 
     tm.finalize()

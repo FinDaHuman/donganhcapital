@@ -26,6 +26,46 @@ def _to_native(val):
 MIN_HOLD_DAYS = 2
 
 
+def _day(value) -> str:
+    return str(value).split(" ")[0]
+
+
+def resolve_trade_exit(bars, entry_date, entry_price, tp_price, sl_price,
+                       latest_date, timeout_days, min_hold_days=MIN_HOLD_DAYS):
+    """Resolve one trade against its bars.
+
+    Returns (status, exit_date, exit_price); status is "TP"/"SL"/"TIMEOUT", or
+    "HOLD" with (None, None) while the trade is still open.
+
+    `bars` must be the sessions from entry_date onward, ascending, carrying
+    "Ngay"/high/low/close. Within a session TP is checked before SL, and SL is
+    suppressed for the first `min_hold_days` calendar days — both inherited
+    from the source system.
+
+    This is the only implementation of the exit rules: TradeManager runs it
+    against live positions and labels/bcd_label.py runs it over history, so a
+    trade and the label it was trained on can never disagree.
+    """
+    entry_dt = datetime.strptime(_day(entry_date), "%Y-%m-%d")
+
+    for _, row in bars.iterrows():
+        date = _day(row["Ngay"])
+        days_held = (datetime.strptime(date, "%Y-%m-%d") - entry_dt).days
+
+        if row["high"] >= tp_price:
+            return "TP", date, tp_price
+
+        if row["low"] <= sl_price and days_held >= min_hold_days:
+            return "SL", date, sl_price
+
+    latest = _day(latest_date)
+    if (datetime.strptime(latest, "%Y-%m-%d") - entry_dt).days >= timeout_days:
+        exit_price = bars.iloc[-1]["close"] if len(bars) > 0 else entry_price
+        return "TIMEOUT", latest, exit_price
+
+    return "HOLD", None, None
+
+
 class TradeManager:
 
     def __init__(self, engine=None, table="trade_history", timeout_days=30):
@@ -97,50 +137,23 @@ class TradeManager:
             if trade["status"] != "HOLD":
                 continue
 
-            stock = trade["stock_id"]
-
-            df = market_df[market_df["stock_id"] == stock]
-
+            df = market_df[market_df["stock_id"] == trade["stock_id"]]
             df = df[df["Ngay"] >= trade["entry_date"]]
 
-            entry_dt = datetime.strptime(trade["entry_date"], "%Y-%m-%d")
+            status, exit_date, exit_price = resolve_trade_exit(
+                df,
+                trade["entry_date"],
+                trade.get("entry_price"),
+                trade["tp_price"],
+                trade["sl_price"],
+                today,
+                self.timeout_days,
+            )
 
-            for _, row in df.iterrows():
-
-                high = row["high"]
-                low = row["low"]
-                date = str(row["Ngay"]).split(" ")[0]
-                date_dt = datetime.strptime(date, "%Y-%m-%d")
-                days_held = (date_dt - entry_dt).days
-
-                if high >= trade["tp_price"]:
-
-                    trade["status"] = "TP"
-                    trade["exit_price"] = trade["tp_price"]
-                    trade["exit_date"] = date
-                    break
-
-                if low <= trade["sl_price"] and days_held >= MIN_HOLD_DAYS:
-
-                    trade["status"] = "SL"
-                    trade["exit_price"] = trade["sl_price"]
-                    trade["exit_date"] = date
-                    break
-
-            if trade["status"] == "HOLD":
-
-                today_dt = datetime.strptime(str(today).split(" ")[0], "%Y-%m-%d")
-
-                holding = (today_dt - entry_dt).days
-
-                if holding >= self.timeout_days:
-
-                    trade["status"] = "TIMEOUT"
-                    trade["exit_date"] = str(today).split(" ")[0]
-                    if not df.empty and len(df) > 0:
-                        trade["exit_price"] = _to_native(df.iloc[-1]["close"])
-                    else:
-                        trade["exit_price"] = _to_native(trade.get("entry_price"))
+            if status != "HOLD":
+                trade["status"] = status
+                trade["exit_date"] = exit_date
+                trade["exit_price"] = _to_native(exit_price)
 
         return
 

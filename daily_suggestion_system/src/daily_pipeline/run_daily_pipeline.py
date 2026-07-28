@@ -127,11 +127,35 @@ def run():
         exit_code = 1
 
     # ==============================
-    # STEP 6: BCD TRADE TRACKER
+    # STEP 6: BCD SIGNAL TRIGGERS
     # ==============================
 
     logger.info("=" * 50)
-    logger.info("STEP 6: BCD TRADE TRACKER")
+    logger.info("STEP 6: BCD SIGNAL TRIGGERS")
+    logger.info("=" * 50)
+
+    # A BCD signal is a resting limit order on the B->C line, so it becomes a
+    # trade only once the market trades down to that line. Runs unconditionally:
+    # signals from earlier days are still waiting even when Step 5 found none.
+    try:
+        from bcd_signal_trigger import evaluate_bcd_triggers
+        result = evaluate_bcd_triggers()
+        if result is None:
+            raise RuntimeError("BCD trigger evaluation could not run (no DB or market data)")
+        logger.info(
+            f"BCD triggers: {result['triggered']} filled, "
+            f"{result['expired']} expired, {result['waiting']} waiting"
+        )
+    except Exception as e:
+        logger.error(f"BCD trigger step failed (non-fatal): {e}")
+        exit_code = 1
+
+    # ==============================
+    # STEP 7: BCD TRADE TRACKER
+    # ==============================
+
+    logger.info("=" * 50)
+    logger.info("STEP 7: BCD TRADE TRACKER")
     logger.info("=" * 50)
 
     # Runs unconditionally so open BCD positions resolve TP/SL/TIMEOUT even on

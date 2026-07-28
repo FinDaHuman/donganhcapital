@@ -2,13 +2,16 @@
 BCD (B-C-D breakdown) event detection.
 
 Ported from crawl_news `backend/pipelines/processors/features/stock_features.py`
-(BCDEventEngine) and `backend/pipelines/backup/training/train_model_1.py`
-(RecoveryPointEngine), renamed to this repo's "Ngay" column convention.
+(BCDEventEngine), renamed to this repo's "Ngay" column convention.
 
 Pattern: price drops >= drop_pct from the lookback-window peak -> local bottom B
 -> weak rebound -> lower bottom C -> a close below C = the breakdown day.
-The model scores each breakdown day for the probability of a >= +15% recovery
-within 60 sessions (see labels/bcd_label.py).
+B and C are the two bottoms the entry line is drawn through; the breakdown day
+is when the plan is published, not when it is filled (see
+daily_pipeline/bcd_signal_trigger.py).
+
+The model scores each breakdown day for the probability that the resulting
+trade closes at TP rather than SL (see labels/bcd_label.py).
 
 The event parameters used here MUST stay identical between training and
 inference, otherwise the feature distribution shifts:
@@ -196,62 +199,3 @@ class BCDEventEngine:
 
         return df
 
-
-class RecoveryPointEngine:
-    """Training-only: locate the post-breakdown low D and the recovery day (D+1)."""
-
-    @staticmethod
-    def build(df, recovery_window=20):
-        df = df.copy()
-        df["Ngay"] = pd.to_datetime(df["Ngay"])
-        logs = []
-
-        for stock, g in df.groupby("stock_id", sort=False):
-            g = g.reset_index(drop=True)
-            low = g["low"].to_numpy()
-            close = g["close"].to_numpy()
-            open_ = g["open"].to_numpy()
-            ngay = g["Ngay"].to_numpy()
-
-            b_ngay = g["B_Ngay"].to_numpy()
-            c_ngay = g["C_Ngay"].to_numpy()
-            breakdown_ngay = g["breakdown_Ngay"].to_numpy()
-            c_close_arr = g["C_close"].to_numpy()
-
-            event_rows = np.flatnonzero(g["breakdown"].to_numpy() == 1)
-
-            for idx in event_rows:
-                c_close = c_close_arr[idx]
-                if pd.isna(c_close):
-                    continue
-
-                end_idx = min(idx + recovery_window + 1, len(g))
-                if idx + 1 >= end_idx:
-                    continue
-
-                future_lows = low[idx + 1:end_idx]
-                if len(future_lows) == 0:
-                    continue
-
-                d_idx = idx + 1 + np.argmin(future_lows)
-                d_low = low[d_idx]
-
-                recovery_idx = d_idx + 1
-                if recovery_idx >= len(g):
-                    recovery_idx = -1
-
-                logs.append({
-                    "stock_id": stock,
-                    "B_Ngay": b_ngay[idx],
-                    "C_Ngay": c_ngay[idx],
-                    "breakdown_Ngay": breakdown_ngay[idx],
-                    "C_close": c_close,
-                    "D_Ngay": ngay[d_idx],
-                    "D_low": d_low,
-                    "recovery_Ngay": ngay[recovery_idx] if recovery_idx >= 0 else pd.NaT,
-                    "recovery_open": open_[recovery_idx] if recovery_idx >= 0 else np.nan,
-                    "recovery_close": close[recovery_idx] if recovery_idx >= 0 else np.nan,
-                    "recovery_found": int(recovery_idx >= 0),
-                })
-
-        return pd.DataFrame(logs)

@@ -1,5 +1,5 @@
 """
-BCD model rolling features + entry/TP/SL rules.
+BCD model rolling features + the B->C entry line.
 
 Ported from crawl_news `BCDFeatureEngine` (stock_features.py) and
 `calc_bcd_entry` (buy_plan.py), renamed to this repo's "Ngay" convention.
@@ -11,7 +11,14 @@ breakdown_strength).
 
 Feature params must stay identical between training and inference:
     lookback_peak=60, ma_ma=200
+
+`calc_bc_line` / `line_price_on` are the single definition of the entry line.
+Inference (bcd_daily_predict), the trigger evaluator (bcd_signal_trigger) and
+the training labels (labels/bcd_label) all go through them, so a signal, the
+trade opened from it and the label it was trained on describe the same trade.
 """
+from datetime import date, timedelta
+
 import numpy as np
 import pandas as pd
 
@@ -29,6 +36,15 @@ BCD_FEATURE_COLS = [
 # TP = entry * 1.15 (matches the +15%/60-session label), SL = entry * 0.93.
 TP_MULT = 1.15
 SL_MULT = 0.93
+
+# How long a signal keeps its resting limit order alive before it is dropped.
+# Calendar days, matching buy_plan.MAX_WAITING_DAYS.
+MAX_WAITING_DAYS = 10
+
+# The B->C line is only drawn when B and C are at least this far apart;
+# below it the two points are too close for the slope to mean anything and we
+# fall back to a flat level (buy_plan.calc_bcd_entry uses the same 2%).
+MIN_BC_SEPARATION = 0.02
 
 
 def build_bcd_features(df: pd.DataFrame, lookback_peak=60, ma_ma=200) -> pd.DataFrame:
@@ -84,19 +100,34 @@ def build_bcd_features(df: pd.DataFrame, lookback_peak=60, ma_ma=200) -> pd.Data
     return df
 
 
-def calc_bcd_entry(row) -> float | None:
-    """Entry = projection of the B->C close line to the signal (breakdown) date.
+def line_price_on(anchor_date, anchor_price: float, slope: float, target_date) -> float:
+    """Price of the B->C line on `target_date`.
 
-    Requires |C-B|/B >= 2%; otherwise falls back to the breakdown day's
-    (open + close) / 2. Mirrors crawl_news buy_plan.calc_bcd_entry, except the
-    projection target is the signal date rather than the wall-clock date, so
-    re-runs of a past date produce identical prices.
+    The slope is per CALENDAR day (as in buy_plan.calc_bcd_entry), so the line
+    keeps falling across weekends and holidays.
+    """
+    days = (pd.Timestamp(target_date) - pd.Timestamp(anchor_date)).days
+    return float(anchor_price) + float(slope) * days
+
+
+def calc_bc_line(row) -> tuple[date, float, float] | None:
+    """The support line to rest a limit buy on, as (anchor_date, anchor_price, slope).
+
+    Normal case: the line through the B and C closes, extended forward. Because
+    C is a lower bottom than B the slope is always negative, so the level keeps
+    dropping for as long as the signal waits.
+
+    When B and C are closer than MIN_BC_SEPARATION the slope is noise, so we
+    fall back to a flat line at the breakdown candle's mid price — the same
+    fallback level buy_plan.calc_bcd_entry uses, just held horizontal instead of
+    projected.
+
+    Returns None when neither branch has usable prices.
     """
     b_price = row.get("B_close")
     c_price = row.get("C_close")
     b_date = row.get("B_Ngay")
     c_date = row.get("C_Ngay")
-    signal_date = row.get("Ngay")
 
     if (
         b_price is not None and c_price is not None
@@ -105,20 +136,68 @@ def calc_bcd_entry(row) -> float | None:
     ):
         bv = float(b_price)
         cv = float(c_price)
-        if bv > 0 and abs(cv - bv) / bv >= 0.02:
+        if bv > 0 and abs(cv - bv) / bv >= MIN_BC_SEPARATION:
             b_dt = pd.Timestamp(b_date)
             c_dt = pd.Timestamp(c_date)
             if c_dt >= b_dt:
                 days_range = (c_dt - b_dt).days or 1
-                price_slope = (cv - bv) / days_range
-                days_from_b = (pd.Timestamp(signal_date) - b_dt).days
-                return float(bv + price_slope * days_from_b)
+                return b_dt.date(), bv, (cv - bv) / days_range
 
-    # Fallback: mid of the breakdown candle
+    # Fallback: flat line at the mid of the breakdown candle.
+    signal_date = row.get("Ngay")
+    if signal_date is None or pd.isna(signal_date):
+        return None
     o = row.get("open")
     c = row.get("close")
-    if o is not None and c is not None and not pd.isna(c) and float(c) > 0:
-        if not pd.isna(o) and float(o) > 0:
-            return (float(o) + float(c)) / 2
-        return float(c)
+    if c is not None and not pd.isna(c) and float(c) > 0:
+        level = (float(o) + float(c)) / 2 if (o is not None and not pd.isna(o) and float(o) > 0) else float(c)
+        return pd.Timestamp(signal_date).date(), level, 0.0
+    return None
+
+
+def expiry_date(signal_date, waiting_days: int = MAX_WAITING_DAYS) -> date:
+    """Last calendar day on which a signal's limit order is still live."""
+    return (pd.Timestamp(signal_date) + timedelta(days=waiting_days)).date()
+
+
+def find_line_touch(bars, anchor_date, anchor_price, slope, signal_date,
+                    waiting_days: int = MAX_WAITING_DAYS) -> tuple[date, float] | None:
+    """First session where the market reaches the line, as (entry_date, fill_price).
+
+    `bars` is the ticker's sessions in ascending date order, carrying
+    "Ngay"/open/low. Returns None while the line has not been reached.
+
+    Two details decide whether this backtest is tradeable:
+
+    1. The scan starts the session AFTER `signal_date`. The breakdown is only
+       known once that day has closed (the pipeline runs 2 min after the bell),
+       so no order could have been resting during it. crawl_news
+       buy_plan.update_statuses scans from the signal date inclusive, which
+       quietly books fills that were impossible.
+
+    2. The fill is min(open, line), not the day's low. The line is a resting
+       limit buy: it fills at the limit when the market trades down to it, or
+       at the open when the session gapped straight through. Booking the low
+       would credit the trade with a price nobody can hit.
+    """
+    sig = pd.Timestamp(signal_date)
+    expires = pd.Timestamp(expiry_date(signal_date, waiting_days))
+
+    for _, bar in bars.iterrows():
+        d = pd.Timestamp(bar["Ngay"])
+        if d <= sig:
+            continue
+        if d > expires:
+            break
+
+        low = bar["low"]
+        if low is None or pd.isna(low) or float(low) <= 0:
+            continue
+
+        level = line_price_on(anchor_date, anchor_price, slope, d)
+        if float(low) <= level:
+            o = bar["open"]
+            fill = min(float(o), level) if (o is not None and not pd.isna(o) and float(o) > 0) else level
+            return d.date(), float(fill)
+
     return None

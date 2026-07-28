@@ -32,6 +32,10 @@ const ProbBadge = ({ prob, passed }) => {
     );
 };
 
+// Sentinel for the Min Confidence dropdown: filter by the model's own
+// threshold instead of a round number picked by hand.
+const RECOMMENDED = 'recommended';
+
 const SortIndicator = ({ sortConfig, columnKey }) => {
     if (!sortConfig || sortConfig.key !== columnKey) return null;
     return <span className="ml-1" style={{ color: GOLD }}>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>;
@@ -42,6 +46,24 @@ const STATUS_COLORS = {
     SL: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30', label: 'Stop Loss' },
     TIMEOUT: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30', label: 'Timeout' },
     HOLD: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30', label: 'Holding' },
+};
+
+// A signal is a resting limit order on the B–C line: it is only a position once
+// the market has traded down to that line.
+const SIGNAL_STATUS = {
+    WAITING: { text: 'text-blue-400', border: 'border-blue-500/30', bg: 'bg-blue-500/10', label: 'Waiting for entry' },
+    TRIGGERED: { text: 'text-green-400', border: 'border-green-500/30', bg: 'bg-green-500/10', label: 'Filled' },
+    EXPIRED: { text: 'text-gray-400', border: 'border-gray-600/40', bg: 'bg-gray-500/10', label: 'Expired' },
+};
+
+const SignalStatusBadge = ({ status }) => {
+    const s = SIGNAL_STATUS[status];
+    if (!s) return null;
+    return (
+        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${s.bg} ${s.text} ${s.border}`}>
+            {s.label}
+        </span>
+    );
 };
 
 // Static lookup for filter button active styles (dynamic classes get purged by Tailwind)
@@ -219,8 +241,23 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
         setSortConfig({ key, direction });
     };
 
+    // The model's own decision threshold, as shipped in bcd_model.pkl. Read
+    // from the data rather than hard-coded, because it moves on every retrain.
+    const modelThreshold = useMemo(() => {
+        const v = trades.find(t => t.model_threshold != null)?.model_threshold
+            ?? signals.find(s => s.model_threshold != null)?.model_threshold;
+        return v ?? null;
+    }, [trades, signals]);
+
     const baseTrades = useMemo(() => {
         return trades.filter(trade => {
+            if (minScore === RECOMMENDED) {
+                // Prefer the stored flag: a trade is judged by the threshold it
+                // was actually scored against, not by today's.
+                if (trade.passed_threshold != null) return Boolean(trade.passed_threshold);
+                if (trade.model_threshold == null || trade.prob == null) return false;
+                return trade.prob >= trade.model_threshold;
+            }
             if (minScore > 0 && (!trade.prob || trade.prob < minScore)) return false;
             return true;
         });
@@ -420,9 +457,12 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                         >
                             <BarChart2 size={14} style={{ color: GOLD, marginTop: 1, flexShrink: 0 }} />
                             <span>
-                                Scored by a LightGBM classifier on B-C-D breakdown events. <strong style={{ color: GOLD }}>Confidence Rate</strong> = model
-                                confidence that price recovers ≥15% within 60 sessions after the post-breakdown low — this is model confidence, not a win rate.
-                                Entry is a suggested B–C trendline level; TP/SL are +15% / −7% from entry. <strong style={{ color: GOLD }}>For research only</strong>, not financial advice.
+                                Scored by a LightGBM classifier on B-C-D breakdown events. Each signal is a
+                                <strong style={{ color: GOLD }}> buy limit resting on the B–C line</strong>: it becomes a position only on the first
+                                session whose low reaches that line, and is dropped if the market never comes back within 10 days.
+                                TP/SL are +15% / −7% from the fill. <strong style={{ color: GOLD }}>Confidence Rate</strong> = model confidence that a
+                                filled trade closes at take-profit rather than stop-loss — this is model confidence, not a win rate.
+                                <strong style={{ color: GOLD }}> For research only</strong>, not financial advice.
                                 Past performance does not guarantee future results.
                             </span>
                         </div>
@@ -501,21 +541,46 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-2 gap-3 mb-4">
-                                            <div className="bg-[#0a0a0c] p-3 rounded-lg border border-gray-800/50">
-                                                <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider font-semibold">Entry</div>
-                                                <div className="text-lg text-gray-200 font-medium" style={{ fontFamily: MONO }}>{fmt(sig.entry_price)}</div>
-                                            </div>
-                                            <div className="bg-[#0a0a0c] p-3 rounded-lg border border-gray-800/50 flex flex-col items-end">
-                                                <div className="text-xs text-green-500/70 mb-1 uppercase tracking-wider font-semibold">Take Profit</div>
-                                                <div className="text-lg text-green-400 font-medium" style={{ fontFamily: MONO }}>{fmt(sig.tp_price)}</div>
-                                            </div>
-                                        </div>
+                                        {(() => {
+                                            const filled = sig.status === 'TRIGGERED';
+                                            // While waiting, the level moves with the B–C line, so quote
+                                            // today's line and the TP/SL it would imply.
+                                            const level = filled ? sig.entry_price : sig.line_price_today;
+                                            const tp = filled ? sig.tp_price : (level != null ? level * 1.15 : null);
+                                            const sl = filled ? sig.sl_price : (level != null ? level * 0.93 : null);
+                                            return (
+                                                <>
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <SignalStatusBadge status={sig.status} />
+                                                        <span className="text-xs text-gray-500" style={{ fontFamily: MONO }}>
+                                                            {filled
+                                                                ? `Filled ${sig.entry_date}`
+                                                                : sig.status === 'EXPIRED'
+                                                                    ? 'Never reached the line'
+                                                                    : sig.expires_on ? `Expires ${sig.expires_on}` : ''}
+                                                        </span>
+                                                    </div>
 
-                                        <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-lg flex justify-between items-center">
-                                            <span className="text-xs text-red-400/70 uppercase tracking-wider font-semibold">Stop Loss</span>
-                                            <span className="text-red-400 font-medium" style={{ fontFamily: MONO }}>{fmt(sig.sl_price)}</span>
-                                        </div>
+                                                    <div className="grid grid-cols-2 gap-3 mb-4">
+                                                        <div className="bg-[#0a0a0c] p-3 rounded-lg border border-gray-800/50">
+                                                            <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider font-semibold">
+                                                                {filled ? 'Entry' : 'Buy Limit Today'}
+                                                            </div>
+                                                            <div className="text-lg text-gray-200 font-medium" style={{ fontFamily: MONO }}>{fmt(level)}</div>
+                                                        </div>
+                                                        <div className="bg-[#0a0a0c] p-3 rounded-lg border border-gray-800/50 flex flex-col items-end">
+                                                            <div className="text-xs text-green-500/70 mb-1 uppercase tracking-wider font-semibold">Take Profit</div>
+                                                            <div className="text-lg text-green-400 font-medium" style={{ fontFamily: MONO }}>{fmt(tp)}</div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-lg flex justify-between items-center">
+                                                        <span className="text-xs text-red-400/70 uppercase tracking-wider font-semibold">Stop Loss</span>
+                                                        <span className="text-red-400 font-medium" style={{ fontFamily: MONO }}>{fmt(sl)}</span>
+                                                    </div>
+                                                </>
+                                            );
+                                        })()}
 
                                         {sig.live_price != null && (
                                             <div className="mt-3 bg-[#0a0a0c] border border-gray-800/50 p-3 rounded-lg flex justify-between items-center">
@@ -570,10 +635,16 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                                 <span className="text-gray-400">Min Confidence:</span>
                                 <select
                                     value={minScore}
-                                    onChange={(e) => setMinScore(Number(e.target.value))}
+                                    onChange={(e) => {
+                                        const v = e.target.value;
+                                        setMinScore(v === RECOMMENDED ? RECOMMENDED : Number(v));
+                                    }}
                                     className="bg-[#111213] border border-gray-800 text-white rounded-lg px-3 py-1.5 focus:outline-none transition-colors"
                                 >
                                     <option value={0}>Any</option>
+                                    <option value={RECOMMENDED}>
+                                        Recommended{modelThreshold != null ? ` (≥ ${(modelThreshold * 100).toFixed(0)}%)` : ''}
+                                    </option>
                                     <option value={0.65}>&ge; 65%</option>
                                     <option value={0.75}>&ge; 75%</option>
                                     <option value={0.85}>&ge; 85%</option>

@@ -9,6 +9,10 @@ Can also be run directly for testing:
 
 Unlike LTR, zero signals is the NORMAL outcome — the model only fires on days
 when a stock completes a B-C-D breakdown pattern.
+
+A signal is a buy PLAN, not a fill: it is stored as WAITING with the B->C line
+that a limit order should rest on. Step 6 (bcd_signal_trigger) is what turns it
+into a real entry, on the first later session whose low reaches that line.
 """
 import gc
 import logging
@@ -27,7 +31,7 @@ sys.path.insert(0, str(SRC_DIR))
 from data_access.db_connection import get_engine
 from data_access.stock_data_loader import load_stock_data
 from events.bcd import BCDEventEngine
-from features.bcd_features import BCD_FEATURE_COLS, SL_MULT, TP_MULT, build_bcd_features, calc_bcd_entry
+from features.bcd_features import BCD_FEATURE_COLS, build_bcd_features, calc_bc_line, expiry_date
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +62,15 @@ CREATE TABLE IF NOT EXISTS bcd_signals (
     CONSTRAINT bcd_signals_date_stock_uq UNIQUE (date, stock_id)
 );
 CREATE INDEX IF NOT EXISTS idx_bcd_signals_date ON bcd_signals (date DESC);
+ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS status VARCHAR(10) NOT NULL DEFAULT 'WAITING';
+ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS entry_date DATE;
+ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS expires_on DATE;
+ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS line_anchor_date DATE;
+ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS line_anchor_price REAL;
+ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS line_slope REAL;
+ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS model_threshold REAL;
+CREATE INDEX IF NOT EXISTS idx_bcd_signals_status ON bcd_signals (status);
+CREATE INDEX IF NOT EXISTS idx_bcd_signals_stock_entry ON bcd_signals (stock_id, entry_date);
 """
 
 
@@ -150,15 +163,21 @@ def detect_and_score() -> pd.DataFrame | None:
 
     rows = []
     for _, row in today_events.iterrows():
-        entry = calc_bcd_entry(row)
+        line = calc_bc_line(row)
         rows.append({
             "date": today_str,
             "stock_id": str(row["stock_id"]),
             "prob": float(row["prob"]),
             "passed_threshold": bool(row["passed_threshold"]),
-            "entry_price": float(entry) if entry is not None else None,
-            "tp_price": float(entry * TP_MULT) if entry is not None else None,
-            "sl_price": float(entry * SL_MULT) if entry is not None else None,
+            "model_threshold": best_threshold,
+            # The signal opens as a resting limit order on the B->C line;
+            # bcd_signal_trigger fills it on the first session whose low
+            # reaches that line, so entry/tp/sl stay NULL until then.
+            "status": "WAITING",
+            "expires_on": str(expiry_date(latest_date)),
+            "line_anchor_date": str(line[0]) if line is not None else None,
+            "line_anchor_price": float(line[1]) if line is not None else None,
+            "line_slope": float(line[2]) if line is not None else None,
             "peak_date": _to_date_str(row.get("peak_Ngay")),
             "peak_price": float(row["peak_before_B"]) if not pd.isna(row.get("peak_before_B")) else None,
             "b_date": _to_date_str(row.get("B_Ngay")),
@@ -174,10 +193,12 @@ def detect_and_score() -> pd.DataFrame | None:
         conn.execute(
             text("""
                 INSERT INTO bcd_signals
-                    (date, stock_id, prob, passed_threshold, entry_price, tp_price, sl_price,
+                    (date, stock_id, prob, passed_threshold, model_threshold,
+                     status, expires_on, line_anchor_date, line_anchor_price, line_slope,
                      peak_date, peak_price, b_date, b_price, c_date, c_price, breakdown_price)
                 VALUES
-                    (:date, :stock_id, :prob, :passed_threshold, :entry_price, :tp_price, :sl_price,
+                    (:date, :stock_id, :prob, :passed_threshold, :model_threshold,
+                     :status, :expires_on, :line_anchor_date, :line_anchor_price, :line_slope,
                      :peak_date, :peak_price, :b_date, :b_price, :c_date, :c_price, :breakdown_price)
             """),
             rows,

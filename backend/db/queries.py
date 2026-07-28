@@ -618,6 +618,14 @@ def get_ltr_signals(date_str: str = None, latest: bool = False) -> dict:
 
 # ── BCD signals ──────────────────────────────────────────────────────────────
 
+# Mirrors TP_MULT / SL_MULT in
+# daily_suggestion_system/src/features/bcd_features.py. Used only to project
+# what a WAITING signal's TP/SL would be if it filled at today's line level —
+# once TRIGGERED, the pipeline's own figures are read from the row.
+BCD_TP_MULT = 1.15
+BCD_SL_MULT = 0.93
+
+
 def get_bcd_signals_dates() -> list:
     """Return distinct dates that have BCD signals, newest first."""
     engine = get_engine()
@@ -649,9 +657,15 @@ def get_bcd_signals(date_str: str = None, latest: bool = False) -> dict:
     if not date_str:
         return {"date": None, "signal_count": 0, "signals": []}
 
+    # line_price_today projects the B->C line to the current session, which is
+    # the level a limit order should sit at right now. Mirrors
+    # features/bcd_features.line_price_on — calendar-day slope from the anchor.
     query = text("""
-        SELECT date, stock_id, prob, passed_threshold,
+        SELECT date, stock_id, prob, passed_threshold, model_threshold,
+               status, entry_date, expires_on,
                entry_price, tp_price, sl_price,
+               line_anchor_price + line_slope * (CURRENT_DATE - line_anchor_date)
+                   AS line_price_today,
                peak_date, peak_price, b_date, b_price,
                c_date, c_price, breakdown_price
         FROM bcd_signals
@@ -662,12 +676,14 @@ def get_bcd_signals(date_str: str = None, latest: bool = False) -> dict:
         df = pd.read_sql(query, engine, params={"date_str": date_str})
         if df.empty:
             return {"date": date_str, "signal_count": 0, "signals": []}
-        for col in ("date", "peak_date", "b_date", "c_date"):
+        for col in ("date", "entry_date", "expires_on", "peak_date", "b_date", "c_date"):
             df[col] = df[col].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
         df["passed_threshold"] = df["passed_threshold"].astype(bool)
-        for col in ("entry_price", "tp_price", "sl_price", "peak_price", "b_price", "c_price", "breakdown_price"):
+        for col in ("entry_price", "tp_price", "sl_price", "line_price_today",
+                    "peak_price", "b_price", "c_price", "breakdown_price"):
             df[col] = df[col].apply(lambda x: _safe_round(x, 2))
-        df["prob"] = df["prob"].apply(lambda x: _safe_round(x, 4))
+        for col in ("prob", "model_threshold"):
+            df[col] = df[col].apply(lambda x: _safe_round(x, 4))
         signals = df.to_dict(orient="records")
 
         # Additive live overlay — same contract as get_ai_signals: fields are
@@ -681,9 +697,15 @@ def get_bcd_signals(date_str: str = None, latest: bool = False) -> dict:
                 lp = q['price']
                 s['live_price'] = lp
                 s['live_change_pct'] = q.get('change_pct')
-                ep = _safe_float(s.get('entry_price'))
+                # While WAITING there is no fill yet, so the level to measure
+                # against is today's line, not the (NULL) entry price.
+                is_filled = s.get('status') == 'TRIGGERED'
+                ep = _safe_float(s.get('entry_price')) if is_filled else _safe_float(s.get('line_price_today'))
                 tp = _safe_float(s.get('tp_price'))
                 sl = _safe_float(s.get('sl_price'))
+                if not is_filled and ep:
+                    tp = ep * BCD_TP_MULT
+                    sl = ep * BCD_SL_MULT
                 s['distance_to_entry_pct'] = _safe_round((lp - ep) / ep * 100, 2) if ep else None
                 s['distance_to_tp_pct'] = _safe_round((tp - lp) / lp * 100, 2) if tp else None
                 s['distance_to_sl_pct'] = _safe_round((lp - sl) / lp * 100, 2) if sl else None
@@ -703,7 +725,9 @@ def get_bcd_signals_summary() -> list:
     query = """
     SELECT date,
            COUNT(*) AS signal_count,
-           COUNT(*) FILTER (WHERE passed_threshold) AS passed_count
+           COUNT(*) FILTER (WHERE passed_threshold) AS passed_count,
+           COUNT(*) FILTER (WHERE status = 'TRIGGERED') AS filled_count,
+           COUNT(*) FILTER (WHERE status = 'WAITING') AS waiting_count
     FROM bcd_signals
     GROUP BY date
     ORDER BY date DESC
@@ -734,13 +758,26 @@ def get_bcd_trade_history(status_filter: str = None):
         ) END
     """
     where_clause = "WHERE t.status = :status" if status_filter else ""
+    # The originating signal is matched on entry_date, not on the breakdown
+    # date: a signal now waits on its B->C line and fills days later, so
+    # bcd_signals.date and bcd_trade_history.entry_date are different days.
+    # DISTINCT ON keeps one signal per (stock, entry_date) in the rare case two
+    # patterns on the same ticker fill on the same session.
     query = text(f"""
+    WITH sig AS (
+        SELECT DISTINCT ON (stock_id, entry_date)
+               stock_id, entry_date, date AS signal_date,
+               prob, passed_threshold, model_threshold
+        FROM bcd_signals
+        WHERE entry_date IS NOT NULL
+        ORDER BY stock_id, entry_date, prob DESC
+    )
     SELECT t.stock_id, t.entry_date, t.entry_price, t.tp_price, t.sl_price,
            t.exit_date, t.exit_price, t.status, t.return_pct, t.holding_days,
-           b.prob,
+           b.prob, b.passed_threshold, b.model_threshold, b.signal_date,
            {live_price_subquery} AS live_price
     FROM bcd_trade_history t
-    LEFT JOIN bcd_signals b ON t.stock_id = b.stock_id AND t.entry_date = b.date
+    LEFT JOIN sig b ON t.stock_id = b.stock_id AND t.entry_date = b.entry_date
     {where_clause}
     ORDER BY t.entry_date DESC
     """)
@@ -751,7 +788,7 @@ def get_bcd_trade_history(status_filter: str = None):
         if df.empty:
             return []
 
-        for col in ['entry_date', 'exit_date']:
+        for col in ['entry_date', 'exit_date', 'signal_date']:
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
         for col in ['entry_price', 'tp_price', 'sl_price', 'exit_price']:
@@ -759,8 +796,13 @@ def get_bcd_trade_history(status_filter: str = None):
                 df[col] = df[col].apply(lambda x: _safe_round(x, 2))
         if 'return_pct' in df.columns:
             df['return_pct'] = df['return_pct'].apply(lambda x: _safe_round(x, 6))
-        if 'prob' in df.columns:
-            df['prob'] = df['prob'].apply(lambda x: _safe_round(x, 4))
+        for col in ['prob', 'model_threshold']:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: _safe_round(x, 4))
+        if 'passed_threshold' in df.columns:
+            df['passed_threshold'] = df['passed_threshold'].apply(
+                lambda x: bool(x) if pd.notnull(x) else None
+            )
         if 'holding_days' in df.columns:
             df['holding_days'] = df['holding_days'].apply(lambda x: int(x) if pd.notnull(x) and _safe_float(x) is not None else None)
 

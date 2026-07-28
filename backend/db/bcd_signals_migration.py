@@ -42,6 +42,28 @@ def run_bcd_migration():
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_bcd_signals_date ON bcd_signals (date DESC)
         """))
+        # Entry lifecycle: a signal is now a resting limit order on the B->C
+        # line, so it waits for the market to come to it instead of being
+        # filled on the breakdown day. entry_price/tp_price/sl_price stay NULL
+        # until status flips to TRIGGERED.
+        for stmt in (
+            "ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS status VARCHAR(10) NOT NULL DEFAULT 'WAITING'",
+            "ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS entry_date DATE",
+            "ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS expires_on DATE",
+            "ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS line_anchor_date DATE",
+            "ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS line_anchor_price REAL",
+            "ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS line_slope REAL",
+            "ALTER TABLE bcd_signals ADD COLUMN IF NOT EXISTS model_threshold REAL",
+        ):
+            conn.execute(text(stmt))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_bcd_signals_status ON bcd_signals (status)
+        """))
+        # Serves the trade-history join, which now keys on entry_date.
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_bcd_signals_stock_entry
+                ON bcd_signals (stock_id, entry_date)
+        """))
         # Kept in sync with the inline DDL in
         # daily_suggestion_system/src/daily_pipeline/bcd_trade_tracker.py.
         conn.execute(text("""

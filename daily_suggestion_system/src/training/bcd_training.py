@@ -5,18 +5,23 @@ Ported from crawl_news `backend/pipelines/backup/training/train_model_1.py`,
 retrained from scratch on this repo's stock_ohlc data (the source repo never
 shipped its .pkl and its database is a different project).
 
-Model: LGBMClassifier (binary). One training row per detected B-C-D breakdown
-event; label = 1 if the stock gains >= +15% within 60 sessions after entering
-at the recovery-day open (see labels/bcd_label.py).
+Model: LGBMClassifier (binary). One training row per breakdown event that the
+market actually filled; label = 1 if that trade closed at TP rather than SL or
+TIMEOUT (see labels/bcd_label.py). Events whose limit order was never reached
+are excluded, so `prob` reads as "given a fill, does this reach +15% first?".
 
 Universe: ALL tickers in stock_ohlc. Unlike LTR (cross-sectional ranking over
 a curated universe), BCD is event-conditional — the pattern detector is the
 universe filter, so train and inference both run on the full table.
 
-Data split (same shape as the source recipe):
-  Train : < 2024-01-01
-  Val   : 2024                (early stopping + threshold selection only)
+Data split:
+  Train : < 2023-01-01
+  Val   : 2023–2024           (early stopping + threshold selection only)
   Test  : >= 2025-01-01       (true holdout)
+
+The validation window is two years rather than the source recipe's one: on a
+single year it held only 59 events, which stopped training at 8 trees and left
+the holdout AUC near chance.
 
 Usage:
     cd daily_suggestion_system/src/training
@@ -54,7 +59,7 @@ for candidate in [
 
 from data_access.db_connection import get_engine
 from data_access.stock_data_loader import load_stock_data
-from events.bcd import BCDEventEngine, RecoveryPointEngine
+from events.bcd import BCDEventEngine
 from features.bcd_features import BCD_FEATURE_COLS, build_bcd_features
 from labels.bcd_label import build_bcd_labels
 
@@ -63,7 +68,7 @@ log = logging.getLogger(__name__)
 
 # --- Constants ---
 TRAIN_START      = "2010-01-01"   # events are rare (~a few per stock per decade) — use all history
-SPLIT_DATE_TRAIN = pd.Timestamp("2024-01-01")
+SPLIT_DATE_TRAIN = pd.Timestamp("2023-01-01")
 SPLIT_DATE_VAL   = pd.Timestamp("2025-01-01")
 MODEL_SAVE_PATH  = Path(__file__).resolve().parents[2] / "model" / "bcd_model.pkl"
 
@@ -82,26 +87,20 @@ def build_dataset(stock_df: pd.DataFrame) -> pd.DataFrame:
     del feat_df
     gc.collect()
 
-    log.info("Locating recovery points …")
-    recovery_df = RecoveryPointEngine.build(event_df, recovery_window=20)
-
-    log.info("Building labels (+15% within 60 sessions) …")
-    label_df = build_bcd_labels(recovery_df, event_df, horizon=60, target_return=0.15)
-
     breakdown_df = event_df[event_df["breakdown"] == 1].copy()
     log.info(f"  Detected breakdown events: {len(breakdown_df):,}")
-    del event_df
+
+    log.info("Simulating the trade each event would have produced …")
+    train_df = build_bcd_labels(breakdown_df, event_df)
+    del event_df, breakdown_df
     gc.collect()
 
-    train_df = breakdown_df.merge(
-        label_df[["stock_id", "breakdown_Ngay", "label", "future_return", "recovery_Ngay", "D_Ngay"]],
-        on=["stock_id", "breakdown_Ngay"],
-        how="inner",
-    )
-    log.info(f"  Labeled training rows: {len(train_df):,}")
+    log.info(f"  Events that filled and closed: {len(train_df):,}")
+    outcomes = train_df["exit_status"].value_counts()
+    log.info("Exit mix:\n" + outcomes.to_string())
 
     per_year = train_df.groupby(train_df["Ngay"].dt.year)["label"].agg(["count", "mean"])
-    log.info("Events per year (count / positive rate):\n" + per_year.to_string())
+    log.info("Events per year (count / win rate):\n" + per_year.to_string())
 
     return train_df
 
@@ -115,8 +114,8 @@ def prepare_split(train_df: pd.DataFrame):
     ].copy()
     test_set = train_df[train_df["Ngay"] >= SPLIT_DATE_VAL].copy()
 
-    log.info(f"  Train : {len(train_set):,} events (< 2024)")
-    log.info(f"  Val   : {len(val_set):,} events (2024 — early stopping + threshold only)")
+    log.info(f"  Train : {len(train_set):,} events (< 2023)")
+    log.info(f"  Val   : {len(val_set):,} events (2023–2024 — early stopping + threshold only)")
     log.info(f"  Test  : {len(test_set):,} events (2025+ — holdout)")
 
     X_train = train_set[BCD_FEATURE_COLS].replace([np.inf, -np.inf], np.nan).astype("float32")
@@ -153,6 +152,11 @@ def train(X_train, y_train, X_val, y_val):
         random_state=42,
         n_jobs=-1,
         verbose=-1,
+        # Replaces the default binary_logloss. Without this LightGBM tracks both
+        # metrics and stops on whichever stalls first — scale_pos_weight makes
+        # logloss degrade almost immediately, which cut training off at ~10
+        # trees no matter how high the patience was set.
+        metric="auc",
     )
 
     log.info("Fitting LGBMClassifier …")
@@ -160,22 +164,45 @@ def train(X_train, y_train, X_val, y_val):
         X_train, y_train,
         eval_set=[(X_val, y_val)],
         eval_metric="auc",
-        callbacks=[lgb.early_stopping(50, verbose=True), lgb.log_evaluation(period=100)],
+        callbacks=[
+            lgb.early_stopping(150, first_metric_only=True, verbose=True),
+            lgb.log_evaluation(period=100),
+        ],
     )
     log.info(f"Best iteration: {clf.best_iteration_}")
     return clf
 
 
-def pick_threshold(clf, X_val, y_val) -> float:
-    """Precision-maximizing threshold on the validation set (source recipe)."""
+# A threshold is only meaningful if enough validation events clear it —
+# otherwise "100% precision on 1 signal" wins the scan and the number is noise.
+MIN_THRESHOLD_SUPPORT = 20
+
+
+def pick_threshold(clf, X_val, y_val, min_support: int = MIN_THRESHOLD_SUPPORT) -> float:
+    """Precision-maximizing threshold on the validation set (source recipe),
+    restricted to thresholds that still flag `min_support` events."""
     proba_val = clf.predict_proba(X_val)[:, 1]
-    best_prec, best_thr = 0.0, 0.8  # fallback
+    best_prec, best_thr, best_n = 0.0, 0.8, 0  # fallback
     for t in np.linspace(0.05, 0.95, 181):
         pred = (proba_val >= t).astype(int)
+        n = int(pred.sum())
+        if n < min_support:
+            continue
         prec = precision_score(y_val, pred, zero_division=0)
         if prec > best_prec:
-            best_prec, best_thr = prec, t
-    log.info(f"  Best val precision: {best_prec:.4f} at threshold {best_thr:.4f}")
+            best_prec, best_thr, best_n = prec, t, n
+
+    if best_n == 0:
+        log.warning(
+            f"  No threshold flags {min_support}+ validation events "
+            f"(val size {len(y_val)}) — falling back to {best_thr:.2f}"
+        )
+        return float(best_thr)
+
+    log.info(
+        f"  Best val precision: {best_prec:.4f} at threshold {best_thr:.4f} "
+        f"({best_n} of {len(y_val)} events flagged)"
+    )
     return float(best_thr)
 
 
