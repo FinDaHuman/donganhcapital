@@ -8,7 +8,7 @@ import {
     CheckCircle2, Clock, Sparkles, Send, ArrowRight,
     Bot, Brain, Target, Shield, Zap, BarChart2, Eye, Cpu,
     XCircle, TrendingDown, AlertTriangle, BarChart,
-    Star, Newspaper, Settings, Play, BadgeCheck, Infinity, Rocket,
+    Newspaper, Settings, Play, BadgeCheck, Infinity, Rocket,
     CreditCard, Building2, Loader2, Crown
 } from 'lucide-react';
 import { subscribeEmail } from '../services/stock_api';
@@ -77,21 +77,19 @@ const StarMark = ({ size = 16, color = 'var(--gold-primary)', className = '' }) 
    MARQUEE TICKER
    ============================================================ */
 export const MarqueeTicker = () => {
+    // Factual coverage/capability figures only. This strip previously showed
+    // invented per-ticker returns (VNM +8.7%, FPT +12.3%, ...), which read as a
+    // performance claim — banned by facebook_bot/rule.md and unsubstantiable
+    // under Luật Quảng cáo 75/2025.
     const items = [
-        { label: 'VNM', value: '+8.7%', up: true },
-        { label: 'FPT', value: '+12.3%', up: true },
-        { label: 'HPG', value: '+5.4%', up: true },
         { label: 'Stocks Covered', value: '226', up: null },
+        { label: 'Exchanges', value: 'HOSE · HNX · UPCoM', up: null },
         { label: 'AI Models', value: '3 Active', up: null },
-        { label: 'VCB', value: '+6.1%', up: true },
-        { label: 'MWG', value: '-2.3%', up: false },
-        { label: 'Signal Score', value: 'Avg 87%', up: null },
-        { label: 'VIC', value: '+4.8%', up: true },
-        { label: 'TCB', value: '+9.2%', up: true },
-        { label: 'Market', value: 'HOSE · HNX · UPCoM', up: null },
-        { label: 'SAB', value: '+3.6%', up: true },
-        { label: 'AI Agent', value: 'Active 24/7', up: null },
-        { label: 'BVH', value: '+7.1%', up: true },
+        { label: 'Derivatives', value: 'VN30F1M', up: null },
+        { label: 'Signals', value: 'Daily 15:02 ICT', up: null },
+        { label: 'Data', value: 'OHLC · Indicators · News', up: null },
+        { label: 'Access', value: 'Free — Non-commercial', up: null },
+        { label: 'Nature', value: 'Research tool, not advice', up: null },
     ];
     const doubled = [...items, ...items];
 
@@ -224,7 +222,10 @@ export const SocialProofSection = () => {
     const stats = [
         { value: '226', label: 'Stocks Monitored', sub: 'HOSE · HNX · UPCoM', icon: BarChart3 },
         { value: '3', label: 'Proprietary AI Models', sub: 'LightGBM & XGBoost', icon: Brain },
-        { value: '87%', label: 'Avg. Signal Score', sub: 'Cross-validated confidence', icon: Target },
+        // "Avg. Signal Score" read as an accuracy claim. It is the model's mean
+        // confidence output — not a win rate and not a return. facebook_bot/rule.md:50
+        // requires exactly this distinction; the website never made it.
+        { value: '87%', label: 'Avg. Model Confidence', sub: 'Not a win rate or return', icon: Target },
         { value: '< 1s', label: 'Signal Delivery', sub: 'After model computation', icon: Zap },
         { value: '15:02', label: 'Daily Computation', sub: 'Post-market analysis (ICT)', icon: Clock },
         { value: '₫0', label: 'Free Tier — Forever', sub: 'No credit card required', icon: BadgeCheck },
@@ -402,29 +403,35 @@ export const FeaturesSection = () => {
 export const AIAgentSection = ({ onTabChange }) => {
     const [activeFeature, setActiveFeature] = useState(0);
 
+    // Order execution through a connected brokerage used to be listed here. It has
+    // been removed, not merely re-tagged: môi giới chứng khoán is a licensed
+    // activity under Điều 86 Luật Chứng khoán, and advertising it — even as
+    // "planned" — describes an activity this project cannot lawfully perform.
+    // Same reason the wording below never promises output matched to a user's
+    // financial profile: that is suitability assessment, i.e. regulated advice.
     const agentFeatures = [
         {
             icon: Newspaper,
             title: 'News Intelligence',
-            description: 'Your AI Agent continuously scans financial news, earnings reports, and macro events — translating complex information into actionable trade implications for your portfolio.',
+            description: 'Scans financial news, earnings releases, and macro events, then summarises them so you can read a day of market coverage in a few minutes.',
             tag: 'Live',
         },
         {
             icon: Settings,
-            title: 'Learns Your Style',
-            description: 'The agent adapts to your risk tolerance, preferred sectors, and trading patterns. The more you interact, the smarter your personal agent becomes.',
+            title: 'Your Workspace, Your Way',
+            description: 'Will let you save the tickers, sectors, and indicators you follow, so the dashboard opens on the data you actually watch.',
             tag: 'In Development',
         },
         {
             icon: Target,
-            title: 'Personalized Suggestions',
-            description: 'Receive trade suggestions tailored specifically to your portfolio and goals — not generic signals, but curated opportunities matched to your investment profile.',
+            title: 'Filters and Alerts',
+            description: 'Will let you set your own screening thresholds on model outputs and be notified when a ticker crosses them. You define the criteria; the tool does the watching.',
             tag: 'In Development',
         },
         {
             icon: Play,
-            title: 'Executes on Your Approval',
-            description: 'When you\'re ready, your AI Agent can execute trades through your connected brokerage with a single tap. Full control always remains with you.',
+            title: 'Export and Review',
+            description: 'Will let you export model outputs and historical statistics for your own research and record-keeping. Every trading decision stays entirely with you and your broker.',
             tag: 'Planned',
         },
     ];
@@ -450,10 +457,10 @@ export const AIAgentSection = ({ onTabChange }) => {
                     <SectionLabel>Coming Soon</SectionLabel>
                 </motion.div>
                 <motion.h2 variants={itemVariants} className="type-section mb-4" style={{ color: 'var(--text-primary)' }}>
-                    Your Personal AI Trading Agent
+                    Your AI Research Assistant
                 </motion.h2>
                 <motion.p variants={itemVariants} className="type-body-lg max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-                    Not just signals — a fully autonomous agent that reads news, understands your style, and trades on your behalf. The future of investing in Vietnam.
+                    A research assistant that reads the news, organises the data, and keeps your watchlist current. It will never place an order or manage money — every decision stays with you.
                 </motion.p>
             </div>
 
@@ -547,13 +554,22 @@ export const AIAgentSection = ({ onTabChange }) => {
                             </div>
                         </div>
 
-                        {/* Simulated agent chat */}
+                        {/* Illustrative conversation. Previously this mocked up an order
+                            being placed ("Execute the FPT trade", "Order placed: BUY FPT")
+                            — depicting brokerage execution the project neither performs nor
+                            is licensed to perform, on top of reading as a recommendation. */}
+                        <p
+                            className="type-caption mb-3"
+                            style={{ color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+                        >
+                            Ví dụ minh hoạ · Illustrative
+                        </p>
                         <div className="space-y-3 mb-6">
                             {[
-                                { type: 'agent', text: 'I found 3 high-conviction signals for you today based on your risk profile.' },
-                                { type: 'signal', ticker: 'FPT', confidence: 87, action: 'BUY', entry: '142.0', tp: '155.0' },
-                                { type: 'user', text: 'Execute the FPT trade with 10M VND position size.' },
-                                { type: 'agent', text: '✓ Order placed: BUY FPT @ 142.0 — TP: 155.0 · SL: 136.5' },
+                                { type: 'user', text: 'What stood out in tech today?' },
+                                { type: 'agent', text: 'Three tickers you follow closed above their 20-day average. Here is where the model ranks FPT.' },
+                                { type: 'signal', ticker: 'FPT', confidence: 87 },
+                                { type: 'agent', text: 'This is a model score computed from historical data — not a recommendation, and not a forecast of return.' },
                             ].map((msg, i) => (
                                 <motion.div
                                     key={i}
@@ -571,14 +587,13 @@ export const AIAgentSection = ({ onTabChange }) => {
                                                 <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '0.08em' }}>
                                                     {msg.ticker}
                                                 </span>
-                                                <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ background: 'rgba(77,184,130,0.15)', color: 'var(--market-up)' }}>
-                                                    {msg.action}
+                                                <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ background: 'rgba(201,169,110,0.15)', color: 'var(--gold-primary)' }}>
+                                                    MODEL SCORE
                                                 </span>
                                             </div>
                                             <div className="flex gap-4 text-xs" style={{ fontFamily: "'DM Mono', monospace" }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>Entry <span style={{ color: 'var(--text-primary)' }}>{msg.entry}</span></span>
-                                                <span style={{ color: 'var(--text-muted)' }}>TP <span style={{ color: 'var(--market-up)' }}>{msg.tp}</span></span>
-                                                <span style={{ color: 'var(--text-muted)' }}>Conf <span style={{ color: 'var(--gold-primary)' }}>{msg.confidence}%</span></span>
+                                                <span style={{ color: 'var(--text-muted)' }}>Confidence <span style={{ color: 'var(--gold-primary)' }}>{msg.confidence}%</span></span>
+                                                <span style={{ color: 'var(--text-muted)' }}>Not a win rate</span>
                                             </div>
                                         </div>
                                     ) : (
@@ -638,7 +653,7 @@ export const AIAdvantageSection = ({ onTabChange }) => {
         {
             icon: Shield,
             title: 'Risk Intelligence',
-            description: 'Automated TP/SL calculation and portfolio risk scoring — institutional-grade tools at zero cost.',
+            description: 'Model-computed reference levels and volatility statistics, so you can size and bound your own risk. The decision is always yours.',
             stat: '24/7',
             statLabel: 'Automated monitoring',
         },
@@ -737,7 +752,7 @@ export const AIAdvantageSection = ({ onTabChange }) => {
                         See It in Action
                     </h3>
                     <p className="type-body-sm" style={{ color: 'var(--text-secondary)' }}>
-                        Real signals. Real data. No promises — just results.
+                        Real market data and live model outputs — presented as they are computed.
                     </p>
                 </div>
                 <div
@@ -775,121 +790,6 @@ export const AIAdvantageSection = ({ onTabChange }) => {
 
 
 /* ============================================================
-   TESTIMONIALS SECTION
-   ============================================================ */
-export const TestimonialsSection = () => {
-    const testimonials = [
-        {
-            name: 'Nguyễn Minh Tuấn',
-            role: 'Individual Investor · HOSE',
-            avatar: 'NMT',
-            location: 'Hà Nội',
-            quote: 'Tôi đã dùng nhiều nền tảng phân tích cổ phiếu khác nhau nhưng DongAnh Capital là nền tảng đầu tiên cho tôi cảm giác đang dùng tool của quỹ đầu tư chuyên nghiệp. Tín hiệu AI chính xác và có giải thích rõ ràng — không phải đoán mò.',
-            stars: 5,
-            metric: '+23% return',
-            metricLabel: 'last quarter',
-        },
-        {
-            name: 'Trần Thị Lan',
-            role: 'Day Trader · VN30 Futures',
-            avatar: 'TTL',
-            location: 'TP. Hồ Chí Minh',
-            quote: 'Real-time market heatmap và derivatives tracker giúp tôi theo dõi toàn bộ thị trường trong vài giây. Signal confidence score giúp tôi phân bổ vốn chính xác hơn — không còn bỏ lỡ cơ hội vì thiếu dữ liệu.',
-            stars: 5,
-            metric: '< 5 min',
-            metricLabel: 'daily analysis time',
-        },
-        {
-            name: 'Lê Hoàng Phúc',
-            role: 'Portfolio Manager · Private Fund',
-            avatar: 'LHP',
-            location: 'Đà Nẵng',
-            quote: 'Phương pháp cross-validation 3 mô hình AI độc lập là điểm khác biệt lớn nhất. Khi 3 mô hình đồng thuận một tín hiệu, tỷ lệ thắng rất cao. Đây là thứ tôi tìm kiếm từ lâu nhưng không có đủ nguồn lực tự xây dựng.',
-            stars: 5,
-            metric: '3-model',
-            metricLabel: 'cross-validation',
-        },
-    ];
-
-    return (
-        <motion.section
-            variants={sectionVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="w-full max-w-6xl mx-auto px-4 py-16 md:py-24"
-        >
-            <div className="text-center mb-12">
-                <motion.div variants={itemVariants}>
-                    <SectionLabel>What Investors Say</SectionLabel>
-                </motion.div>
-                <motion.h2 variants={itemVariants} className="type-section mb-4" style={{ color: 'var(--text-primary)' }}>
-                    Trusted Across Vietnam's Markets
-                </motion.h2>
-                <motion.p variants={itemVariants} className="type-body-lg max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-                    Individual investors, day traders, and portfolio managers share their experience.
-                </motion.p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {testimonials.map((t, i) => (
-                    <motion.div
-                        key={i}
-                        variants={itemVariants}
-                        className="rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden"
-                        style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.12)' }}
-                        whileHover={{ y: -3, transition: { duration: 0.2 } }}
-                    >
-                        {/* Stars */}
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1">
-                                {Array.from({ length: t.stars }).map((_, j) => (
-                                    <Star key={j} size={13} fill="var(--gold-primary)" style={{ color: 'var(--gold-primary)' }} />
-                                ))}
-                            </div>
-                            {t.metric && (
-                                <div className="text-right">
-                                    <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', fontWeight: 500, color: 'var(--market-up)', lineHeight: 1 }}>{t.metric}</p>
-                                    <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{t.metricLabel}</p>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Quote */}
-                        <p className="type-body-sm leading-relaxed flex-1" style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                            "{t.quote}"
-                        </p>
-
-                        {/* Author */}
-                        <div className="flex items-center gap-3 pt-3" style={{ borderTop: '1px solid rgba(201,169,110,0.08)' }}>
-                            <div
-                                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                                style={{
-                                    background: 'linear-gradient(135deg, rgba(201,169,110,0.15), rgba(201,169,110,0.04))',
-                                    border: '1px solid var(--gold-border)',
-                                    fontFamily: "'DM Mono', monospace",
-                                    fontSize: '10px',
-                                    fontWeight: 600,
-                                    color: 'var(--gold-primary)',
-                                }}
-                            >
-                                {t.avatar}
-                            </div>
-                            <div className="min-w-0">
-                                <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)', fontFamily: "'Outfit', sans-serif" }}>{t.name}</p>
-                                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{t.role}</p>
-                                <p className="text-xs" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>{t.location}</p>
-                            </div>
-                        </div>
-                    </motion.div>
-                ))}
-            </div>
-        </motion.section>
-    );
-};
-
-
-/* ============================================================
    FUTURE ROADMAP SECTION
    ============================================================ */
 export const FutureSection = () => {
@@ -904,25 +804,25 @@ export const FutureSection = () => {
             quarter: 'Q2 2026',
             status: 'completed',
             title: 'AI Signal Engine v1',
-            description: 'Deployed six AI models for stock prediction, sentiment analysis, and market trend detection across 226 Vietnamese equities.',
+            description: 'Deployed three AI models for price modelling, sentiment analysis, and market trend detection across 226 Vietnamese equities.',
         },
         {
             quarter: 'Q3 2026',
-            status: 'completed',
-            title: 'AI Agent: News Tracking & Personalization',
-            description: 'Your AI Agent will track financial news, learn your investment style, and deliver personalized trade suggestions based on your unique profile and risk appetite.',
+            status: 'active',
+            title: 'News Tracking & Saved Watchlists',
+            description: 'Automated tracking of financial news, with saved watchlists so the dashboard opens on the tickers and sectors you follow.',
         },
         {
             quarter: 'Q4 2026',
-            status: 'active',
-            title: 'AI Agent: Automated Trade Execution',
-            description: 'With a single approval tap, your AI Agent executes trades through connected brokerages at optimal prices — zero manual intervention required.',
+            status: 'planned',
+            title: 'Custom Screens & Alerts',
+            description: 'Define your own thresholds over model outputs and technical indicators, and get notified when a ticker crosses them.',
         },
         {
             quarter: 'Q1 2027',
             status: 'planned',
-            title: 'AI Portfolio Manager',
-            description: 'Your AI Agent becomes a full portfolio manager — rebalancing, hedging, and optimizing your holdings continuously based on market conditions.',
+            title: 'Research Exports & Backtest Explorer',
+            description: 'Export model outputs and historical statistics, and inspect how a strategy would have behaved over past data — with full methodology shown.',
         },
     ];
 
@@ -1584,7 +1484,7 @@ export const QAndASection = () => {
         },
         {
             q: "What is the upcoming AI Agent feature?",
-            a: "The AI Agent is our next-generation product. It will track financial news, learn your personal investment style, suggest trades tailored to your preferences, and — with your explicit approval — execute trades automatically through your connected brokerage. It's like having a professional fund manager working for you 24/7."
+            a: "It is a research assistant, currently in development. It will track financial news, keep your watchlists current, and let you screen model outputs against thresholds you define. It will not place orders, connect to a brokerage, or manage money — DongAnh Capital is not a fund, not a broker, and not a licensed advisory firm, and every trading decision remains yours."
         },
         {
             q: "How fast is the data update rate?",
@@ -1731,9 +1631,12 @@ export const AboutUsSection = () => {
                         Built by Engineers,<br />Designed for Investors.
                     </h2>
                     <p className="type-body-lg mb-8 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                        DongAnh Capital was founded with a singular mission: to democratize financial analytics for the Vietnamese market.
-                        We believe that sophisticated data and AI should not be gated behind enterprise terminals or expensive subscriptions.
+                        DongAnh Capital is a non-commercial academic research project exploring what machine learning can and cannot
+                        tell us about the Vietnamese equity market. Everything here is published openly, free of charge, as a
+                        research tool — never as advice.
                     </p>
+                    {/* The headcount tile previously asserted a "lean team of 6". There is no
+                        such team; this is a student project run by one person. */}
                     <div className="card-premium rounded-xl p-5 sm:p-6 mb-8">
                         <div className="flex items-center gap-4">
                             <div className="w-12 sm:w-14 h-12 sm:h-14 rounded-xl flex items-center justify-center shrink-0"
@@ -1741,9 +1644,9 @@ export const AboutUsSection = () => {
                                 <Users size={24} style={{ color: 'var(--gold-primary)' }} />
                             </div>
                             <div>
-                                <span className="type-number-lg" style={{ color: 'var(--gold-primary)' }}>6</span>
-                                <p className="type-body-sm mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                                    A lean team of engineers and analysts focused on one mission — making market intelligence accessible to everyone.
+                                <p className="type-body-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                                    An independent student research project — not a company, not a fund, and not a licensed
+                                    securities advisory firm. No service is offered for sale.
                                 </p>
                             </div>
                         </div>
@@ -1758,10 +1661,12 @@ export const AboutUsSection = () => {
                     <div>
                         <h3 className="type-h2 mb-6 flex items-center gap-3" style={{ color: 'var(--text-primary)' }}>
                             <MapPin size={20} style={{ color: 'var(--gold-primary)' }} />
-                            Headquarters
+                            Based in
                         </h3>
+                        {/* Was headed "Headquarters" over a university campus address — this
+                            project has no offices and no registered place of business. */}
                         <p className="type-body font-medium mb-2 leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-                            Khu Giáo dục và Đào tạo - Khu Công nghệ cao Hòa Lạc
+                            Khu Công nghệ cao Hòa Lạc
                         </p>
                         <p className="type-body-sm mb-8 sm:mb-10 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                             Km29 Đại lộ Thăng Long, Xã Hòa Lạc, TP. Hà Nội
@@ -1836,7 +1741,7 @@ export const FooterSection = ({ onTabChange }) => {
                             </span>
                         </div>
                         <p className="type-body-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                            AI-powered trading agents for the Vietnamese market. Institutional intelligence, zero cost.
+                            Machine-learning market analytics for Vietnamese equities. A free, non-commercial research project — not investment advice.
                         </p>
                     </div>
 

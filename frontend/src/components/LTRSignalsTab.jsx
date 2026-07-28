@@ -204,9 +204,14 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
                 style={{ background: `${GOLD}08`, border: `1px solid ${GOLD}20` }}
             >
                 <BarChart2 size={14} style={{ color: GOLD, marginTop: 1, flexShrink: 0 }} />
+                {/* The "~81% backtest win rate" that used to sit here had no reproducible
+                    artifact in the repo — src/evaluation/ltr_eval.py gates on a win rate
+                    above 43%, nowhere near it. Do not restore a figure without a
+                    committed evaluation output behind it (Luật Quảng cáo 75/2025 requires
+                    documentation substantiating any such claim). */}
                 <span>
-                    Ranked by a LightGBM classifier. <strong style={{ color: GOLD }}>Breakout Score</strong> = relative likelihood of &gt;8% gain over 5 trading days (not a calibrated probability).
-                    Backtest win rate: ~81% · This is a <strong style={{ color: GOLD }}>ranked shortlist for research only</strong>, not financial advice.
+                    Ranked by a LightGBM classifier. <strong style={{ color: GOLD }}>Breakout Score</strong> = relative likelihood of a &gt;8% gain over 5 trading days, as scored by the model on historical data — it is a ranking score, not a calibrated probability, not a win rate, and not a forecast of return.
+                    This is a <strong style={{ color: GOLD }}>ranked shortlist for research only</strong> — không phải khuyến nghị đầu tư.
                     Past performance does not guarantee future results.
                 </span>
             </div>

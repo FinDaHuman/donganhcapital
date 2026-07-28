@@ -7,7 +7,6 @@ import {
     AIAgentSection,
     AIAdvantageSection,
     SocialProofSection,
-    TestimonialsSection,
     FutureSection,
     PricingSection,
     QAndASection,
@@ -120,7 +119,9 @@ const LandingPage = ({ onTabChange }) => {
     /* Animated counters */
     const stocksCounter = useCounter(226, 2200);
     const modelsCounter = useCounter(3, 1500);
-    const accuracyCounter = useCounter(87, 1800);
+    // Mean confidence output of the models — deliberately NOT named "accuracy".
+    // It is not a win rate and not a return; see facebook_bot/rule.md:50.
+    const confidenceCounter = useCounter(87, 1800);
 
     /* Mouse-based spotlight */
     const handleMouseMove = useCallback((e) => {
@@ -543,7 +544,7 @@ const LandingPage = ({ onTabChange }) => {
                                 lineHeight: 1.7,
                             }}
                         >
-                            An AI Agent that tracks market news, learns your trading style, suggests trades tailored to your taste, and executes with your approval — across 226 Vietnamese equities.
+                            Machine-learning models, market data, and news analysis for 226 Vietnamese equities — in one free research tool. We are not a fund, not a broker, and not a licensed advisory firm: every decision stays yours.
                         </motion.p>
 
                         {/* ── Trust micro-line ── */}
@@ -613,7 +614,7 @@ const LandingPage = ({ onTabChange }) => {
                                 { ref: stocksCounter.ref, value: stocksCounter.count.toString(), label: 'Stocks Monitored' },
                                 { ref: null, value: 'Real-time', label: 'Market Intelligence' },
                                 { ref: modelsCounter.ref, value: modelsCounter.count.toString(), label: 'AI Models' },
-                                { ref: accuracyCounter.ref, value: `${accuracyCounter.count}%`, label: 'Avg. Signal Score' },
+                                { ref: confidenceCounter.ref, value: `${confidenceCounter.count}%`, label: 'Avg. Model Confidence' },
                             ].map((stat, i, arr) => (
                                 <React.Fragment key={i}>
                                     <div ref={stat.ref} className="flex flex-col items-center px-6 sm:px-8 py-2">
@@ -677,7 +678,6 @@ const LandingPage = ({ onTabChange }) => {
                     <FeaturesSection />
                     <AIAgentSection onTabChange={onTabChange} />
                     <AIAdvantageSection onTabChange={onTabChange} />
-                    <TestimonialsSection />
                     <FutureSection />
                     <PricingSection onTabChange={onTabChange} />
                     <QAndASection />
