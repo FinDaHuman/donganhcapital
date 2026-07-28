@@ -40,7 +40,9 @@ const ProbBadge = ({ prob, passed }) => {
 };
 
 // Sentinel for the Min Confidence dropdown: filter by the model's own
-// threshold instead of a round number picked by hand.
+// threshold instead of a round number picked by hand. Named RECOMMENDED
+// internally for continuity; the user-facing label deliberately avoids that
+// word, which would imply advice.
 const RECOMMENDED = 'recommended';
 
 const SortIndicator = ({ sortConfig, columnKey }) => {
@@ -525,7 +527,9 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                                 >
                                     <option value={0}>Any</option>
                                     <option value={RECOMMENDED}>
-                                        Recommended{modelThreshold != null ? ` (≥ ${(modelThreshold * 100).toFixed(0)}%)` : ''}
+                                        {/* Was "Recommended", which reads as advice. It is simply the
+                                            model's own decision threshold. */}
+                                        Above model threshold{modelThreshold != null ? ` (≥ ${(modelThreshold * 100).toFixed(0)}%)` : ''}
                                     </option>
                                     <option value={0.65}>&ge; 65%</option>
                                     <option value={0.75}>&ge; 75%</option>
@@ -542,7 +546,7 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                                     <div className="text-2xl font-bold text-white">{dynamicStats.total_trades}</div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
-                                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Win Rate</div>
+                                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1" title="Share of closed backtest trades that ended in profit. Historical, not a forecast.">Backtest Win Rate</div>
                                     <div className={`text-2xl font-bold ${rateToneClass(dynamicStats.win_rate)}`}>
                                         {formatPercent(dynamicStats.win_rate)}
                                     </div>

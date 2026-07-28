@@ -28,6 +28,7 @@ from db.queries import (
     get_bcd_signals_summary, get_bcd_trade_history,
 )
 from utils.security import get_client_ip
+from utils.legal import NOTICE_HEADER, with_notice, FRONTEND_URL as _LEGAL_FRONTEND_URL
 from db.analytics import (
     get_market_intelligence_bootstrap,
     get_market_intelligence_overview,
@@ -544,7 +545,31 @@ app.add_middleware(
     allow_credentials=_allow_credentials,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    # Expose the legal headers so browser clients can actually read them; without
+    # this, CORS hides any non-safelisted response header from JavaScript.
+    expose_headers=["X-DAC-Disclaimer", "X-DAC-Legal"],
 )
+
+
+@app.middleware("http")
+async def add_legal_headers(request: Request, call_next):
+    """Stamp the "not investment advice" notice on every API response.
+
+    A header rather than a body rewrite: rewriting bodies would mean buffering
+    and re-serialising every response on a 512 MB / 0.1 vCPU box, and would
+    corrupt the endpoints that legitimately return a bare JSON list. Two dict
+    writes per request, body never touched.
+
+    Registered after CORSMiddleware so that it runs inside it.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        # NOTICE_HEADER is deliberately ASCII — HTTP headers are latin-1, and the
+        # Vietnamese text would raise UnicodeEncodeError on every response.
+        response.headers["X-DAC-Disclaimer"] = NOTICE_HEADER
+        response.headers["X-DAC-Legal"] = f"{_LEGAL_FRONTEND_URL}/disclaimer"
+    return response
+
 
 # --- Auth Router ---
 from routers.auth import router as auth_router
@@ -669,35 +694,48 @@ async def get_vnindex_endpoint(limit: Optional[int] = None, concurrency: Any = D
         return df.to_dict(orient="records")
     return get_cached(f"vnindex_{limit}", 120, compute)
 
+# These three used to be public and unauthenticated, which meant per-ticker
+# entry / take-profit / stop-loss levels and a probability score were published
+# to the open internet and to search-engine crawlers. That is the exact conduct
+# UBCKNN penalised in April 2026 (Điều 12.4 Luật Chứng khoán). They now require a
+# signed-in, verified account, which aligns the API with the UI — GATED_TABS
+# already hid these views while the API served them to anyone.
 @app.get("/api/ai-signals")
-async def get_ai_signals_endpoint(date: Optional[str] = None, latest: bool = False, concurrency: Any = Depends(limit_concurrency)):
+async def get_ai_signals_endpoint(request: Request, date: Optional[str] = None, latest: bool = False, concurrency: Any = Depends(limit_concurrency)):
     """Return AI signals for a specific date or latest"""
+    await _require_verified_account(request)
     def compute():
         return get_ai_signals(date, latest)
     # cache for 2 mins
     cache_key = f"ai_signals_{date}_{latest}"
-    return get_cached(cache_key, 120, compute)
+    # with_notice wraps OUTSIDE get_cached: the cache stores the raw computed
+    # value, so mutating it in place would alias the notice across requests.
+    return with_notice(get_cached(cache_key, 120, compute))
 
 @app.get("/api/ai-signals/dates")
-async def get_ai_signals_dates_endpoint(concurrency: Any = Depends(limit_concurrency)):
+async def get_ai_signals_dates_endpoint(request: Request, concurrency: Any = Depends(limit_concurrency)):
     """Return list of dates that have AI signals"""
+    await _require_verified_account(request)
     def compute():
         return get_ai_signals_dates()
+    # Returns a list — header-only notice, since turning it into a dict would
+    # break the frontend contract.
     return get_cached("ai_signals_dates", 120, compute)
 
 @app.get("/api/ai-signals/summary")
-async def get_ai_signals_summary_endpoint(concurrency: Any = Depends(limit_concurrency)):
+async def get_ai_signals_summary_endpoint(request: Request, concurrency: Any = Depends(limit_concurrency)):
     """Return daily signal count summary"""
+    await _require_verified_account(request)
     def compute():
         return get_daily_signal_summary()
     return get_cached("ai_signals_summary", 120, compute)
 
 
-async def _require_pro(request: Request):
+async def _require_verified_account(request: Request):
     """Raise 401 if unauthenticated, 403 unless the email is verified.
 
-    Named ``_require_pro`` for historical reasons — there is no Pro tier any
-    more. The only gate is a signed-in account with a verified email.
+    This is the single access rule for the whole API: a signed-in account with a
+    verified email. It gates every endpoint that returns model output.
     """
     from routers.auth import get_current_user as _get_current_user
     from utils.security import has_feature_access
@@ -720,7 +758,7 @@ async def get_ltr_signals_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated LTR ranked signals. Requires Pro or Premium subscription."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     if date and not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
@@ -730,7 +768,7 @@ async def get_ltr_signals_endpoint(
     def compute():
         return get_ltr_signals(date, latest)
 
-    return get_cached(cache_key, 120, compute)
+    return with_notice(get_cached(cache_key, 120, compute))
 
 
 @app.get("/api/ltr-signals/dates")
@@ -739,7 +777,7 @@ async def get_ltr_signals_dates_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated list of dates that have LTR signals."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     def compute():
         return get_ltr_signals_dates()
@@ -755,7 +793,7 @@ async def get_bcd_signals_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated BCD breakdown-recovery signals. Requires Pro or Premium subscription."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     if date and not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
@@ -765,7 +803,7 @@ async def get_bcd_signals_endpoint(
     def compute():
         return get_bcd_signals(date, latest)
 
-    return get_cached(cache_key, 120, compute)
+    return with_notice(get_cached(cache_key, 120, compute))
 
 
 @app.get("/api/bcd-signals/dates")
@@ -774,7 +812,7 @@ async def get_bcd_signals_dates_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated list of dates that have BCD signals."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     def compute():
         return get_bcd_signals_dates()
@@ -788,12 +826,12 @@ async def get_bcd_signals_summary_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated per-date BCD event counts (event days only)."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     def compute():
         return get_bcd_signals_summary()
 
-    return get_cached("bcd_signals_summary", 120, compute)
+    return with_notice(get_cached("bcd_signals_summary", 120, compute))
 
 
 @app.get("/api/bcd-trade-history")
@@ -803,32 +841,35 @@ async def get_bcd_trade_history_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated BCD trade history, optionally filtered by status (TP, SL, TIMEOUT, HOLD)."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     def compute():
         return get_bcd_trade_history(status)
 
-    return get_cached(f"bcd_trade_history_{status}", 120, compute)
+    return with_notice(get_cached(f"bcd_trade_history_{status}", 120, compute))
 
 
 @app.get("/api/trade-history")
-async def get_trade_history_endpoint(status: Optional[str] = None, concurrency: Any = Depends(limit_concurrency)):
+async def get_trade_history_endpoint(request: Request, status: Optional[str] = None, concurrency: Any = Depends(limit_concurrency)):
     """Return trade history records, optionally filtered by status (TP, SL, TIMEOUT, HOLD)"""
+    await _require_verified_account(request)
     def compute():
         return get_trade_history(status)
     cache_key = f"trade_history_{status}"
     return get_cached(cache_key, 120, compute)
 
 @app.get("/api/trade-history/stats")
-async def get_trade_history_stats_endpoint(concurrency: Any = Depends(limit_concurrency)):
+async def get_trade_history_stats_endpoint(request: Request, concurrency: Any = Depends(limit_concurrency)):
     """Return portfolio stats from trade history"""
+    await _require_verified_account(request)
     def compute():
         return get_trade_history_stats()
-    return get_cached("trade_history_stats", 120, compute)
+    return with_notice(get_cached("trade_history_stats", 120, compute))
 
 
 @app.get("/api/analytics/overview")
 async def get_market_intelligence_overview_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
@@ -836,13 +877,15 @@ async def get_market_intelligence_overview_endpoint(
     status: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_overview(start_date, end_date, sector, ticker, status)
-    return get_cached(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/bootstrap")
 async def get_market_intelligence_bootstrap_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
@@ -850,26 +893,30 @@ async def get_market_intelligence_bootstrap_endpoint(
     status: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_bootstrap(start_date, end_date, sector, ticker, status)
-    return get_cached(f"analytics_bootstrap_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_bootstrap_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/market")
 async def get_market_intelligence_market_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
     ticker: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_market(start_date, end_date, sector, ticker)
-    return get_cached(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/signals")
 async def get_market_intelligence_signals_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
@@ -877,13 +924,15 @@ async def get_market_intelligence_signals_endpoint(
     probability_bucket: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_signals(start_date, end_date, sector, ticker, probability_bucket)
-    return get_cached(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/trades")
 async def get_market_intelligence_trades_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
@@ -891,13 +940,15 @@ async def get_market_intelligence_trades_endpoint(
     status: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_trades(start_date, end_date, sector, ticker, status)
-    return get_cached(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/pipeline-health")
-async def get_market_intelligence_pipeline_health_endpoint(concurrency: Any = Depends(limit_analytics_concurrency)):
+async def get_market_intelligence_pipeline_health_endpoint(request: Request, concurrency: Any = Depends(limit_analytics_concurrency)):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_pipeline_health()
     return get_cached("analytics_pipeline_health", ANALYTICS_TTL_LONG, compute)
@@ -993,9 +1044,10 @@ async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any 
     return get_cached(f"ohlc_{stock_id}_{limit}", 120, compute)
 
 @app.get("/api/predict/{stock_id}")
-async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurrency)):
+async def predict_stock(request: Request, stock_id: str, concurrency: Any = Depends(limit_concurrency)):
+    await _require_verified_account(request)
     global predictor
-    
+
     try:
         stock_id = validate_stock_id(stock_id)
     except ValueError as e:

@@ -13,7 +13,13 @@ if (!API_Base_URL.endsWith('/api')) {
 // Shared client with a hard timeout: when the network path stalls (proxy
 // mitigation, cold start, flaky mobile), requests must fail fast so the UI
 // can fall back to cache instead of hanging for minutes.
-const api = axios.create({ baseURL: API_Base_URL, timeout: 15000 });
+//
+// withCredentials is required, not optional: the signal, prediction and
+// analytics endpoints this client calls are now behind authentication, and the
+// session lives in httpOnly cookies that the browser will not attach without it.
+// (The backend enables allow_credentials whenever ALLOWED_ORIGINS names specific
+// origins rather than "*", which is the case in both local and production setups.)
+const api = axios.create({ baseURL: API_Base_URL, timeout: 15000, withCredentials: true });
 
 // --- localStorage Cache Helpers ---
 const CACHE_PREFIX = 'dac_cache_';

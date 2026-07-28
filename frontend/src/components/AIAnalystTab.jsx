@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getAISignals, getAISignalsDates, getAISignalsSummary, getTradeHistory } from '../services/stock_api';
 import { SkeletonCard, SkeletonChart } from './SkeletonLoader';
+import { AlertTriangle } from 'lucide-react';
 import {
     computeTradeStats,
     formatDays,
@@ -219,6 +220,20 @@ const AIAnalystTab = ({ onSelectStock }) => {
                             </div>
                         </div>
 
+                        {/* Model disclaimer. This tab is the flagship signals view and
+                            had none at all, while the LTR and BCD tabs both did. */}
+                        <div
+                            className="flex items-start gap-3 p-3 rounded-xl mb-6 text-xs text-gray-400 leading-relaxed"
+                            style={{ background: 'rgba(201,169,110,0.05)', border: '1px solid rgba(201,169,110,0.15)' }}
+                        >
+                            <AlertTriangle size={14} style={{ color: '#C9A96E', marginTop: 1, flexShrink: 0 }} />
+                            <span>
+                                <strong style={{ color: '#C9A96E' }}>Confidence</strong> is the model's own score for a setup, computed from historical data — it is not a win rate, not an accuracy figure and not a forecast of return.
+                                Entry, take-profit and stop-loss are technical levels the model derived; they are not orders and not price targets we suggest you trade.
+                                Thông tin tham khảo, <strong style={{ color: '#C9A96E' }}>không phải khuyến nghị đầu tư</strong>. Đầu tư chứng khoán có rủi ro mất vốn.
+                            </span>
+                        </div>
+
                         {/* Summary Stats */}
                         {summary.length > 0 && (
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
@@ -272,7 +287,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                 <h3 className="text-xl font-bold text-white">{sig.stock_id}</h3>
                                             </div>
                                             <div className="bg-[#1e2024] px-3 py-1 rounded-full text-sm font-medium text-gray-300">
-                                                Win Rate: <span className={sig.prob > 0.6 ? 'text-green-400' : 'text-blue-400'}>{(sig.prob * 100).toFixed(1)}%</span>
+                                                Confidence: <span className={sig.prob > 0.6 ? 'text-green-400' : 'text-blue-400'}>{(sig.prob * 100).toFixed(1)}%</span>
                                             </div>
                                         </div>
 
@@ -337,7 +352,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-gray-800 pb-4">
                             <h2 className="text-2xl font-bold text-white">Trade History</h2>
                             <div className="flex flex-wrap items-center gap-3 text-sm">
-                                <span className="text-gray-400">Min Win Rate:</span>
+                                <span className="text-gray-400">Min confidence:</span>
                                 <select
                                     value={minWinRate}
                                     onChange={(e) => setMinWinRate(Number(e.target.value))}
@@ -360,7 +375,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                     <div className="text-2xl font-bold text-white">{dynamicStats.total_trades}</div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
-                                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Win Rate</div>
+                                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1" title="Share of closed backtest trades that ended in profit. Historical, not a forecast.">Backtest Win Rate</div>
                                     <div className={`text-2xl font-bold ${rateToneClass(dynamicStats.win_rate)}`}>
                                         {formatPercent(dynamicStats.win_rate)}
                                     </div>
@@ -467,7 +482,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                                     {mobileDisplayReturn != null ? `${mobileIsLive ? '~' : ''}${(mobileDisplayReturn * 100).toFixed(2)}%` : '—'}
                                                 </span>
                                                 {trade.prob != null && (
-                                                    <span className="text-blue-400 text-xs">WR {(trade.prob * 100).toFixed(1)}%</span>
+                                                    <span className="text-blue-400 text-xs">Conf {(trade.prob * 100).toFixed(1)}%</span>
                                                 )}
                                                 <span className="text-gray-500 text-xs">
                                                     {trade.holding_days != null ? `${trade.holding_days}d` : '—'}
@@ -484,7 +499,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                             <tr className="border-b border-gray-800 bg-[#0a0a0c]">
                                                 <th onClick={() => handleSort('stock_id')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Stock<SortIndicator sortConfig={sortConfig} columnKey="stock_id" /></th>
                                                 <th onClick={() => handleSort('entry_date')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-left px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Entry Date<SortIndicator sortConfig={sortConfig} columnKey="entry_date" /></th>
-                                                <th onClick={() => handleSort('prob')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-blue-500/80 uppercase tracking-wider font-semibold select-none">Win Rate<SortIndicator sortConfig={sortConfig} columnKey="prob" /></th>
+                                                <th onClick={() => handleSort('prob')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-blue-500/80 uppercase tracking-wider font-semibold select-none">Confidence<SortIndicator sortConfig={sortConfig} columnKey="prob" /></th>
                                                 <th onClick={() => handleSort('entry_price')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-gray-500 uppercase tracking-wider font-semibold select-none">Entry<SortIndicator sortConfig={sortConfig} columnKey="entry_price" /></th>
                                                 <th onClick={() => handleSort('tp_price')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-green-500/50 uppercase tracking-wider font-semibold select-none">TP<SortIndicator sortConfig={sortConfig} columnKey="tp_price" /></th>
                                                 <th onClick={() => handleSort('sl_price')} className="cursor-pointer hover:bg-gray-800/50 transition-colors text-right px-5 py-3.5 text-xs text-red-500/50 uppercase tracking-wider font-semibold select-none">SL<SortIndicator sortConfig={sortConfig} columnKey="sl_price" /></th>
