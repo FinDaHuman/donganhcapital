@@ -1,16 +1,32 @@
 User-agent: *
 Allow: /
-Allow: /dashboard
-Allow: /analyst
-Allow: /chart
-Allow: /data-analyst
-Allow: /privacy
-Allow: /terms
 
-# Block authenticated/personal pages from indexing
+# Legal pages are indexable on purpose — who runs this site, on what terms, and
+# the disclaimer must all be findable without an account.
+Allow: /disclaimer
+Allow: /about
+Allow: /terms
+Allow: /privacy
+Allow: /cookies
+Allow: /contact
+
+# Sign-in-walled product tabs. Crawlers can only ever see a login prompt here,
+# and the signal data behind them is not for open publication.
+Disallow: /dashboard
+Disallow: /analyst
+Disallow: /data-analyst
+Disallow: /chart
+Disallow: /ltr-signals
+Disallow: /bcd-signals
+Disallow: /reports
+Disallow: /news
+Disallow: /chatbot
+
+# Account pages
 Disallow: /profile
-Disallow: /checkout
 Disallow: /login
 Disallow: /register
+Disallow: /reset-password
+Disallow: /verify-email
 
 Sitemap: https://www.donganhcapital.com/sitemap.xml

@@ -8,6 +8,9 @@ import { SkeletonChart } from './components/SkeletonLoader';
 import { useAuth } from './context/AuthContext';
 import { useAccess } from './hooks/useAccess';
 import { AccessGuard } from './components/AccessGate';
+import LegalFooter from './components/LegalFooter';
+import CookieConsent from './components/CookieConsent';
+import { LEGAL_TABS } from './legal/routes';
 
 // Route-level code splitting: every view except the landing page (the first
 // paint for new visitors) loads on demand. This keeps heavy chart libraries —
@@ -26,8 +29,9 @@ const AuthPage = lazy(() => import('./pages/AuthPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
-const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
-const TermsOfServicePage = lazy(() => import('./pages/TermsOfServicePage'));
+// One component serves every legal route; the document itself is a further
+// lazy import inside it, one small chunk per slug per language.
+const LegalPage = lazy(() => import('./pages/LegalPage'));
 
 // Shown while a lazy route chunk downloads (fast after first visit — chunks are cached)
 const TabFallback = () => (
@@ -42,7 +46,18 @@ const TabFallback = () => (
 const KNOWN_TABS = new Set([
     'home', 'dashboard', 'chart', 'analyst', 'data-analyst', 'ltr-signals', 'bcd-signals',
     'reports', 'news', 'chatbot', 'login', 'auth/google/callback', 'register',
-    'profile', 'reset-password', 'verify-email', 'privacy', 'terms',
+    'profile', 'reset-password', 'verify-email',
+    // terms, privacy, disclaimer, cookies, about, contact — spread so adding a
+    // legal page in legal/routes.js wires the route, the footer link and the
+    // chrome-less set all at once.
+    ...LEGAL_TABS,
+]);
+
+// Pages that render full-bleed without the app Header.
+const CHROMELESS_TABS = new Set([
+    'home', 'login', 'register', 'auth/google/callback', 'profile',
+    'reset-password', 'verify-email',
+    ...LEGAL_TABS,
 ]);
 
 // Product tabs, all of which require a signed-in account with a verified
@@ -75,7 +90,10 @@ const GATED_TAB_LABELS = { ...TAB_LABELS, chart: 'Charts' };
 // Derive the active tab from the current URL: path first (e.g. /news), then the
 // ?tab= query fallback, else 'home'. Unknown paths resolve to 'home'.
 const tabFromLocation = () => {
-    const path = window.location.pathname.replace('/', '');
+    // Strip leading and trailing slashes only — inner slashes must survive so
+    // 'auth/google/callback' still resolves. A trailing slash (/terms/) used to
+    // fall through to 'home'.
+    const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
     const queryTab = new URLSearchParams(window.location.search).get('tab');
     const tab = path || queryTab || 'home';
     return KNOWN_TABS.has(tab) ? tab : 'home';
@@ -110,7 +128,7 @@ function App() {
 
     // Navigate to a tab and reflect it in the URL.
     const handleTabChange = (tab, data) => {
-        if (tab === 'terms' || tab === 'privacy') {
+        if (LEGAL_TABS.has(tab)) {
             setPolicyReturnTo(data?.returnTo || 'home');
         }
         setActiveTab(tab);
@@ -260,7 +278,7 @@ function App() {
                 </div>
             )}
 
-            {activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'profile' && activeTab !== 'privacy' && activeTab !== 'terms' && activeTab !== 'reset-password' && activeTab !== 'verify-email' && <Header activeTab={activeTab} onTabChange={handleTabChange} />}
+            {!CHROMELESS_TABS.has(activeTab) && <Header activeTab={activeTab} onTabChange={handleTabChange} />}
 
             <div className="flex-1 flex flex-col w-full min-h-0 relative">
                 <main className="flex-1 overflow-hidden relative flex flex-col min-h-0" style={{ backgroundColor: '#000' }}>
@@ -477,17 +495,27 @@ function App() {
                         <VerifyEmailPage onTabChange={handleTabChange} />
                     )}
 
-                    {activeTab === 'privacy' && (
-                        <PrivacyPolicyPage onTabChange={handleTabChange} returnTo={policyReturnTo} />
-                    )}
-
-                    {activeTab === 'terms' && (
-                        <TermsOfServicePage onTabChange={handleTabChange} returnTo={policyReturnTo} />
+                    {LEGAL_TABS.has(activeTab) && (
+                        <LegalPage slug={activeTab} onTabChange={handleTabChange} returnTo={policyReturnTo} />
                     )}
 
                     </Suspense>
                 </main>
+
+                {/* The landing page keeps its own richer FooterSection; every other
+                    route gets this one, so the legal pages are always one click
+                    away. Gated product tabs get the slim bar — their panes are
+                    full-viewport overflow-hidden layouts that a tall footer would
+                    visibly squeeze. */}
+                {activeTab !== 'home' && (
+                    <LegalFooter
+                        onTabChange={handleTabChange}
+                        compact={GATED_TABS.has(activeTab)}
+                    />
+                )}
             </div>
+
+            <CookieConsent onTabChange={handleTabChange} activeTab={activeTab} />
         </div>
     );
 }

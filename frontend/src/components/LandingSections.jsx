@@ -12,6 +12,8 @@ import {
     Loader2
 } from 'lucide-react';
 import { subscribeEmail } from '../services/stock_api';
+import { LEGAL_LINKS } from '../legal/routes';
+import { useLocale } from '../context/LocaleContext';
 
 /* ============================================================
    ANIMATION VARIANTS
@@ -1400,6 +1402,7 @@ export const AboutUsSection = () => {
    FOOTER SECTION
    ============================================================ */
 export const FooterSection = ({ onTabChange }) => {
+    const { locale } = useLocale();
     return (
         <footer style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--gold-border)' }}>
             <div className="max-w-6xl mx-auto px-4 py-10 sm:py-12">
@@ -1454,23 +1457,19 @@ export const FooterSection = ({ onTabChange }) => {
                             </a>
                         </div>
                         <h4 className="type-label mt-8 mb-4" style={{ color: 'var(--text-secondary)' }}>Legal</h4>
+                        {/* Driven by LEGAL_LINKS so this list and LegalFooter's cannot diverge. */}
                         <div className="space-y-2 type-body-sm flex flex-col items-start">
-                            <a
-                                href="/privacy"
-                                onClick={(e) => { e.preventDefault(); onTabChange && onTabChange('privacy'); }}
-                                className="block transition-colors hover:text-gold-primary text-left"
-                                style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
-                            >
-                                Privacy Policy
-                            </a>
-                            <a
-                                href="/terms"
-                                onClick={(e) => { e.preventDefault(); onTabChange && onTabChange('terms'); }}
-                                className="block transition-colors hover:text-gold-primary text-left"
-                                style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
-                            >
-                                Terms of Service
-                            </a>
+                            {LEGAL_LINKS.map(({ slug, vi, en }) => (
+                                <a
+                                    key={slug}
+                                    href={`/${slug}`}
+                                    onClick={(e) => { e.preventDefault(); onTabChange && onTabChange(slug); }}
+                                    className="block transition-colors hover:text-gold-primary text-left"
+                                    style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
+                                >
+                                    {locale === 'vi' ? vi : en}
+                                </a>
+                            ))}
                         </div>
                     </div>
                 </div>
