@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SkeletonCard } from './SkeletonLoader';
 import { TrendingUp, BarChart2 } from 'lucide-react';
-import { SignInGate, UpgradeGate, EmailVerifyGate } from './AccessGate';
+import { UpgradeGate } from './AccessGate';
+import { useAccess } from '../hooks/useAccess';
 
 const GOLD = '#C9A96E';
 
@@ -27,18 +28,16 @@ const ScoreBadge = ({ score }) => {
 };
 
 const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
-    const { user, isAuthenticated, authApi, refreshUser } = useAuth();
+    const { user, authApi, refreshUser } = useAuth();
+    // App.jsx has already established a signed-in, verified session; all this
+    // tab still has to decide is whether the account holds the paid tier.
+    const { hasTier } = useAccess('pro');
 
     const [signals, setSignals] = useState([]);
     const [date, setDate] = useState('');
     const [dates, setDates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-
-    const bypass = user?.bypass_payment;
-    const isPro = bypass
-        ? user?.email_verified === true
-        : user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
 
     const fetchDates = useCallback(async () => {
         try {
@@ -76,7 +75,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
     }, [authApi]);
 
     useEffect(() => {
-        if (!isAuthenticated || !isPro) {
+        if (!hasTier) {
             setLoading(false);
             return;
         }
@@ -88,7 +87,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
             await fetchSignals(null);
         };
         init();
-    }, [isAuthenticated, isPro, fetchDates, fetchSignals]);
+    }, [hasTier, fetchDates, fetchSignals]);
 
     const handleDateChange = async (e) => {
         const d = e.target.value;
@@ -96,34 +95,8 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
         await fetchSignals(d);
     };
 
-    // ── Not authenticated ───────────────────────────────────────────────────
-    if (!isAuthenticated) {
-        return (
-            <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
-                <SignInGate
-                    onTabChange={onTabChange}
-                    icon={TrendingUp}
-                    title="Sign In to Access Pro Signals"
-                    description="LTR Pro Signals are exclusive to Pro and Premium subscribers. Sign in to view your ranked picks."
-                />
-            </div>
-        );
-    }
-
     // ── Free tier: show blurred table + upgrade overlay ─────────────────────
-    if (!isPro) {
-        // Bypass mode: unverified email → EmailVerifyGate
-        if (bypass) {
-            return (
-                <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
-                    <EmailVerifyGate
-                        icon={TrendingUp}
-                        title="Xác thực Email để Xem Tín hiệu"
-                        description="Xác thực email để mở khóa toàn bộ tín hiệu LTR Pro."
-                    />
-                </div>
-            );
-        }
+    if (!hasTier) {
         return (
             <div className="flex-1 w-full flex flex-col p-4 sm:p-6 overflow-auto" style={{ background: '#000' }}>
                 <div className="mb-6">

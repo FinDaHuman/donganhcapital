@@ -2,7 +2,16 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SkeletonCard, SkeletonChart } from './SkeletonLoader';
 import { TrendingDown, BarChart2 } from 'lucide-react';
-import { SignInGate, UpgradeGate, EmailVerifyGate } from './AccessGate';
+import { UpgradeGate } from './AccessGate';
+import { useAccess } from '../hooks/useAccess';
+import {
+    computeTradeStats,
+    formatDays,
+    formatPercent,
+    formatSignedPercent,
+    rateToneClass,
+    returnToneClass,
+} from '../utils/tradeStats';
 
 const GOLD = '#C9A96E';
 const MONO = "'DM Mono', monospace";
@@ -125,7 +134,10 @@ const PlaceholderCards = () => (
 );
 
 const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
-    const { user, isAuthenticated, authApi, refreshUser } = useAuth();
+    const { user, authApi, refreshUser } = useAuth();
+    // App.jsx has already established a signed-in, verified session; all this
+    // tab still has to decide is whether the account holds the paid tier.
+    const { hasTier } = useAccess('pro');
 
     // Signals state
     const [signals, setSignals] = useState([]);
@@ -144,11 +156,6 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
 
     // BCD history starts sparse, so default to the signals section (AI Analyst defaults to history)
     const [activeSection, setActiveSection] = useState('signals');
-
-    const bypass = user?.bypass_payment;
-    const isPro = bypass
-        ? user?.email_verified === true
-        : user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
 
     const fetchDates = useCallback(async () => {
         try {
@@ -207,7 +214,7 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
     }, [authApi]);
 
     useEffect(() => {
-        if (!isAuthenticated || !isPro) {
+        if (!hasTier) {
             setLoading(false);
             setTradesLoading(false);
             return;
@@ -221,7 +228,7 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
         };
         init();
         fetchTrades();
-    }, [isAuthenticated, isPro, fetchDates, fetchSummary, fetchSignals, fetchTrades]);
+    }, [hasTier, fetchDates, fetchSummary, fetchSignals, fetchTrades]);
 
     const handleDateChange = async (e) => {
         const d = e.target.value;
@@ -310,63 +317,15 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
         return sorted;
     }, [filteredTrades, sortConfig]);
 
-    const dynamicStats = useMemo(() => {
-        const closedTrades = filteredTrades.filter(t => ['TP', 'SL', 'TIMEOUT'].includes(t.status));
-        // TIMEOUT with return > 0 is a win, TIMEOUT with return <= 0 is a loss
-        const winCount = filteredTrades.filter(t =>
-            t.status === 'TP' || (t.status === 'TIMEOUT' && t.return_pct != null && t.return_pct > 0)
-        ).length;
-        const winRate = closedTrades.length > 0 ? ((winCount / closedTrades.length) * 100).toFixed(1) : 0;
-
-        const validReturns = closedTrades.map(t => t.return_pct).filter(r => r != null);
-        const avgReturn = validReturns.length > 0 ? ((validReturns.reduce((a, b) => a + b, 0) / validReturns.length) * 100).toFixed(2) : 0;
-        const bestReturn = validReturns.length > 0 ? (Math.max(...validReturns) * 100).toFixed(2) : 0;
-
-        const validDays = closedTrades.map(t => t.holding_days).filter(d => d != null);
-        const avgHoldingDays = validDays.length > 0 ? (validDays.reduce((a, b) => a + b, 0) / validDays.length).toFixed(1) : 0;
-
-        return {
-            total_trades: filteredTrades.length,
-            win_rate: Number(winRate),
-            avg_return: Number(avgReturn),
-            best_return: Number(bestReturn),
-            avg_holding_days: Number(avgHoldingDays)
-        };
-    }, [filteredTrades]);
+    const dynamicStats = useMemo(() => computeTradeStats(filteredTrades), [filteredTrades]);
 
     const summaryTotals = useMemo(() => ({
         events: summary.reduce((acc, s) => acc + (s.signal_count || 0), 0),
         passed: summary.reduce((acc, s) => acc + (s.passed_count || 0), 0),
     }), [summary]);
 
-    // ── Not authenticated ───────────────────────────────────────────────────
-    if (!isAuthenticated) {
-        return (
-            <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
-                <SignInGate
-                    onTabChange={onTabChange}
-                    icon={TrendingDown}
-                    title="Sign In to Access BCD Signals"
-                    description="BCD Recovery Signals are exclusive to Pro and Premium subscribers. Sign in to view breakdown-reversal candidates."
-                />
-            </div>
-        );
-    }
-
     // ── Free tier: blurred card grid + upgrade overlay ──────────────────────
-    if (!isPro) {
-        // Bypass mode: unverified email → EmailVerifyGate
-        if (bypass) {
-            return (
-                <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
-                    <EmailVerifyGate
-                        icon={TrendingDown}
-                        title="Xác thực Email để Xem Tín hiệu BCD"
-                        description="Xác thực email để mở khóa toàn bộ tín hiệu BCD Recovery."
-                    />
-                </div>
-            );
-        }
+    if (!hasTier) {
         return (
             <div className="flex-1 w-full flex flex-col p-4 sm:p-6 overflow-auto" style={{ background: '#000' }}>
                 <div className="mb-6">
@@ -661,23 +620,30 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Win Rate</div>
-                                    <div className={`text-2xl font-bold ${dynamicStats.win_rate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {dynamicStats.win_rate}%
+                                    <div className={`text-2xl font-bold ${rateToneClass(dynamicStats.win_rate)}`}>
+                                        {formatPercent(dynamicStats.win_rate)}
                                     </div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Avg Return</div>
-                                    <div className={`text-2xl font-bold ${dynamicStats.avg_return >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {dynamicStats.avg_return > 0 ? '+' : ''}{dynamicStats.avg_return}%
+                                    <div className={`text-2xl font-bold ${returnToneClass(dynamicStats.avg_return)}`}>
+                                        {formatSignedPercent(dynamicStats.avg_return)}
                                     </div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Best Trade</div>
-                                    <div className="text-2xl font-bold text-green-400">+{dynamicStats.best_return}%</div>
+                                    <div className={`text-2xl font-bold ${returnToneClass(dynamicStats.best_return)}`}>
+                                        {formatSignedPercent(dynamicStats.best_return)}
+                                    </div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Avg Hold Days</div>
-                                    <div className="text-2xl font-bold" style={{ color: GOLD }}>{dynamicStats.avg_holding_days}</div>
+                                    <div
+                                        className="text-2xl font-bold"
+                                        style={{ color: dynamicStats.avg_holding_days == null ? undefined : GOLD }}
+                                    >
+                                        {formatDays(dynamicStats.avg_holding_days)}
+                                    </div>
                                 </div>
                             </div>
                         )}

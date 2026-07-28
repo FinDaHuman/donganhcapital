@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { Bot, Send, RotateCcw } from 'lucide-react';
 import { StarMark } from './StarMark';
 import RichText from './RichText';
-import { SignInGate, UpgradeGate, EmailVerifyGate } from './AccessGate';
+import { UpgradeGate } from './AccessGate';
+import { useAccess } from '../hooks/useAccess';
 
 /* ── Constants ──────────────────────────────────────────────────────────────── */
 const MAX_HISTORY = 12;   // turns kept client-side & forwarded to the backend
@@ -81,11 +82,12 @@ const useAutoResize = (value) => {
 
 /* ── Main tab ─────────────────────────────────────────────────────────────── */
 const ChatbotTab = ({ onTabChange }) => {
-    const { user, isAuthenticated, authApi, refreshUser } = useAuth();
-    const bypass = user?.bypass_payment;
-    const isPro = bypass
-        ? user?.email_verified === true
-        : user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
+    const { user, authApi, refreshUser } = useAuth();
+    // App.jsx has already established a signed-in, verified session; all this
+    // tab still has to decide is whether the account holds the paid tier.
+    // isPremium stays a separate question — it controls the message quota, not
+    // access, and while the paywall is off nobody counts as premium.
+    const { hasTier, bypassPayment: bypass } = useAccess('pro');
     const isPremium = !bypass && user?.subscription_tier === 'premium';
 
     const [messages, setMessages] = useState([]);
@@ -104,7 +106,7 @@ const ChatbotTab = ({ onTabChange }) => {
 
     // Load current quota for the chip (Pro only — Premium is unlimited).
     useEffect(() => {
-        if (!isAuthenticated || !isPro || isPremium) return;
+        if (!hasTier || isPremium) return;
         let active = true;
         (async () => {
             try {
@@ -118,7 +120,7 @@ const ChatbotTab = ({ onTabChange }) => {
             }
         })();
         return () => { active = false; };
-    }, [isAuthenticated, isPro, isPremium, authApi]);
+    }, [hasTier, isPremium, authApi]);
 
     // Use a ref for messages to avoid re-creating `send` on every message change
     const messagesRef = useRef(messages);
@@ -190,32 +192,8 @@ const ChatbotTab = ({ onTabChange }) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     };
 
-    // ── Gates ────────────────────────────────────────────────────────────────
-    if (!isAuthenticated) {
-        return (
-            <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
-                <SignInGate
-                    onTabChange={onTabChange}
-                    icon={Bot}
-                    title="Sign In to Use the AI Assistant"
-                    description="The AI Investment Assistant analyzes news and stocks for Pro and Premium members."
-                />
-            </div>
-        );
-    }
-    if (!isPro) {
-        // Bypass mode: unverified email → EmailVerifyGate
-        if (bypass) {
-            return (
-                <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
-                    <EmailVerifyGate
-                        icon={Bot}
-                        title="Xác thực Email để Sử dụng Trợ lý AI"
-                        description="Xác thực email để mở khóa Trợ lý Đầu tư AI (5 lượt/ngày)."
-                    />
-                </div>
-            );
-        }
+    // ── Tier gate ────────────────────────────────────────────────────────────
+    if (!hasTier) {
         return (
             <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
                 <UpgradeGate

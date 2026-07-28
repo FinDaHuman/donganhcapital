@@ -4,7 +4,7 @@ import { SkeletonCard } from './SkeletonLoader';
 import { Newspaper, Globe, X, ArrowUpRight, ExternalLink, RefreshCw, Sparkles, Lock } from 'lucide-react';
 import { StarMark } from './StarMark';
 import RichText from './RichText';
-import { SignInGate } from './AccessGate';
+import { useAccess } from '../hooks/useAccess';
 
 const GOLD = '#C9A96E';
 const SURFACE = '#0E1729';
@@ -250,10 +250,9 @@ const MacroNewsCard = ({ item, onOpen }) => {
 // ── AI deep-analysis section (Pro/Premium, VN news only) ─────────────────────
 const AnalysisSection = ({ article, onClose, onTabChange }) => {
     const { user, authApi, refreshUser } = useAuth();
-    const bypass = user?.bypass_payment;
-    const isPro = bypass
-        ? user?.email_verified === true
-        : user?.subscription_tier === 'pro' || user?.subscription_tier === 'premium';
+    // Reading news only needs the app-wide gate in App.jsx; the deep AI
+    // analysis below is the paid part.
+    const { hasTier: isPro, bypassPayment: bypass } = useAccess('pro');
 
     const [analysis, setAnalysis] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
@@ -557,20 +556,6 @@ const NewsTab = ({ onSelectStock, onTabChange }) => {
             setDetailLoading(false);
         }
     };
-
-    if (!isAuthenticated) {
-        return (
-            <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
-                <style>{STYLE}</style>
-                <SignInGate
-                    onTabChange={onTabChange}
-                    icon={Newspaper}
-                    title="Sign In to Read Market News"
-                    description="Curated financial news with AI summaries — free for all signed-in members."
-                />
-            </div>
-        );
-    }
 
     const isMacro = source === 'macro';
     const accentColor = isMacro ? MACRO_BLUE : GOLD;

@@ -6,6 +6,8 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { Search, AlertTriangle, X, Mail, ArrowLeft } from 'lucide-react';
 import { SkeletonChart } from './components/SkeletonLoader';
 import { useAuth } from './context/AuthContext';
+import { useAccess } from './hooks/useAccess';
+import { AccessGuard } from './components/AccessGate';
 import { isTrialOfferOpen } from './utils/trialOffer';
 
 // Route-level code splitting: every view except the landing page (the first
@@ -45,13 +47,32 @@ const KNOWN_TABS = new Set([
     'profile', 'reset-password', 'verify-email', 'checkout', 'privacy', 'terms',
 ]);
 
+// Product tabs, all of which require a signed-in account with a verified
+// email. Everything outside this set is either public (home, privacy, terms)
+// or part of getting an account into a usable state (login, register, profile,
+// verify-email, reset-password, checkout) and must stay reachable.
+//
+// The guard is applied here rather than inside each tab so a new tab cannot
+// ship without it — Dashboard, Chart, AI Analyst and Data Analyst had all
+// shipped with no gate at all.
+const GATED_TABS = new Set([
+    'dashboard', 'chart', 'analyst', 'data-analyst',
+    'ltr-signals', 'bcd-signals', 'reports', 'news', 'chatbot',
+]);
+
 // Human-readable tab names for the chart "Back to …" affordance. Mirrors the
 // labels in Header.jsx navTabs (single source of truth for the origin label).
+// Deliberately has no 'chart' entry — you never return to the chart from the
+// chart, and the call sites fall back to 'Dashboard'.
 const TAB_LABELS = {
     dashboard: 'Dashboard', analyst: 'AI Analyst', 'data-analyst': 'Data Analyst',
     news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'Pro Signals', 'bcd-signals': 'BCD Signals',
     reports: 'Reports', home: 'Home',
 };
+
+// What the access gate calls each tab ("Sign in to access …"). Same names plus
+// the chart, which TAB_LABELS intentionally omits.
+const GATED_TAB_LABELS = { ...TAB_LABELS, chart: 'Charts' };
 
 // Derive the active tab from the current URL: path first (e.g. /news), then the
 // ?tab= query fallback, else 'home'. Unknown paths resolve to 'home'.
@@ -64,6 +85,7 @@ const tabFromLocation = () => {
 
 function App() {
     const { user, resendVerification } = useAuth();
+    const { canUseApp, authLoading } = useAccess();
     const [dismissedExpiry, setDismissedExpiry] = useState(false);
     const [dismissedVerify, setDismissedVerify] = useState(false);
     const [resendVerifyLoading, setResendVerifyLoading] = useState(false);
@@ -307,7 +329,20 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'dashboard' && (
+                    {GATED_TABS.has(activeTab) && !canUseApp && (
+                        // While the session is still resolving, show the same
+                        // skeleton a lazy chunk uses — gating on a not-yet-known
+                        // session would flash the sign-in screen at users who
+                        // are in fact signed in.
+                        authLoading ? <TabFallback /> : (
+                            <AccessGuard
+                                onTabChange={handleTabChange}
+                                feature={GATED_TAB_LABELS[activeTab] || 'this feature'}
+                            />
+                        )
+                    )}
+
+                    {activeTab === 'dashboard' && canUseApp && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <Dashboard onSelectStock={handleSelectStock} />
@@ -315,7 +350,7 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'chart' && (
+                    {activeTab === 'chart' && canUseApp && (
                         <div className="flex-1 w-full flex flex-row min-h-[400px] overflow-hidden">
                             {/* Main Chart Area */}
                             <div className="flex-1 flex flex-col border-r border-gray-800 min-w-0 min-h-0 overflow-hidden">
@@ -419,7 +454,7 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'analyst' && (
+                    {activeTab === 'analyst' && canUseApp && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <AIAnalystTab onSelectStock={handleSelectStock} />
@@ -427,7 +462,7 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'data-analyst' && (
+                    {activeTab === 'data-analyst' && canUseApp && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <DataAnalystTab onSelectStock={handleSelectStock} stockList={stockList} />
@@ -435,7 +470,7 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'ltr-signals' && (
+                    {activeTab === 'ltr-signals' && canUseApp && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <LTRSignalsTab onSelectStock={handleSelectStock} onTabChange={handleTabChange} />
@@ -443,7 +478,7 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'bcd-signals' && (
+                    {activeTab === 'bcd-signals' && canUseApp && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <BCDSignalsTab onSelectStock={handleSelectStock} onTabChange={handleTabChange} />
@@ -451,7 +486,7 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'reports' && (
+                    {activeTab === 'reports' && canUseApp && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <ReportsTab onTabChange={handleTabChange} />
@@ -459,7 +494,7 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'news' && (
+                    {activeTab === 'news' && canUseApp && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <NewsTab onSelectStock={handleSelectStock} onTabChange={handleTabChange} />
@@ -467,7 +502,7 @@ function App() {
                         </div>
                     )}
 
-                    {activeTab === 'chatbot' && (
+                    {activeTab === 'chatbot' && canUseApp && (
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <ChatbotTab onTabChange={handleTabChange} />

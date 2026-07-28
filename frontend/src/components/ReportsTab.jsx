@@ -3,13 +3,13 @@ import { useAuth } from '../context/AuthContext';
 import { getSectors } from '../services/stock_api';
 import { SkeletonCard } from './SkeletonLoader';
 import { FileText, Download, Eye, Search } from 'lucide-react';
-import { SignInGate, UpgradeGate } from './AccessGate';
+import { UpgradeGate } from './AccessGate';
+import { useAccess } from '../hooks/useAccess';
 
 const GOLD = '#C9A96E';
 
-// Tiers allowed to access reports. Mirrors the backend REPORTS_ALLOWED_TIERS
-// default — keep both in sync (beta with Pro access has ended; Premium only now).
-const ALLOWED_TIERS = ['premium'];
+// Reports are Premium-only, mirroring the backend REPORTS_ALLOWED_TIERS default
+// (the beta that included Pro has ended). Enforced via useAccess('premium').
 
 const PLACEHOLDER_ROWS = Array.from({ length: 5 }, (_, i) => ({ id: i, stock_id: '•••' }));
 
@@ -20,7 +20,10 @@ const formatBytes = (b) => {
 };
 
 const ReportsTab = ({ onTabChange }) => {
-    const { user, isAuthenticated, authApi, refreshUser } = useAuth();
+    const { user, authApi, refreshUser } = useAuth();
+    // App.jsx has already established a signed-in, verified session; all this
+    // tab still has to decide is whether the account holds the paid tier.
+    const { hasTier: eligible } = useAccess('premium');
 
     const [reports, setReports] = useState([]);
     const [sectors, setSectors] = useState({});
@@ -33,11 +36,6 @@ const ReportsTab = ({ onTabChange }) => {
     const [sector, setSector] = useState('');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
-
-    const bypass = user?.bypass_payment;
-    const eligible = bypass
-        ? user?.email_verified === true
-        : ALLOWED_TIERS.includes(user?.subscription_tier);
 
     const fetchReports = useCallback(async () => {
         setLoading(true);
@@ -65,7 +63,7 @@ const ReportsTab = ({ onTabChange }) => {
     }, [authApi, stock, sector, dateFrom, dateTo, refreshUser]);
 
     useEffect(() => {
-        if (!isAuthenticated || !eligible) {
+        if (!eligible) {
             setLoading(false);
             return;
         }
@@ -73,7 +71,7 @@ const ReportsTab = ({ onTabChange }) => {
         fetchReports();
         // Initial load only; subsequent loads are triggered by the Apply button.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAuthenticated, eligible]);
+    }, [eligible]);
 
     const openReport = async (report, disposition) => {
         setBusyId(report.id);
@@ -111,20 +109,6 @@ const ReportsTab = ({ onTabChange }) => {
             setBusyId(null);
         }
     };
-
-    // ── Not authenticated ────────────────────────────────────────────────────
-    if (!isAuthenticated) {
-        return (
-            <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
-                <SignInGate
-                    onTabChange={onTabChange}
-                    icon={FileText}
-                    title="Sign In to Access Reports"
-                    description="Premium research reports are exclusive to subscribers. Sign in to browse and download the latest analyst PDFs."
-                />
-            </div>
-        );
-    }
 
     // ── Not eligible: blurred placeholder + upgrade overlay ───────────────────
     if (!eligible) {

@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getAISignals, getAISignalsDates, getAISignalsSummary, getTradeHistory } from '../services/stock_api';
 import { SkeletonCard, SkeletonChart } from './SkeletonLoader';
+import {
+    computeTradeStats,
+    formatDays,
+    formatPercent,
+    formatSignedPercent,
+    rateToneClass,
+    returnToneClass,
+} from '../utils/tradeStats';
 
 const SortIndicator = ({ sortConfig, columnKey }) => {
     if (!sortConfig || sortConfig.key !== columnKey) return null;
@@ -164,29 +172,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
         return sorted;
     }, [filteredTrades, sortConfig]);
 
-    const dynamicStats = useMemo(() => {
-        const closedTrades = filteredTrades.filter(t => ['TP', 'SL', 'TIMEOUT'].includes(t.status));
-        // TIMEOUT with return > 0 is a win, TIMEOUT with return <= 0 is a loss
-        const winCount = filteredTrades.filter(t =>
-            t.status === 'TP' || (t.status === 'TIMEOUT' && t.return_pct != null && t.return_pct > 0)
-        ).length;
-        const winRate = closedTrades.length > 0 ? ((winCount / closedTrades.length) * 100).toFixed(1) : 0;
-
-        const validReturns = closedTrades.map(t => t.return_pct).filter(r => r != null);
-        const avgReturn = validReturns.length > 0 ? ((validReturns.reduce((a, b) => a + b, 0) / validReturns.length) * 100).toFixed(2) : 0;
-        const bestReturn = validReturns.length > 0 ? (Math.max(...validReturns) * 100).toFixed(2) : 0;
-
-        const validDays = closedTrades.map(t => t.holding_days).filter(d => d != null);
-        const avgHoldingDays = validDays.length > 0 ? (validDays.reduce((a, b) => a + b, 0) / validDays.length).toFixed(1) : 0;
-
-        return {
-            total_trades: filteredTrades.length,
-            win_rate: Number(winRate),
-            avg_return: Number(avgReturn),
-            best_return: Number(bestReturn),
-            avg_holding_days: Number(avgHoldingDays)
-        };
-    }, [filteredTrades]);
+    const dynamicStats = useMemo(() => computeTradeStats(filteredTrades), [filteredTrades]);
 
     return (
         <div className="flex-1 overflow-y-auto p-6 bg-[#000]">
@@ -375,23 +361,27 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Win Rate</div>
-                                    <div className={`text-2xl font-bold ${dynamicStats.win_rate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {dynamicStats.win_rate}%
+                                    <div className={`text-2xl font-bold ${rateToneClass(dynamicStats.win_rate)}`}>
+                                        {formatPercent(dynamicStats.win_rate)}
                                     </div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Avg Return</div>
-                                    <div className={`text-2xl font-bold ${dynamicStats.avg_return >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {dynamicStats.avg_return > 0 ? '+' : ''}{dynamicStats.avg_return}%
+                                    <div className={`text-2xl font-bold ${returnToneClass(dynamicStats.avg_return)}`}>
+                                        {formatSignedPercent(dynamicStats.avg_return)}
                                     </div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Best Trade</div>
-                                    <div className="text-2xl font-bold text-green-400">+{dynamicStats.best_return}%</div>
+                                    <div className={`text-2xl font-bold ${returnToneClass(dynamicStats.best_return)}`}>
+                                        {formatSignedPercent(dynamicStats.best_return)}
+                                    </div>
                                 </div>
                                 <div className="bg-[#111213] border border-gray-800 rounded-lg p-4">
                                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Avg Hold Days</div>
-                                    <div className="text-2xl font-bold text-blue-400">{dynamicStats.avg_holding_days}</div>
+                                    <div className={`text-2xl font-bold ${dynamicStats.avg_holding_days == null ? 'text-gray-500' : 'text-blue-400'}`}>
+                                        {formatDays(dynamicStats.avg_holding_days)}
+                                    </div>
                                 </div>
                             </div>
                         )}

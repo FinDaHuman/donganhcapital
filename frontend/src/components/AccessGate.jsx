@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
 import { Lock, Mail } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useAccess } from '../hooks/useAccess';
 import { isTrialOfferOpen } from '../utils/trialOffer';
 
 /**
- * Shared access gates for tier-restricted features.
+ * Shared access gates.
  *
+ * AccessGuard — the wall every product tab sits behind: signed in AND email
+ *               verified. Applied once in App.jsx so a new tab cannot ship
+ *               without it.
  * SignInGate  — full-area prompt for anonymous visitors (icon + copy + auth CTAs).
+ * EmailVerifyGate — prompt for signed-in users who have not confirmed their email.
  * UpgradeGate — prompt for signed-in users below the required tier. Offers the
  *               limited-time Pro trial while the offer window is open (Pro plan
  *               only), then falls back to a single upgrade CTA. `overlay` renders
@@ -176,6 +181,7 @@ export const UpgradeGate = ({ onTabChange, title, description, plan = 'pro', ove
 export const EmailVerifyGate = ({ icon = Mail, title, description }) => {
     const { resendVerification } = useAuth();
     const [sending, setSending] = useState(false);
+    const [sent, setSent] = useState(false);
     const [msg, setMsg] = useState('');
 
     const handleResend = async () => {
@@ -183,7 +189,8 @@ export const EmailVerifyGate = ({ icon = Mail, title, description }) => {
         setMsg('');
         const res = await resendVerification();
         setSending(false);
-        setMsg(res.success ? 'Email đã gửi! Kiểm tra hộp thư của bạn.' : (res.error || 'Không thể gửi email.'));
+        setSent(res.success);
+        setMsg(res.success ? 'Email sent — check your inbox.' : (res.error || 'Could not send the email.'));
     };
 
     return (
@@ -191,10 +198,10 @@ export const EmailVerifyGate = ({ icon = Mail, title, description }) => {
             <IconBadge icon={icon} size={28} />
             <div>
                 <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)', fontFamily: FONT }}>
-                    {title || 'Xác thực Email để Truy cập'}
+                    {title || 'Verify your email to continue'}
                 </h3>
                 <p className="text-sm max-w-sm" style={{ color: 'var(--text-secondary)', fontFamily: FONT }}>
-                    {description || 'Vui lòng kiểm tra hộp thư và nhấn vào link xác thực để mở khóa tính năng này.'}
+                    {description || 'We sent you a confirmation link. Open it to unlock the platform.'}
                 </p>
             </div>
             <button
@@ -203,13 +210,54 @@ export const EmailVerifyGate = ({ icon = Mail, title, description }) => {
                 className="px-6 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all"
                 style={{ ...btnPrimary, opacity: sending ? 0.7 : 1 }}
             >
-                {sending ? 'Đang gửi…' : 'Gửi lại Email Xác thực'}
+                {sending ? 'Sending…' : 'Resend verification email'}
             </button>
             {msg && (
-                <p className="text-xs" style={{ color: msg.includes('gửi!') ? 'var(--success)' : 'var(--error)' }}>
+                <p className="text-xs" style={{ color: sent ? 'var(--success)' : 'var(--error)' }}>
                     {msg}
                 </p>
             )}
         </div>
     );
+};
+
+
+/**
+ * AccessGuard — every product tab sits behind this.
+ *
+ * Anonymous visitors get the sign-in prompt, signed-in-but-unverified accounts
+ * get the verification prompt, everyone else gets the tab. Rendering it once
+ * in App.jsx (rather than inside each tab) is what makes the rule impossible
+ * for a new tab to miss — four tabs had already shipped without any gate.
+ *
+ * Note this is presentation only: public market endpoints remain reachable
+ * without a session, so this hides the UI, it does not protect the data.
+ */
+export const AccessGuard = ({ children, onTabChange, feature = 'this feature' }) => {
+    const { isAuthenticated, emailVerified } = useAccess();
+
+    if (!isAuthenticated) {
+        return (
+            <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
+                <SignInGate
+                    onTabChange={onTabChange}
+                    title={`Sign in to access ${feature}`}
+                    description="Create a free account to use DongAnh Capital's market tools. No card required."
+                />
+            </div>
+        );
+    }
+
+    if (!emailVerified) {
+        return (
+            <div className="flex-1 w-full flex flex-col" style={{ background: '#000' }}>
+                <EmailVerifyGate
+                    title="Verify your email to continue"
+                    description={`Open the confirmation link we sent you to unlock ${feature}.`}
+                />
+            </div>
+        );
+    }
+
+    return children;
 };
