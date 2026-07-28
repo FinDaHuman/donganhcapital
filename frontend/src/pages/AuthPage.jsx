@@ -15,6 +15,45 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft, User, AlertCircle, CheckCircle2, Loader2, ExternalLink, Copy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { detectInAppBrowser, getMobileOS, getSystemBrowserUrl } from '../utils/inAppBrowser';
+import { LEGAL_VERSIONS } from '../legal/versions';
+
+// Consent must survive the Google OAuth redirect, which destroys React state.
+// sessionStorage (not localStorage) so it dies with the tab and cannot leak into
+// a later, unrelated sign-up.
+const PENDING_CONSENT_KEY = 'dac_pending_consent';
+
+const buildConsent = (marketingConsent = false) => ({
+    accepted_terms: true,
+    accepted_privacy: true,
+    terms_version: LEGAL_VERSIONS.terms,
+    privacy_version: LEGAL_VERSIONS.privacy,
+    marketing_consent: marketingConsent,
+});
+
+const stashPendingConsent = () => {
+    try {
+        sessionStorage.setItem(PENDING_CONSENT_KEY, JSON.stringify({ ...buildConsent(), ts: Date.now() }));
+    } catch {
+        // Storage blocked — the account is then created with no consent recorded
+        // and the re-consent prompt catches it. Never deemed silently.
+    }
+};
+
+const takePendingConsent = () => {
+    try {
+        const raw = sessionStorage.getItem(PENDING_CONSENT_KEY);
+        sessionStorage.removeItem(PENDING_CONSENT_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        // Ignore anything stale: a consent stash older than 30 minutes is not
+        // evidence that this user just agreed to anything.
+        if (!parsed?.ts || Date.now() - parsed.ts > 30 * 60 * 1000) return {};
+        const { ts, ...consent } = parsed;
+        return consent;
+    } catch {
+        return {};
+    }
+};
 
 /* ── Google Icon SVG ── */
 const GoogleIcon = ({ size = 20 }) => (
@@ -114,6 +153,12 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
 
     const handleGoogleSignIn = async () => {
         setError('');
+        // Google sign-up used to bypass the Terms checkbox entirely — an account
+        // could be created without ever seeing, let alone accepting, the terms.
+        if (mode === 'register' && !agreedToTerms) {
+            setError('Please agree to the Terms of Service and Privacy Policy first.');
+            return;
+        }
         // Inside an in-app browser, Google's consent screen is blocked
         // ("disallowed_useragent"). Do not navigate directly to Google or to a
         // fragile intent:// URL from this button; the notice above owns that UX.
@@ -125,6 +170,8 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
         try {
             const url = await getGoogleAuthUrl();
             if (url) {
+                // Stash consent before we leave the page — the redirect wipes state.
+                if (mode === 'register') stashPendingConsent();
                 window.location.href = url;
             } else {
                 setError('Google Sign-In is not configured yet. Please use email login.');
@@ -139,7 +186,10 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
     const handleGoogleCallback = async (code) => {
         setLoading(true);
         setError('');
-        const result = await loginWithGoogle(code);
+        // Consumed once — if it is missing (in-app browser, different device,
+        // cleared storage) the backend records no consent and the re-consent
+        // prompt asks for it on the next gated screen.
+        const result = await loginWithGoogle(code, takePendingConsent());
         setLoading(false);
         if (result.success) {
             setSuccess('Welcome! Redirecting...');
@@ -186,7 +236,7 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
                 setLoginFailed(true);
             }
         } else {
-            const result = await register(email, password, fullName);
+            const result = await register(email, password, fullName, buildConsent());
             setLoading(false);
             if (result.success) {
                 setSuccess('Account created! Check your inbox to verify your email.');

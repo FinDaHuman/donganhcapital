@@ -52,9 +52,43 @@ from utils.mailer import (
     send_welcome_email,
     FRONTEND_URL,
 )
+from utils.legal import LEGAL_VERSIONS, hash_ip, hash_email
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _record_consent(conn, *, user_id, email, request, docs, action="accept", channel="web"):
+    """Append consent rows inside an existing transaction.
+
+    ``docs`` maps document name to the version accepted, e.g.
+    ``{"terms": "2026-08-01", "privacy": "2026-08-01"}``.
+
+    Written in the caller's transaction on purpose: a user row and its consent
+    evidence must be created atomically, or a crash between the two leaves an
+    account with no record of having agreed to anything.
+
+    The IP is stored as a salted hash, never raw — enough to tie the consent to a
+    session without introducing a new category of retained personal data.
+    """
+    if not docs:
+        return
+    ip_hash = hash_ip(get_client_ip(request)) if request is not None else None
+    ua = (request.headers.get("user-agent") or "")[:255] if request is not None else None
+    for doc, version in docs.items():
+        conn.execute(
+            text("""
+                INSERT INTO consent_log
+                    (user_id, email_hash, doc, version, action, channel, ip_hash, user_agent)
+                VALUES
+                    (:user_id, :email_hash, :doc, :version, :action, :channel, :ip_hash, :ua)
+            """),
+            {
+                "user_id": user_id, "email_hash": hash_email(email), "doc": doc,
+                "version": version, "action": action, "channel": channel,
+                "ip_hash": ip_hash, "ua": ua,
+            },
+        )
 
 # ── Constants ──
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
@@ -116,6 +150,17 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
     full_name: Optional[str] = Field(None, max_length=100)
 
+    # Consent fields (Luật 91/2025). Deliberately Optional with permissive
+    # defaults for now: the SPA is cached in browsers, so rejecting a missing
+    # field would 422 every user still running yesterday's JavaScript. Requests
+    # arriving without consent are logged (see _record_consent) so the gap can
+    # be measured before these are made mandatory.
+    accepted_terms: bool = False
+    accepted_privacy: bool = False
+    terms_version: Optional[str] = Field(None, max_length=20)
+    privacy_version: Optional[str] = Field(None, max_length=20)
+    marketing_consent: bool = False
+
     @field_validator("email")
     @classmethod
     def validate_email(cls, v):
@@ -144,6 +189,17 @@ class LoginRequest(BaseModel):
 
 class GoogleCallbackRequest(BaseModel):
     code: str = Field(..., min_length=10, max_length=2048)
+
+    # Consent carried across the OAuth redirect. The redirect destroys React
+    # state, so the client stashes these in sessionStorage before leaving and
+    # replays them here. If they are absent (in-app browser, different device,
+    # cleared storage) the account is created with terms_accepted_at NULL and
+    # the re-consent prompt catches it — consent is never deemed silently.
+    accepted_terms: bool = False
+    accepted_privacy: bool = False
+    terms_version: Optional[str] = Field(None, max_length=20)
+    privacy_version: Optional[str] = Field(None, max_length=20)
+    marketing_consent: bool = False
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -325,6 +381,16 @@ def _format_user(user: dict) -> dict:
         # arrive already verified. This is now the only thing that gates access.
         "email_verified": bool(user.get("email_verified")),
         "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
+        # Consent state. The frontend gets this for free on every /me and every
+        # token refresh, so re-consent needs no extra request — which matters on
+        # a 0.1 vCPU box.
+        "terms_version": user.get("terms_version"),
+        "privacy_version": user.get("privacy_version"),
+        "marketing_consent": bool(user.get("marketing_consent")),
+        "needs_reconsent": (
+            user.get("terms_version") != LEGAL_VERSIONS["terms"]
+            or user.get("privacy_version") != LEGAL_VERSIONS["privacy"]
+        ),
     }
 
 
@@ -376,25 +442,56 @@ async def register(body: RegisterRequest, request: Request, response: Response, 
                     detail="Unable to create account. Please try a different email or sign in."
                 )
 
+            # Consent is recorded against the version the client actually
+            # displayed, not the current server version — accepting a document
+            # the user never saw would be worthless as evidence. A stale SPA
+            # therefore records a stale version, and the re-consent prompt
+            # picks it up at next sign-in.
+            terms_v = body.terms_version if body.accepted_terms else None
+            privacy_v = body.privacy_version if body.accepted_privacy else None
+            if not (body.accepted_terms and body.accepted_privacy):
+                logger.info("register without consent fields (stale client?): %s", body.email)
+
             # Insert new user — email_verified is explicitly FALSE so the column
             # default can never silently skip verification for new accounts.
             result = conn.execute(
                 text("""
                     INSERT INTO users (
                         email, hashed_password, full_name, auth_provider,
-                        email_verified, email_verify_token_hash, email_verify_expires_at
+                        email_verified, email_verify_token_hash, email_verify_expires_at,
+                        terms_version, terms_accepted_at,
+                        privacy_version, privacy_accepted_at,
+                        marketing_consent, marketing_consent_at
                     )
                     VALUES (:email, :password, :name, 'email',
-                            FALSE, :verify_hash, :verify_expires)
+                            FALSE, :verify_hash, :verify_expires,
+                            :terms_v, CASE WHEN :terms_v IS NULL THEN NULL ELSE NOW() END,
+                            :privacy_v, CASE WHEN :privacy_v IS NULL THEN NULL ELSE NOW() END,
+                            :marketing, CASE WHEN :marketing THEN NOW() ELSE NULL END)
                     RETURNING id, email, full_name, avatar_url, auth_provider,
-                              risk_appetite, subscription_tier, email_verified, created_at
+                              risk_appetite, email_verified, created_at,
+                              terms_version, privacy_version, marketing_consent
                 """),
                 {
                     "email": body.email, "password": hashed_pw, "name": body.full_name,
                     "verify_hash": verify_token_hash, "verify_expires": verify_expires,
+                    "terms_v": terms_v, "privacy_v": privacy_v,
+                    "marketing": bool(body.marketing_consent),
                 }
             )
             user = dict(result.mappings().first())
+
+            # Same transaction as the INSERT: an account and its proof of consent
+            # must exist together or not at all.
+            docs = {}
+            if terms_v:
+                docs["terms"] = terms_v
+            if privacy_v:
+                docs["privacy"] = privacy_v
+            if body.marketing_consent:
+                docs["marketing"] = LEGAL_VERSIONS["privacy"]
+            _record_consent(conn, user_id=user["id"], email=body.email,
+                            request=request, docs=docs, channel="web")
     except IntegrityError:
         # Lost a race against a concurrent signup with the same email — surface the
         # same 409 as the existence check rather than a 500 on the unique violation.
@@ -926,13 +1023,88 @@ async def update_me(
             text(f"""
                 UPDATE users SET {', '.join(updates)} WHERE id = :id
                 RETURNING id, email, full_name, avatar_url, auth_provider,
-                          risk_appetite, subscription_tier, subscription_period,
-                          subscription_expires_at, pro_trial_claimed_at,
-                          email_verified, created_at
+                          risk_appetite, email_verified, created_at,
+                          terms_version, privacy_version, marketing_consent
             """),
             params
         )
         updated_user = dict(result.mappings().first())
+
+    return {"user": _format_user(updated_user)}
+
+
+class ConsentRequest(BaseModel):
+    """Re-acceptance after a document version changes."""
+    accepted_terms: bool = False
+    accepted_privacy: bool = False
+    terms_version: Optional[str] = Field(None, max_length=20)
+    privacy_version: Optional[str] = Field(None, max_length=20)
+    marketing_consent: Optional[bool] = None
+
+
+@router.post("/consent")
+async def record_consent(
+    body: ConsentRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Record re-acceptance of the Terms and/or Privacy Policy, or a change to
+    marketing consent.
+
+    Unlike registration, the submitted version must equal the current server
+    version: this endpoint exists precisely to clear a `needs_reconsent` flag, and
+    accepting a superseded document would not clear anything.
+    """
+    engine = get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    updates, params, docs = [], {"id": user["id"]}, {}
+
+    if body.accepted_terms:
+        if body.terms_version != LEGAL_VERSIONS["terms"]:
+            raise HTTPException(status_code=422, detail="Stale terms version — please reload the page")
+        updates += ["terms_version = :tv", "terms_accepted_at = NOW()"]
+        params["tv"] = body.terms_version
+        docs["terms"] = body.terms_version
+
+    if body.accepted_privacy:
+        if body.privacy_version != LEGAL_VERSIONS["privacy"]:
+            raise HTTPException(status_code=422, detail="Stale privacy version — please reload the page")
+        updates += ["privacy_version = :pv", "privacy_accepted_at = NOW()"]
+        params["pv"] = body.privacy_version
+        docs["privacy"] = body.privacy_version
+
+    marketing_action = None
+    if body.marketing_consent is not None:
+        updates += ["marketing_consent = :mc", "marketing_consent_at = NOW()"]
+        params["mc"] = bool(body.marketing_consent)
+        marketing_action = "accept" if body.marketing_consent else "withdraw"
+
+    if not updates:
+        return {"user": _format_user(user)}
+
+    updates.append("updated_at = NOW()")
+
+    with engine.begin() as conn:
+        result = conn.execute(
+            text(f"""
+                UPDATE users SET {', '.join(updates)} WHERE id = :id
+                RETURNING id, email, full_name, avatar_url, auth_provider,
+                          risk_appetite, email_verified, created_at,
+                          terms_version, privacy_version, marketing_consent
+            """),
+            params,
+        )
+        updated_user = dict(result.mappings().first())
+
+        if docs:
+            _record_consent(conn, user_id=user["id"], email=user["email"],
+                            request=request, docs=docs, action="reaccept")
+        if marketing_action:
+            _record_consent(conn, user_id=user["id"], email=user["email"], request=request,
+                            docs={"marketing": LEGAL_VERSIONS["privacy"]},
+                            action=marketing_action)
 
     return {"user": _format_user(updated_user)}
 
@@ -1017,11 +1189,26 @@ async def google_oauth_callback(
             )
             user = dict(result.mappings().first())
         else:
+            # Consent replayed from sessionStorage across the OAuth redirect.
+            # Absent → NULL, and the re-consent prompt handles it. Never deemed.
+            terms_v = body.terms_version if body.accepted_terms else None
+            privacy_v = body.privacy_version if body.accepted_privacy else None
+            if not (terms_v and privacy_v):
+                logger.info("google signup without consent payload: %s", email)
+
             # Create new user — Google has already verified this email address.
             result = conn.execute(
                 text("""
-                    INSERT INTO users (email, google_id, full_name, avatar_url, auth_provider, email_verified)
-                    VALUES (:email, :gid, :name, :avatar, 'google', TRUE)
+                    INSERT INTO users (
+                        email, google_id, full_name, avatar_url, auth_provider, email_verified,
+                        terms_version, terms_accepted_at,
+                        privacy_version, privacy_accepted_at,
+                        marketing_consent, marketing_consent_at
+                    )
+                    VALUES (:email, :gid, :name, :avatar, 'google', TRUE,
+                            :terms_v, CASE WHEN :terms_v IS NULL THEN NULL ELSE NOW() END,
+                            :privacy_v, CASE WHEN :privacy_v IS NULL THEN NULL ELSE NOW() END,
+                            :marketing, CASE WHEN :marketing THEN NOW() ELSE NULL END)
                     RETURNING *
                 """),
                 {
@@ -1029,9 +1216,21 @@ async def google_oauth_callback(
                     "gid": google_id,
                     "name": google_user.get("full_name"),
                     "avatar": google_user.get("avatar_url"),
+                    "terms_v": terms_v, "privacy_v": privacy_v,
+                    "marketing": bool(body.marketing_consent),
                 }
             )
             user = dict(result.mappings().first())
+
+            docs = {}
+            if terms_v:
+                docs["terms"] = terms_v
+            if privacy_v:
+                docs["privacy"] = privacy_v
+            if body.marketing_consent:
+                docs["marketing"] = LEGAL_VERSIONS["privacy"]
+            _record_consent(conn, user_id=user["id"], email=email,
+                            request=request, docs=docs, channel="google_oauth")
 
     if not user.get("is_active"):
         raise HTTPException(status_code=401, detail="Account is deactivated")

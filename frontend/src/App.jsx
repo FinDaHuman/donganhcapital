@@ -10,6 +10,7 @@ import { useAccess } from './hooks/useAccess';
 import { AccessGuard } from './components/AccessGate';
 import LegalFooter from './components/LegalFooter';
 import CookieConsent from './components/CookieConsent';
+import ReconsentModal from './components/ReconsentModal';
 import { LEGAL_TABS } from './legal/routes';
 
 // Route-level code splitting: every view except the landing page (the first
@@ -516,6 +517,12 @@ function App() {
             </div>
 
             <CookieConsent onTabChange={handleTabChange} activeTab={activeTab} />
+
+            {/* Gated on GATED_TABS only, so a user asked to accept the terms can
+                still navigate to /terms and /privacy to actually read them. */}
+            {user?.needs_reconsent && GATED_TABS.has(activeTab) && (
+                <ReconsentModal onTabChange={handleTabChange} />
+            )}
         </div>
     );
 }

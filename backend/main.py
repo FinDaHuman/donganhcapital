@@ -482,6 +482,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"User migration warning: {e}")
 
+    # Consent records + data-subject-rights columns (Luật 91/2025).
+    try:
+        from db.models_consent import run_consent_migration
+        run_consent_migration()
+    except Exception as e:
+        print(f"Consent migration warning: {e}")
+
     # Auto-migrate payments table. Kept running even though nothing is sold any
     # more: historical rows must stay readable and schema-consistent, and the
     # migration is idempotent. See the note on the payments router below.

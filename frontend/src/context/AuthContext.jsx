@@ -257,7 +257,7 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     // ── Register with email/password ──
-    const register = useCallback(async (email, password, fullName) => {
+    const register = useCallback(async (email, password, fullName, consent = {}) => {
         setError(null);
         loginInProgress.current = true;
         try {
@@ -265,6 +265,10 @@ export const AuthProvider = ({ children }) => {
                 email,
                 password,
                 full_name: fullName || null,
+                // Proof-of-consent (Luật 91/2025). The version sent is the one the
+                // user actually saw, so a stale cached SPA records a stale version
+                // and gets re-prompted rather than silently recording the current one.
+                ...consent,
             });
             setUser(data.user);
             writeCache(data.user);
@@ -287,11 +291,14 @@ export const AuthProvider = ({ children }) => {
         }
     }, []);
 
-    const loginWithGoogle = useCallback(async (code) => {
+    const loginWithGoogle = useCallback(async (code, consent = {}) => {
         setError(null);
         loginInProgress.current = true;
         try {
-            const { data } = await authApi.post('/api/auth/google/callback', { code });
+            // `consent` is replayed from sessionStorage: the OAuth redirect
+            // destroys React state, so the checkbox result has to survive it out
+            // of band. It is ignored by the backend for existing accounts.
+            const { data } = await authApi.post('/api/auth/google/callback', { code, ...consent });
             setUser(data.user);
             writeCache(data.user);
             return { success: true, user: data.user };
