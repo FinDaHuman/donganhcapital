@@ -4,8 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { Bot, Send, RotateCcw } from 'lucide-react';
 import { StarMark } from './StarMark';
 import RichText from './RichText';
-import { UpgradeGate } from './AccessGate';
-import { useAccess } from '../hooks/useAccess';
 
 /* ── Constants ──────────────────────────────────────────────────────────────── */
 const MAX_HISTORY = 12;   // turns kept client-side & forwarded to the backend
@@ -82,13 +80,11 @@ const useAutoResize = (value) => {
 
 /* ── Main tab ─────────────────────────────────────────────────────────────── */
 const ChatbotTab = ({ onTabChange }) => {
-    const { user, authApi, refreshUser } = useAuth();
-    // App.jsx has already established a signed-in, verified session; all this
-    // tab still has to decide is whether the account holds the paid tier.
-    // isPremium stays a separate question — it controls the message quota, not
-    // access, and while the paywall is off nobody counts as premium.
-    const { hasTier, bypassPayment: bypass } = useAccess('pro');
-    const isPremium = !bypass && user?.subscription_tier === 'premium';
+    const { authApi, refreshUser } = useAuth();
+    // App.jsx has already established a signed-in, verified session, and there
+    // are no paid tiers any more — so there is nothing left to gate on here.
+    // The daily message quota is whatever the server reports; the client no
+    // longer tries to predict it from a subscription tier.
 
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
@@ -104,23 +100,22 @@ const ChatbotTab = ({ onTabChange }) => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }, [messages, sending]);
 
-    // Load current quota for the chip (Pro only — Premium is unlimited).
+    // Load the current quota for the chip. A null limit means unlimited.
     useEffect(() => {
-        if (!hasTier || isPremium) return;
         let active = true;
         (async () => {
             try {
                 const res = await authApi.get('/api/chat/quota');
                 if (active) setQuota({ used: res.data?.used ?? 0, limit: res.data?.limit ?? null });
             } catch (err) {
-                // Expired cached-Pro user gets 403 here — re-sync auth so the gate
-                // flips to "upgrade" immediately rather than after the first send.
+                // A 403 means the session no longer qualifies — re-sync auth so the
+                // gate reacts immediately rather than after the first send.
                 if (active && err?.response?.status === 403) refreshUser();
                 // other errors are non-fatal: the chip just won't show
             }
         })();
         return () => { active = false; };
-    }, [hasTier, isPremium, authApi]);
+    }, [authApi, refreshUser]);
 
     // Use a ref for messages to avoid re-creating `send` on every message change
     const messagesRef = useRef(messages);
@@ -163,9 +158,8 @@ const ChatbotTab = ({ onTabChange }) => {
             setInput((cur) => (cur ? cur : content));
             if (status === 429) {
                 const d = err.response?.data?.detail;
-                setError((d && d.message) || (bypass
-                    ? 'Bạn đã dùng hết 5 lượt miễn phí hôm nay. Vui lòng quay lại vào ngày mai.'
-                    : 'Bạn đã dùng hết lượt trò chuyện hôm nay. Nâng cấp Premium để dùng không giới hạn.'));
+                setError((d && d.message)
+                    || 'Bạn đã dùng hết lượt trò chuyện hôm nay. Vui lòng quay lại vào ngày mai.');
                 setQuota((q) => (q ? { ...q, used: q.limit ?? q.used } : q));
             } else if (status === 403) {
                 // Subscription likely expired mid-session — re-sync auth
@@ -191,19 +185,6 @@ const ChatbotTab = ({ onTabChange }) => {
     const onKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     };
-
-    // ── Tier gate ────────────────────────────────────────────────────────────
-    if (!hasTier) {
-        return (
-            <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
-                <UpgradeGate
-                    onTabChange={onTabChange}
-                    title="AI Investment Assistant"
-                    description="Chat with AI to analyze news and stocks, grounded in DongAnh Capital's real market data. Pro: 20 messages/day · Premium: unlimited."
-                />
-            </div>
-        );
-    }
 
     const remaining = quota && quota.limit != null ? Math.max(quota.limit - quota.used, 0) : null;
 
@@ -235,12 +216,8 @@ const ChatbotTab = ({ onTabChange }) => {
                         </button>
                     )}
 
-                    {/* Quota / tier badge */}
-                    {isPremium ? (
-                        <span className="chat-quota-badge" style={{ color: 'var(--gold-primary)' }}>
-                            Không giới hạn
-                        </span>
-                    ) : remaining != null && (
+                    {/* Daily quota badge — hidden when the server reports no limit */}
+                    {remaining != null && (
                         <span className="chat-quota-badge" style={{ color: remaining > 0 ? 'var(--text-secondary)' : 'var(--error)' }}>
                             Còn <span className="chat-quota-value">{remaining}/{quota.limit}</span> hôm nay
                         </span>

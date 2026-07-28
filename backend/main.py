@@ -481,7 +481,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"User migration warning: {e}")
 
-    # Auto-migrate payments table
+    # Auto-migrate payments table. Kept running even though nothing is sold any
+    # more: historical rows must stay readable and schema-consistent, and the
+    # migration is idempotent. See the note on the payments router below.
     try:
         from db.models_payment import run_payment_migration
         run_payment_migration()
@@ -548,9 +550,14 @@ app.add_middleware(
 from routers.auth import router as auth_router
 app.include_router(auth_router)
 
-# --- Payments Router ---
-from routers.payments import router as payments_router
-app.include_router(payments_router)
+# --- Payments Router: DELIBERATELY NOT MOUNTED ---
+# routers/payments.py, utils/sepay.py and utils/trial.py remain in the tree but
+# are not registered, so /api/payments/* does not exist. DongAnh Capital is a
+# non-commercial academic project with no đăng ký kinh doanh and no mã số thuế;
+# taking payment would require both, plus e-invoicing under Nghị định 70/2025,
+# and would recast the service as a paid securities service. Re-mounting this
+# router is a business decision, not a code change — do not restore it without
+# an entity behind it.
 
 # --- News Router (MongoDB-backed, login-gated) ---
 from routers.news import router as news_router
@@ -687,43 +694,21 @@ async def get_ai_signals_summary_endpoint(concurrency: Any = Depends(limit_concu
 
 
 async def _require_pro(request: Request):
-    """Raise 401 if unauthenticated, 403 unless the user has feature access.
+    """Raise 401 if unauthenticated, 403 unless the email is verified.
 
-    When ``BYPASS_PAYMENT`` is True, email-verified users are granted access.
-    When False, the original Pro/Premium tier gate applies (with inline expiry
-    to close the ~6h background-task gap).
+    Named ``_require_pro`` for historical reasons — there is no Pro tier any
+    more. The only gate is a signed-in account with a verified email.
     """
     from routers.auth import get_current_user as _get_current_user
-    from utils.security import BYPASS_PAYMENT, has_feature_access
+    from utils.security import has_feature_access
 
     user = await _get_current_user(request)  # raises 401 if unauthenticated
 
-    if BYPASS_PAYMENT:
-        if not has_feature_access(user):
-            raise HTTPException(
-                status_code=403,
-                detail="Vui lòng xác thực email để truy cập tính năng này",
-            )
-        return user
-
-    # Original tier-based gating (when payment flow is active)
-    from datetime import timezone as _tz
-
-    tier = user.get("subscription_tier", "free")
-    expires_at = user.get("subscription_expires_at")
-    if tier != "free" and expires_at is not None:
-        try:
-            now_utc = datetime.now(_tz.utc)
-            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=_tz.utc)
-            if exp < now_utc:
-                tier = "free"
-        except Exception:
-            pass
-
-    if tier not in ("pro", "premium"):
-        raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
+    if not has_feature_access(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Vui lòng xác thực email để truy cập tính năng này",
+        )
     return user
 
 

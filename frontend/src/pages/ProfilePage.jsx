@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     ArrowLeft, User, Shield, Crown, LogOut, Check,
-    TrendingDown, BarChart2, TrendingUp, Settings, Mail, Calendar,
-    AlertTriangle, Clock, ChevronRight, CreditCard, CheckCircle2,
-    ArrowUpRight, Zap, Sparkles, History, XCircle
+    BarChart2, TrendingUp, Settings, Mail, Calendar, CheckCircle2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -37,137 +35,21 @@ const riskOptions = [
     },
 ];
 
-const tierConfig = {
-    free: {
-        label: 'Free',
-        color: 'var(--text-muted)',
-        bg: 'rgba(78,97,122,0.1)',
-        border: 'rgba(78,97,122,0.2)',
-        rank: 0,
-    },
-    pro: {
-        label: 'Pro',
-        color: 'var(--gold-primary)',
-        bg: 'rgba(201,169,110,0.1)',
-        border: 'rgba(201,169,110,0.25)',
-        rank: 1,
-    },
-    premium: {
-        label: 'Premium',
-        color: '#a855f7',
-        bg: 'rgba(168,85,247,0.1)',
-        border: 'rgba(168,85,247,0.25)',
-        rank: 2,
-    },
-};
-
-const upgradePlans = [
-    {
-        id: 'pro',
-        name: 'Pro',
-        priceMonthly: '199,000',
-        priceYearly: '1,990,000',
-        color: 'var(--gold-primary)',
-        bg: 'rgba(201,169,110,0.08)',
-        border: 'rgba(201,169,110,0.25)',
-        features: ['AI news analysis', 'Investment chatbot', '1 FinAI Predict model', 'Price alerts'],
-    },
-    {
-        id: 'premium',
-        name: 'Premium',
-        priceMonthly: '499,000',
-        priceYearly: '4,990,000',
-        color: '#a855f7',
-        bg: 'rgba(168,85,247,0.08)',
-        border: 'rgba(168,85,247,0.25)',
-        features: ['All Pro features', 'Unlimited AI analysis', '2 FinAI Predict models', 'Priority support'],
-    },
-];
-
-const PRICING = {
-    pro:     { monthly: 199_000, yearly: 1_990_000 },
-    premium: { monthly: 499_000, yearly: 4_990_000 },
-};
-
-const getDaysUntilExpiry = (expiresAt) => {
-    if (!expiresAt) return null;
-    const now = new Date();
-    const exp = new Date(expiresAt);
-    const diffMs = exp - now;
-    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-};
-
-// Client-side proration estimate (mirrors backend logic for display only)
-const estimateProration = (currentTier, currentPeriod, daysRemaining, newPlan, newPeriod) => {
-    const fullPrice = PRICING[newPlan]?.[newPeriod] ?? 0;
-    if (!daysRemaining || daysRemaining <= 0 || !currentPeriod) return { credit: 0, charge: fullPrice, fullPrice };
-    const currentPrice = PRICING[currentTier]?.[currentPeriod] ?? 0;
-    const periodDays = currentPeriod === 'yearly' ? 365 : 30;
-    const credit = Math.round((currentPrice / periodDays) * daysRemaining);
-    const charge = Math.max(1_000, fullPrice - credit);
-    return { credit, charge, fullPrice };
-};
+// The paid-plan catalogue (Pro 199.000đ / Premium 499.000đ), the client-side
+// proration estimator and the billing-history view lived here. They are gone
+// along with the rest of the commerce surface: nothing is sold, so there is no
+// plan to upgrade to, no invoice to show, and no proration to compute.
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '—';
     return new Date(dateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
-const formatAmount = (amount) => {
-    if (!amount) return '0';
-    return new Intl.NumberFormat('vi-VN').format(amount);
-};
-
 const ProfilePage = ({ onTabChange }) => {
-    const { user, loading, logout, updateProfile, authApi } = useAuth();
+    const { user, loading, logout, updateProfile } = useAuth();
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState('');
     const [activeSection, setActiveSection] = useState('account');
-    const [paymentHistory, setPaymentHistory] = useState([]);
-    const [historyLoading, setHistoryLoading] = useState(false);
-    const [upgradeYearly, setUpgradeYearly] = useState(false);
-
-    const daysUntilExpiry = getDaysUntilExpiry(user?.subscription_expires_at);
-    const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry <= 3 && daysUntilExpiry >= 0;
-    const isExpired = daysUntilExpiry !== null && daysUntilExpiry < 0;
-
-    const tier = tierConfig[user?.subscription_tier] || tierConfig.free;
-    const currentRank = tier.rank;
-    const currentPeriod = user?.subscription_period || 'monthly';
-    const isSubActive = daysUntilExpiry !== null && daysUntilExpiry > 0;
-
-    // A free Pro trial grants Pro access without a paid plan. For billing it
-    // behaves like the free tier (no proration credit; can buy any paid plan),
-    // so conversion is handled by a dedicated "Keep Pro" block rather than the
-    // rank-gated upgrade cards — which still truthfully show Pro as the current plan.
-    const isTrial = user?.subscription_tier === 'pro' && user?.subscription_period === 'trial';
-
-    // "Switch to Yearly" is available when: paid tier, active, currently on monthly
-    const canSwitchToYearly = (
-        user?.subscription_tier !== 'free' &&
-        currentPeriod === 'monthly' &&
-        isSubActive &&
-        !isExpired
-    );
-
-    const yearlySwitch = canSwitchToYearly
-        ? estimateProration(user.subscription_tier, 'monthly', daysUntilExpiry, user.subscription_tier, 'yearly')
-        : null;
-
-    const availableUpgrades = upgradePlans.filter(p => {
-        const planRank = tierConfig[p.id]?.rank ?? 0;
-        return planRank > currentRank;
-    });
-
-    useEffect(() => {
-        if (activeSection === 'billing' && paymentHistory.length === 0) {
-            setHistoryLoading(true);
-            authApi.get('/api/payments/history')
-                .then(res => setPaymentHistory(res.data.payments || []))
-                .catch(() => setPaymentHistory([]))
-                .finally(() => setHistoryLoading(false));
-        }
-    }, [activeSection, authApi]);
 
     // Redirect unauthenticated visitors (e.g. an expired session opening /profile
     // directly) to login instead of leaving them on an endless "Loading…" screen.
@@ -200,24 +82,9 @@ const ProfilePage = ({ onTabChange }) => {
         onTabChange && onTabChange('home');
     };
 
-    const handleUpgrade = (planId) => {
-        onTabChange && onTabChange('checkout', { plan: planId, period: upgradeYearly ? 'yearly' : 'monthly' });
-    };
-
-    const handleSwitchToYearly = () => {
-        onTabChange && onTabChange('checkout', { plan: user.subscription_tier, period: 'yearly' });
-    };
-
-    // Convert a free trial into a paid Pro plan (no proration — trial days don't carry over).
-    const handleKeepPro = (period) => {
-        onTabChange && onTabChange('checkout', { plan: 'pro', period });
-    };
-
     const sections = [
         { id: 'account', label: 'Account', icon: User },
-        { id: 'subscription', label: 'Subscription', icon: Crown },
-        // Billing history is irrelevant when payment is bypassed
-        ...(user?.bypass_payment ? [] : [{ id: 'billing', label: 'Billing History', icon: History }]),
+        { id: 'access', label: 'Access', icon: Crown },
         { id: 'preferences', label: 'Preferences', icon: Settings },
     ];
 
@@ -244,41 +111,6 @@ const ProfilePage = ({ onTabChange }) => {
                         Back to Dashboard
                     </button>
                 </motion.div>
-
-                {/* Expiry warning banner (suppressed when payment is bypassed) */}
-                <AnimatePresence>
-                    {!user.bypass_payment && (isExpiringSoon || isExpired) && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -8 }}
-                            className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl"
-                            style={{
-                                background: isExpired ? 'rgba(239,68,68,0.06)' : 'rgba(234,179,8,0.06)',
-                                border: `1px solid ${isExpired ? 'rgba(239,68,68,0.2)' : 'rgba(234,179,8,0.2)'}`,
-                            }}
-                        >
-                            <AlertTriangle size={16} style={{ color: isExpired ? '#ef4444' : '#eab308', flexShrink: 0 }} />
-                            <p className="text-sm flex-1" style={{ color: isExpired ? '#ef4444' : '#eab308' }}>
-                                {isTrial
-                                    ? (isExpired
-                                        ? 'Your free Pro trial has ended. Subscribe to restore Pro access.'
-                                        : `Your free Pro trial ends in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}. Subscribe to keep Pro access.`)
-                                    : (isExpired
-                                        ? `Your ${tier.label} subscription has expired. Renew to restore access.`
-                                        : `Your ${tier.label} plan expires in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}. Renew to keep access.`)
-                                }
-                            </p>
-                            <button
-                                onClick={() => setActiveSection('subscription')}
-                                className="text-xs font-semibold cursor-pointer shrink-0"
-                                style={{ background: 'none', border: 'none', color: isExpired ? '#ef4444' : '#eab308' }}
-                            >
-                                {isTrial ? 'Keep Pro →' : 'Renew →'}
-                            </button>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
 
                 <div className="flex flex-col lg:flex-row gap-6">
                     {/* Sidebar */}
@@ -318,21 +150,21 @@ const ProfilePage = ({ onTabChange }) => {
                                     <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
                                 </div>
                             </div>
-                            {user.bypass_payment && user.email_verified ? (
+                            {user.email_verified ? (
                                 <span
                                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase"
                                     style={{ background: 'rgba(77,184,130,0.1)', color: '#4DB882', border: '1px solid rgba(77,184,130,0.25)', letterSpacing: '0.08em' }}
                                 >
                                     <CheckCircle2 size={10} />
-                                    All Unlocked
+                                    Verified
                                 </span>
                             ) : (
                                 <span
                                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase"
-                                    style={{ background: tier.bg, color: tier.color, border: `1px solid ${tier.border}`, letterSpacing: '0.08em' }}
+                                    style={{ background: 'rgba(234,179,8,0.1)', color: '#eab308', border: '1px solid rgba(234,179,8,0.25)', letterSpacing: '0.08em' }}
                                 >
-                                    <Crown size={10} />
-                                    {tier.label}
+                                    <Mail size={10} />
+                                    Unverified
                                 </span>
                             )}
                         </div>
@@ -353,9 +185,6 @@ const ProfilePage = ({ onTabChange }) => {
                                 >
                                     <s.icon size={16} />
                                     {s.label}
-                                    {s.id === 'subscription' && isExpiringSoon && (
-                                        <span className="ml-auto w-2 h-2 rounded-full" style={{ background: '#eab308' }} />
-                                    )}
                                 </button>
                             ))}
 
@@ -422,403 +251,94 @@ const ProfilePage = ({ onTabChange }) => {
                                         style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.12)' }}
                                     >
                                         <div>
-                                            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Current Plan</p>
+                                            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Access</p>
                                             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                                                {user.subscription_expires_at
-                                                    ? `${isTrial ? 'Trial ends' : 'Renews / expires'} on ${formatDate(user.subscription_expires_at)}`
-                                                    : 'No active paid subscription'
-                                                }
+                                                Free for every verified account — nothing is offered for sale.
                                             </p>
                                         </div>
                                     <div>
                                         <div className="flex items-center gap-3">
-                                            {user.bypass_payment ? (
-                                                <>
-                                                    <span
-                                                        className="px-3 py-1 rounded-full text-xs font-bold uppercase"
-                                                        style={{ background: 'rgba(77,184,130,0.1)', color: '#4DB882', border: '1px solid rgba(77,184,130,0.25)', letterSpacing: '0.08em' }}
-                                                    >
-                                                        ✓ Tất cả tính năng đã mở khóa
-                                                    </span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <span
-                                                        className="px-3 py-1 rounded-full text-xs font-bold uppercase"
-                                                        style={{ background: tier.bg, color: tier.color, border: `1px solid ${tier.border}`, letterSpacing: '0.08em' }}
-                                                    >
-                                                        {tier.label}
-                                                    </span>
-                                                    {availableUpgrades.length > 0 && (
-                                                        <button
-                                                            onClick={() => setActiveSection('subscription')}
-                                                            className="text-xs font-semibold cursor-pointer flex items-center gap-1"
-                                                            style={{ background: 'none', border: 'none', color: 'var(--gold-primary)' }}
-                                                        >
-                                                            Upgrade <ChevronRight size={13} />
-                                                        </button>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {activeSection === 'subscription' && (
-                                <motion.div key="subscription" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.25 }}>
-                                    <h2 className="text-xl font-semibold mb-6" style={{ color: 'var(--text-primary)', fontFamily: "'Cormorant Garamond', serif" }}>
-                                        Subscription
-                                    </h2>
-
-                                    {/* Bypass mode: simple unlocked message */}
-                                    {user.bypass_payment && (
-                                        <div
-                                            className="rounded-2xl p-6 mb-6 relative overflow-hidden"
-                                            style={{
-                                                background: 'linear-gradient(135deg, rgba(77,184,130,0.08) 0%, var(--bg-surface) 100%)',
-                                                border: '1px solid rgba(77,184,130,0.2)',
-                                            }}
-                                        >
-                                            <div className="absolute top-0 left-0 right-0 h-[2px]"
-                                                style={{ background: 'linear-gradient(90deg, transparent, #4DB882, transparent)' }}
-                                            />
-                                            <div className="flex items-start gap-3">
-                                                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(77,184,130,0.15)' }}>
-                                                    <CheckCircle2 size={20} style={{ color: '#4DB882' }} />
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
-                                                        Tất cả tính năng đã được mở khóa
-                                                    </p>
-                                                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                                                        Tài khoản của bạn đã xác thực email thành công. Bạn được truy cập toàn bộ tính năng bao gồm
-                                                        LTR Signals, BCD Signals, Báo cáo PDF, và Trợ lý AI (5 lượt/ngày).
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Original subscription content (hidden when bypass is on) */}
-                                    {!user.bypass_payment && (
-                                        <>
-
-                                    {/* Current plan status */}
-                                    <div
-                                        className="rounded-2xl p-6 mb-6 relative overflow-hidden"
-                                        style={{
-                                            background: `linear-gradient(135deg, ${tier.bg} 0%, var(--bg-surface) 100%)`,
-                                            border: `1px solid ${tier.border}`,
-                                        }}
-                                    >
-                                        <div className="absolute top-0 left-0 right-0 h-[2px]"
-                                            style={{ background: `linear-gradient(90deg, transparent, ${tier.color}, transparent)` }}
-                                        />
-                                        <div className="flex items-start justify-between mb-4">
-                                            <div>
-                                                <p className="text-xs font-semibold uppercase mb-1" style={{ color: 'var(--text-muted)', letterSpacing: '0.1em' }}>Current Plan</p>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="text-2xl font-bold" style={{ color: tier.color, fontFamily: "'Cormorant Garamond', serif" }}>{tier.label}</p>
-                                                    {isTrial && (
-                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ background: 'rgba(201,169,110,0.15)', color: 'var(--gold-primary)', border: '1px solid rgba(201,169,110,0.3)', letterSpacing: '0.08em' }}>
-                                                            Free Trial
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <Crown size={28} style={{ color: tier.color, opacity: 0.3 }} />
-                                        </div>
-
-                                        {user.subscription_expires_at ? (
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Status</p>
-                                                    <p className="text-sm font-medium mt-0.5" style={{ color: isExpired ? '#ef4444' : daysUntilExpiry <= 3 ? '#eab308' : 'var(--market-up)' }}>
-                                                        {isExpired ? 'Expired' : 'Active'}
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Expires</p>
-                                                    <p className="text-sm font-medium mt-0.5" style={{ color: 'var(--text-primary)' }}>
-                                                        {formatDate(user.subscription_expires_at)}
-                                                    </p>
-                                                </div>
-                                                {!isExpired && daysUntilExpiry !== null && (
-                                                    <div className="col-span-2">
-                                                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Time remaining</p>
-                                                        <p className="text-sm font-medium mt-0.5" style={{ color: daysUntilExpiry <= 3 ? '#eab308' : 'var(--text-primary)' }}>
-                                                            {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                                                Free plan — no expiry date
-                                            </p>
-                                        )}
-                                    </div>
-
-                                    {/* Keep Pro — convert a free trial into a paid Pro plan, any time */}
-                                    {isTrial && (
-                                        <div
-                                            className="rounded-2xl p-6 mb-6 relative overflow-hidden"
-                                            style={{ background: 'linear-gradient(135deg, rgba(201,169,110,0.1) 0%, var(--bg-surface) 100%)', border: '1px solid rgba(201,169,110,0.25)' }}
-                                        >
-                                            <div className="flex items-start gap-3 mb-4">
-                                                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(201,169,110,0.15)' }}>
-                                                    <Crown size={20} style={{ color: 'var(--gold-primary)' }} />
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>
-                                                        Keep your Pro access
-                                                    </p>
-                                                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                                        You're on a free Pro trial{daysUntilExpiry > 0 ? ` — ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''} left` : ''}.
-                                                        Subscribe to stay on Pro after it ends. Your trial days won't carry over.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                <button
-                                                    onClick={() => handleKeepPro('monthly')}
-                                                    className="rounded-xl p-4 text-left cursor-pointer transition-all"
-                                                    style={{ background: 'var(--bg-elevated)', border: '1px solid rgba(201,169,110,0.2)' }}
-                                                >
-                                                    <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Monthly</p>
-                                                    <p className="text-lg font-medium" style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
-                                                        199,000 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>VND/mo</span>
-                                                    </p>
-                                                </button>
-                                                <button
-                                                    onClick={() => handleKeepPro('yearly')}
-                                                    className="rounded-xl p-4 text-left cursor-pointer transition-all relative"
-                                                    style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid rgba(201,169,110,0.35)' }}
-                                                >
-                                                    <p className="text-xs mb-1 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
-                                                        Yearly <span className="font-semibold" style={{ color: 'var(--market-up)' }}>Save 17%</span>
-                                                    </p>
-                                                    <p className="text-lg font-medium" style={{ color: 'var(--gold-primary)', fontFamily: "'DM Mono', monospace" }}>
-                                                        1,990,000 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>VND/yr</span>
-                                                    </p>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Switch to Yearly — shown for active monthly subscribers */}
-                                    {canSwitchToYearly && yearlySwitch && (
-                                        <div
-                                            className="rounded-2xl p-5 mb-6 flex items-center justify-between gap-4"
-                                            style={{ background: 'rgba(77,184,130,0.05)', border: '1px solid rgba(77,184,130,0.2)' }}
-                                        >
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--market-up)' }}>
-                                                    Switch to Yearly — Save 17%
-                                                </p>
-                                                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                                    Your remaining {daysUntilExpiry}d credited · you pay{' '}
-                                                    <span style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
-                                                        ~{yearlySwitch.charge.toLocaleString()} VND
-                                                    </span>{' '}
-                                                    today for 365 days
-                                                </p>
-                                            </div>
-                                            <button
-                                                onClick={handleSwitchToYearly}
-                                                className="shrink-0 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer whitespace-nowrap"
-                                                style={{
-                                                    background: 'rgba(77,184,130,0.15)',
-                                                    border: '1px solid rgba(77,184,130,0.3)',
-                                                    color: 'var(--market-up)',
-                                                    fontFamily: "'Outfit', sans-serif",
-                                                }}
+                                            <span
+                                                className="px-3 py-1 rounded-full text-xs font-bold uppercase"
+                                                style={{ background: 'rgba(77,184,130,0.1)', color: '#4DB882', border: '1px solid rgba(77,184,130,0.25)', letterSpacing: '0.08em' }}
                                             >
-                                                Switch Now →
-                                            </button>
+                                                {user.email_verified ? '✓ Full access' : 'Verify your email'}
+                                            </span>
                                         </div>
-                                    )}
-
-                                    {/* Upgrade options */}
-                                    {availableUpgrades.length > 0 && (
-                                        <div>
-                                            <div className="flex items-center justify-between mb-4">
-                                                <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                                                    {currentRank === 0 ? 'Upgrade Your Plan' : 'Upgrade to Premium'}
-                                                </h3>
-                                                <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-                                                    <button
-                                                        onClick={() => setUpgradeYearly(false)}
-                                                        className="cursor-pointer px-2.5 py-1 rounded-full transition-all"
-                                                        style={{
-                                                            background: !upgradeYearly ? 'rgba(201,169,110,0.12)' : 'transparent',
-                                                            border: `1px solid ${!upgradeYearly ? 'rgba(201,169,110,0.25)' : 'transparent'}`,
-                                                            color: !upgradeYearly ? 'var(--gold-primary)' : 'var(--text-muted)',
-                                                            fontFamily: "'Outfit', sans-serif",
-                                                        }}
-                                                    >Monthly</button>
-                                                    <button
-                                                        onClick={() => setUpgradeYearly(true)}
-                                                        className="cursor-pointer px-2.5 py-1 rounded-full transition-all"
-                                                        style={{
-                                                            background: upgradeYearly ? 'rgba(201,169,110,0.12)' : 'transparent',
-                                                            border: `1px solid ${upgradeYearly ? 'rgba(201,169,110,0.25)' : 'transparent'}`,
-                                                            color: upgradeYearly ? 'var(--gold-primary)' : 'var(--text-muted)',
-                                                            fontFamily: "'Outfit', sans-serif",
-                                                        }}
-                                                    >Yearly <span style={{ color: 'var(--market-up)' }}>-17%</span></button>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                {availableUpgrades.map((plan) => {
-                                                    const selectedPeriod = upgradeYearly ? 'yearly' : 'monthly';
-                                                    const proratedEstimate = isSubActive
-                                                        ? estimateProration(user.subscription_tier, currentPeriod, daysUntilExpiry, plan.id, selectedPeriod)
-                                                        : null;
-                                                    return (
-                                                    <div
-                                                        key={plan.id}
-                                                        className="rounded-2xl p-5 relative overflow-hidden"
-                                                        style={{ background: plan.bg, border: `1px solid ${plan.border}` }}
-                                                    >
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <p className="font-semibold text-base" style={{ color: plan.color, fontFamily: "'Cormorant Garamond', serif" }}>
-                                                                {plan.name}
-                                                            </p>
-                                                            <Sparkles size={16} style={{ color: plan.color, opacity: 0.7 }} />
-                                                        </div>
-                                                        <p className="text-xl font-medium mb-0.5" style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
-                                                            {upgradeYearly ? plan.priceYearly : plan.priceMonthly}
-                                                            <span className="text-xs font-normal ml-1" style={{ color: 'var(--text-muted)' }}>
-                                                                VND/{upgradeYearly ? 'yr' : 'mo'}
-                                                            </span>
-                                                        </p>
-                                                        {proratedEstimate && proratedEstimate.credit > 0 && (
-                                                            <p className="text-xs mb-3" style={{ color: 'var(--market-up)' }}>
-                                                                ~{proratedEstimate.charge.toLocaleString()} VND today after credit
-                                                            </p>
-                                                        )}
-                                                        <ul className="space-y-1.5 mb-4">
-                                                            {plan.features.map((f, i) => (
-                                                                <li key={i} className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                                                                    <CheckCircle2 size={12} style={{ color: plan.color, flexShrink: 0 }} />
-                                                                    {f}
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                        <button
-                                                            onClick={() => handleUpgrade(plan.id)}
-                                                            className="w-full py-2.5 rounded-xl text-sm font-semibold cursor-pointer flex items-center justify-center gap-1.5 transition-all"
-                                                            style={{
-                                                                background: plan.color,
-                                                                color: plan.id === 'pro' ? 'var(--bg-void)' : '#fff',
-                                                                border: 'none',
-                                                                fontFamily: "'Outfit', sans-serif",
-                                                            }}
-                                                        >
-                                                            <ArrowUpRight size={15} />
-                                                            Upgrade to {plan.name}
-                                                        </button>
-                                                    </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    </>)}
-
-                                    {availableUpgrades.length === 0 && !user.bypass_payment && (
-                                        <div
-                                            className="rounded-2xl p-6 text-center"
-                                            style={{ background: 'var(--bg-surface)', border: '1px solid rgba(168,85,247,0.2)' }}
-                                        >
-                                            <Sparkles size={28} style={{ color: '#a855f7', margin: '0 auto 12px' }} />
-                                            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>You're on our best plan</p>
-                                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                                You have full access to all Premium features. Thank you for your support!
-                                            </p>
-                                        </div>
-                                    )}
+                                    </div>
+                                    </div>
                                 </motion.div>
                             )}
 
-                            {/* BILLING HISTORY SECTION */}
-                            {activeSection === 'billing' && (
-                                <motion.div key="billing" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.25 }}>
+                            {/* ACCESS SECTION — replaces the former Subscription and
+                                Billing History tabs. There is no plan to manage: the
+                                platform is free and non-commercial, so the only thing
+                                that gates access is email verification. */}
+                            {activeSection === 'access' && (
+                                <motion.div key="access" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.25 }}>
                                     <h2 className="text-xl font-semibold mb-6" style={{ color: 'var(--text-primary)', fontFamily: "'Cormorant Garamond', serif" }}>
-                                        Billing History
+                                        Access
                                     </h2>
 
-                                    {historyLoading ? (
-                                        <div className="flex items-center justify-center py-16">
-                                            <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--gold-primary)', borderTopColor: 'transparent' }} />
-                                        </div>
-                                    ) : paymentHistory.length === 0 ? (
-                                        <div
-                                            className="rounded-2xl p-10 text-center"
-                                            style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.1)' }}
-                                        >
-                                            <CreditCard size={32} style={{ color: 'var(--text-muted)', opacity: 0.4, margin: '0 auto 12px' }} />
-                                            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>No payment history yet</p>
-                                            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Your transactions will appear here.</p>
-                                        </div>
-                                    ) : (
-                                        <div
-                                            className="rounded-2xl overflow-hidden"
-                                            style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.12)' }}
-                                        >
-                                            <div className="grid px-5 py-3 text-xs font-semibold uppercase" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr', color: 'var(--text-muted)', letterSpacing: '0.08em', borderBottom: '1px solid rgba(201,169,110,0.08)' }}>
-                                                <span>Plan</span>
-                                                <span>Date</span>
-                                                <span>Amount</span>
-                                                <span>Status</span>
+                                    <div
+                                        className="rounded-2xl p-6 mb-4"
+                                        style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.12)' }}
+                                    >
+                                        <div className="flex items-start gap-4">
+                                            <div
+                                                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                                                style={{ background: 'rgba(77,184,130,0.1)', border: '1px solid rgba(77,184,130,0.25)' }}
+                                            >
+                                                <CheckCircle2 size={20} style={{ color: '#4DB882' }} />
                                             </div>
-                                            {paymentHistory.map((p, i) => (
-                                                <div
-                                                    key={i}
-                                                    className="px-5 py-4"
-                                                    style={{ borderBottom: i < paymentHistory.length - 1 ? '1px solid rgba(201,169,110,0.06)' : 'none' }}
-                                                >
-                                                    <div className="grid text-sm items-center" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
-                                                        <div>
-                                                            <span className="font-medium capitalize" style={{ color: 'var(--text-primary)' }}>{p.plan}</span>
-                                                            <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded capitalize" style={{ background: 'rgba(201,169,110,0.08)', color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
-                                                                {p.period}
-                                                            </span>
-                                                        </div>
-                                                        <span style={{ color: 'var(--text-secondary)' }}>{formatDate(p.completed_at || p.created_at)}</span>
-                                                        <div>
-                                                            <span style={{ color: 'var(--text-primary)', fontFamily: "'DM Mono', monospace" }}>
-                                                                {formatAmount(p.amount)} đ
-                                                            </span>
-                                                            {p.credit_amount > 0 && (
-                                                                <span className="block text-xs mt-0.5" style={{ color: 'var(--market-up)', fontFamily: "'DM Mono', monospace" }}>
-                                                                    −{formatAmount(p.credit_amount)} credit
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <span className="flex items-center gap-1.5">
-                                                            {p.status === 'completed' ? (
-                                                                <>
-                                                                    <CheckCircle2 size={13} style={{ color: 'var(--market-up)' }} />
-                                                                    <span style={{ color: 'var(--market-up)', fontSize: '12px' }}>Paid</span>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <XCircle size={13} style={{ color: 'var(--text-muted)' }} />
-                                                                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', textTransform: 'capitalize' }}>{p.status}</span>
-                                                                </>
-                                                            )}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                            <div>
+                                                <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+                                                    {user.email_verified
+                                                        ? 'You have full access to every feature'
+                                                        : 'Verify your email to unlock every feature'}
+                                                </p>
+                                                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                                                    DongAnh Capital is a free, non-commercial academic research project. There
+                                                    is no paid plan, no subscription and no payment method on file — the only
+                                                    requirement is a verified email address.
+                                                </p>
+                                                <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                                                    Member since {formatDate(user.created_at)}
+                                                </p>
+                                            </div>
                                         </div>
-                                    )}
+                                    </div>
+
+                                    <div
+                                        className="rounded-2xl p-6"
+                                        style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.12)' }}
+                                    >
+                                        <div className="flex items-start gap-4">
+                                            <div
+                                                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                                                style={{ background: 'rgba(201,169,110,0.1)', border: '1px solid var(--gold-border)' }}
+                                            >
+                                                <Shield size={20} style={{ color: 'var(--gold-primary)' }} />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+                                                    What this platform is not
+                                                </p>
+                                                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                                                    We are not a securities company and hold no licence from the State
+                                                    Securities Commission. Nothing here is investment advice or a
+                                                    recommendation to buy or sell any security.{' '}
+                                                    <button
+                                                        onClick={() => onTabChange && onTabChange('disclaimer')}
+                                                        className="underline underline-offset-2 cursor-pointer"
+                                                        style={{ background: 'none', border: 'none', color: 'var(--gold-primary)', font: 'inherit', padding: 0 }}
+                                                    >
+                                                        Read the full disclaimer →
+                                                    </button>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </motion.div>
                             )}
 

@@ -126,46 +126,25 @@ class AnalyzeRequest(BaseModel):
 # --------------------------------------------------------------------------- #
 # Auth / tier gate (mirrors the inline pattern on /api/ltr-signals)
 # --------------------------------------------------------------------------- #
-from utils.security import BYPASS_PAYMENT, BYPASS_DAILY_LIMIT, has_feature_access
-
-
-def _effective_tier(user: dict) -> str:
-    """Tier with an inline expiry check to close the ~6 h background-downgrade gap."""
-    tier = user.get("subscription_tier", "free")
-    expires_at = user.get("subscription_expires_at")
-    if tier != "free" and expires_at is not None:
-        try:
-            now_utc = datetime.now(timezone.utc)
-            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=timezone.utc)
-            if exp < now_utc:
-                tier = "free"
-        except Exception:
-            pass
-    return tier
+from utils.security import BYPASS_DAILY_LIMIT, has_feature_access
 
 
 async def _require_paid(request: Request) -> tuple[dict, str]:
-    """Auth + tier/access gate for chat & analysis endpoints.
+    """Auth + access gate for chat & analysis endpoints.
 
-    When ``BYPASS_PAYMENT`` is True, email-verified users are granted access
-    with tier='bypass'. When False, the original Pro/Premium gate applies.
+    Named ``_require_paid`` for historical reasons — nothing is paid for any
+    more. A signed-in account with a verified email is the whole gate; the
+    returned tier is always ``'bypass'``, which maps to the shared daily quota
+    that keeps the free-tier Gemini allowance from being exhausted by one user.
     """
     user = await get_current_user(request)  # raises 401 if unauthenticated
 
-    if BYPASS_PAYMENT:
-        if not has_feature_access(user):
-            raise HTTPException(
-                status_code=403,
-                detail="Vui lòng xác thực email để truy cập tính năng này",
-            )
-        return user, "bypass"
-
-    tier = _effective_tier(user)
-    if tier not in ("pro", "premium"):
-        raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
-    return user, tier
+    if not has_feature_access(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Vui lòng xác thực email để truy cập tính năng này",
+        )
+    return user, "bypass"
 
 
 # --------------------------------------------------------------------------- #
@@ -182,8 +161,9 @@ def _consume_quota_sync(user_id, tier: str) -> dict:
     Returns ``{"used", "limit"}``. Raises ``QuotaExceeded`` if the cap is hit,
     or ``RuntimeError`` if the DB is unavailable (caller maps to 503).
 
-    Tier values: 'bypass' (BYPASS_PAYMENT on, limit=5), 'pro' (limit=20),
-    'premium' (unlimited).
+    The only tier in use is 'bypass' (the shared BYPASS_DAILY_LIMIT). The 'pro'
+    and 'premium' branches are dead but harmless, and keep the function reusable
+    if tiers are ever reintroduced.
     """
     engine = get_engine()
     if engine is None:

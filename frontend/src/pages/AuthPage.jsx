@@ -15,7 +15,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft, User, AlertCircle, CheckCircle2, Loader2, ExternalLink, Copy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { detectInAppBrowser, getMobileOS, getSystemBrowserUrl } from '../utils/inAppBrowser';
-import { isTrialOfferOpen } from '../utils/trialOffer';
 
 /* ── Google Icon SVG ── */
 const GoogleIcon = ({ size = 20 }) => (
@@ -190,9 +189,7 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
             const result = await register(email, password, fullName);
             setLoading(false);
             if (result.success) {
-                setSuccess(isTrialOfferOpen()
-                    ? 'Account created! Check your inbox to verify your email, then claim your free Pro trial.'
-                    : 'Account created! Check your inbox to verify your email.');
+                setSuccess('Account created! Check your inbox to verify your email.');
                 setTimeout(() => onTabChange && onTabChange('dashboard'), 2000);
             } else {
                 setError(result.error);

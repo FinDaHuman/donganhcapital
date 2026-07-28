@@ -2,17 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SkeletonCard } from './SkeletonLoader';
 import { TrendingUp, BarChart2 } from 'lucide-react';
-import { UpgradeGate } from './AccessGate';
-import { useAccess } from '../hooks/useAccess';
 
 const GOLD = '#C9A96E';
-
-// Placeholder rows shown (blurred) to free-tier users so they can see the table shape
-const PLACEHOLDER_SIGNALS = Array.from({ length: 5 }, (_, i) => ({
-    rank: i + 1,
-    stock_id: '•••',
-    score: 0,
-}));
 
 const ScoreBadge = ({ score }) => {
     const display = (score * 100).toFixed(1);
@@ -28,10 +19,9 @@ const ScoreBadge = ({ score }) => {
 };
 
 const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
-    const { user, authApi, refreshUser } = useAuth();
-    // App.jsx has already established a signed-in, verified session; all this
-    // tab still has to decide is whether the account holds the paid tier.
-    const { hasTier } = useAccess('pro');
+    const { authApi, refreshUser } = useAuth();
+    // App.jsx has already established a signed-in, verified session, and there
+    // is no paid tier above it — so there is nothing further to gate on here.
 
     const [signals, setSignals] = useState([]);
     const [date, setDate] = useState('');
@@ -75,10 +65,6 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
     }, [authApi]);
 
     useEffect(() => {
-        if (!hasTier) {
-            setLoading(false);
-            return;
-        }
         const init = async () => {
             setLoading(true);
             const [fetchedDates] = await Promise.all([fetchDates()]);
@@ -87,7 +73,7 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
             await fetchSignals(null);
         };
         init();
-    }, [hasTier, fetchDates, fetchSignals]);
+    }, [fetchDates, fetchSignals]);
 
     const handleDateChange = async (e) => {
         const d = e.target.value;
@@ -95,79 +81,13 @@ const LTRSignalsTab = ({ onSelectStock, onTabChange }) => {
         await fetchSignals(d);
     };
 
-    // ── Free tier: show blurred table + upgrade overlay ─────────────────────
-    if (!hasTier) {
-        return (
-            <div className="flex-1 w-full flex flex-col p-4 sm:p-6 overflow-auto" style={{ background: '#000' }}>
-                <div className="mb-6">
-                    <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                        LTR Pro Signals
-                        <span
-                            className="ml-2 px-2 py-0.5 rounded text-xs font-bold tracking-wider uppercase align-middle"
-                            style={{ background: `${GOLD}18`, color: GOLD, border: `1px solid ${GOLD}30` }}
-                        >
-                            PRO
-                        </span>
-                    </h2>
-                    <p className="text-sm text-gray-500">Daily ranked shortlist — top 5 stocks by 5-day breakout score</p>
-                </div>
-
-                <div className="relative rounded-xl overflow-hidden min-h-[460px]" style={{ border: '1px solid #1f2937' }}>
-                    {/* Blurred placeholder table */}
-                    <div style={{ filter: 'blur(4px)', userSelect: 'none', pointerEvents: 'none' }}>
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr style={{ background: '#0d1117', borderBottom: '1px solid #1f2937' }}>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-400">Rank</th>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-400">Ticker</th>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-400">Breakout Score</th>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-400">Chart</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {PLACEHOLDER_SIGNALS.map((row) => (
-                                    <tr key={row.rank} style={{ borderBottom: '1px solid #111827', background: '#0a0f1a' }}>
-                                        <td className="px-4 py-3 text-gray-600">#{row.rank}</td>
-                                        <td className="px-4 py-3">
-                                            <span className="font-bold text-gray-600">{row.stock_id}</span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="inline-block w-16 h-5 rounded bg-gray-800" />
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="inline-block w-16 h-7 rounded bg-gray-800" />
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    {/* Upgrade overlay */}
-                    <UpgradeGate
-                        onTabChange={onTabChange}
-                        overlay
-                        title="LTR Pro Signals"
-                        description="Our LightGBM ranker scores all 167 stocks daily by breakout score (>8% over 5 trading days). Top 5 picks are updated every afternoon."
-                    />
-                </div>
-            </div>
-        );
-    }
-
-    // ── Pro / Premium: show real signals ────────────────────────────────────
     return (
         <div className="flex-1 w-full flex flex-col p-4 sm:p-6" style={{ background: '#000' }}>
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <div>
                     <h2 className="text-xl font-bold text-white" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                        LTR Pro Signals
-                        <span
-                            className="ml-2 px-2 py-0.5 rounded text-xs font-bold tracking-wider uppercase align-middle"
-                            style={{ background: `${GOLD}18`, color: GOLD, border: `1px solid ${GOLD}30` }}
-                        >
-                            PRO
-                        </span>
+                        LTR Signals
                     </h2>
                     <p className="text-sm text-gray-500 mt-0.5">
                         Top 5 ranked stocks · Breakout Score (&gt;8% / 5 days) · Generated at 15:02 Vietnam time

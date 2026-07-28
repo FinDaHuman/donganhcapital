@@ -3,12 +3,11 @@ import Header from './components/Header';
 import { getPrediction, getTickers } from './services/stock_api';
 import LandingPage from './components/LandingPage';
 import ErrorBoundary from './components/ErrorBoundary';
-import { Search, AlertTriangle, X, Mail, ArrowLeft } from 'lucide-react';
+import { Search, X, Mail, ArrowLeft } from 'lucide-react';
 import { SkeletonChart } from './components/SkeletonLoader';
 import { useAuth } from './context/AuthContext';
 import { useAccess } from './hooks/useAccess';
 import { AccessGuard } from './components/AccessGate';
-import { isTrialOfferOpen } from './utils/trialOffer';
 
 // Route-level code splitting: every view except the landing page (the first
 // paint for new visitors) loads on demand. This keeps heavy chart libraries —
@@ -27,7 +26,6 @@ const AuthPage = lazy(() => import('./pages/AuthPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
-const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
 const TermsOfServicePage = lazy(() => import('./pages/TermsOfServicePage'));
 
@@ -44,13 +42,13 @@ const TabFallback = () => (
 const KNOWN_TABS = new Set([
     'home', 'dashboard', 'chart', 'analyst', 'data-analyst', 'ltr-signals', 'bcd-signals',
     'reports', 'news', 'chatbot', 'login', 'auth/google/callback', 'register',
-    'profile', 'reset-password', 'verify-email', 'checkout', 'privacy', 'terms',
+    'profile', 'reset-password', 'verify-email', 'privacy', 'terms',
 ]);
 
 // Product tabs, all of which require a signed-in account with a verified
 // email. Everything outside this set is either public (home, privacy, terms)
 // or part of getting an account into a usable state (login, register, profile,
-// verify-email, reset-password, checkout) and must stay reachable.
+// verify-email, reset-password) and must stay reachable.
 //
 // The guard is applied here rather than inside each tab so a new tab cannot
 // ship without it — Dashboard, Chart, AI Analyst and Data Analyst had all
@@ -66,7 +64,7 @@ const GATED_TABS = new Set([
 // chart, and the call sites fall back to 'Dashboard'.
 const TAB_LABELS = {
     dashboard: 'Dashboard', analyst: 'AI Analyst', 'data-analyst': 'Data Analyst',
-    news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'Pro Signals', 'bcd-signals': 'BCD Signals',
+    news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'LTR Signals', 'bcd-signals': 'BCD Signals',
     reports: 'Reports', home: 'Home',
 };
 
@@ -86,22 +84,9 @@ const tabFromLocation = () => {
 function App() {
     const { user, resendVerification } = useAuth();
     const { canUseApp, authLoading } = useAccess();
-    const [dismissedExpiry, setDismissedExpiry] = useState(false);
     const [dismissedVerify, setDismissedVerify] = useState(false);
     const [resendVerifyLoading, setResendVerifyLoading] = useState(false);
     const [resendVerifyMsg, setResendVerifyMsg] = useState('');
-
-    // Compute expiry warning (suppressed when payment is bypassed — subscription tier is irrelevant)
-    const expiryWarning = (() => {
-        if (user?.bypass_payment) return null;
-        if (!user?.subscription_expires_at || !user?.subscription_tier || user.subscription_tier === 'free') return null;
-        const daysLeft = Math.ceil((new Date(user.subscription_expires_at) - new Date()) / (1000 * 60 * 60 * 24));
-        if (daysLeft <= 3 && daysLeft >= 0) {
-            const isTrial = user.subscription_tier === 'pro' && user.subscription_period === 'trial';
-            return { daysLeft, tier: user.subscription_tier, isTrial };
-        }
-        return null;
-    })();
 
     const handleResendVerify = async () => {
         setResendVerifyLoading(true);
@@ -122,13 +107,9 @@ function App() {
     // Initial tab is derived from the URL (clamped to a known tab).
     const [activeTab, setActiveTab] = useState(tabFromLocation);
     const [policyReturnTo, setPolicyReturnTo] = useState('home');
-    const [checkoutPlan, setCheckoutPlan] = useState({ plan: 'pro', period: 'monthly' });
 
-    // Handle checkout navigation with plan/period and update URL
+    // Navigate to a tab and reflect it in the URL.
     const handleTabChange = (tab, data) => {
-        if (tab === 'checkout' && data) {
-            setCheckoutPlan(data);
-        }
         if (tab === 'terms' || tab === 'privacy') {
             setPolicyReturnTo(data?.returnTo || 'home');
         }
@@ -241,42 +222,6 @@ function App() {
 
     return (
         <div className="w-full min-h-screen flex flex-col overflow-hidden text-gray-200 font-sans" style={{ backgroundColor: '#000' }}>
-            {/* Subscription expiry warning banner */}
-            {expiryWarning && !dismissedExpiry && activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'reset-password' && (
-                <div
-                    className="w-full flex items-center justify-center gap-3 px-4 py-2.5 text-sm"
-                    style={{
-                        background: 'rgba(234,179,8,0.08)',
-                        borderBottom: '1px solid rgba(234,179,8,0.2)',
-                        fontFamily: "'Outfit', sans-serif",
-                    }}
-                >
-                    <AlertTriangle size={14} style={{ color: '#eab308', flexShrink: 0 }} />
-                    <span style={{ color: '#eab308' }}>
-                        {expiryWarning.isTrial ? (
-                            <>Your <strong>free Pro trial</strong> ends in </>
-                        ) : (
-                            <>Your <strong style={{ textTransform: 'capitalize' }}>{expiryWarning.tier}</strong> plan expires in </>
-                        )}
-                        <strong>{expiryWarning.daysLeft} day{expiryWarning.daysLeft !== 1 ? 's' : ''}</strong>.{' '}
-                        <button
-                            onClick={() => handleTabChange('profile')}
-                            className="cursor-pointer underline"
-                            style={{ background: 'none', border: 'none', color: '#eab308', fontFamily: "'Outfit', sans-serif" }}
-                        >
-                            {expiryWarning.isTrial ? 'Keep Pro →' : 'Renew now →'}
-                        </button>
-                    </span>
-                    <button
-                        onClick={() => setDismissedExpiry(true)}
-                        className="ml-auto cursor-pointer"
-                        style={{ background: 'none', border: 'none', color: '#eab308', opacity: 0.6, flexShrink: 0 }}
-                        aria-label="Dismiss"
-                    >
-                        <X size={14} />
-                    </button>
-                </div>
-            )}
             {/* Email verification nudge banner — shown for unverified email/password accounts */}
             {showVerifyBanner && activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'verify-email' && activeTab !== 'reset-password' && (
                 <div
@@ -290,9 +235,7 @@ function App() {
                     <div className="flex items-center gap-2.5">
                         <Mail size={13} style={{ color: '#60a5fa', flexShrink: 0 }} />
                         <span className="text-xs" style={{ color: '#93c5fd' }}>
-                            {isTrialOfferOpen()
-                                ? 'Please verify your email to claim your free Pro trial.'
-                                : 'Please verify your email to secure your account.'}{' '}
+                            Please verify your email to secure your account.{' '}
                             <button
                                 onClick={handleResendVerify}
                                 disabled={resendVerifyLoading}
@@ -317,7 +260,7 @@ function App() {
                 </div>
             )}
 
-            {activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'profile' && activeTab !== 'checkout' && activeTab !== 'privacy' && activeTab !== 'terms' && activeTab !== 'reset-password' && activeTab !== 'verify-email' && <Header activeTab={activeTab} onTabChange={handleTabChange} />}
+            {activeTab !== 'home' && activeTab !== 'login' && activeTab !== 'register' && activeTab !== 'profile' && activeTab !== 'privacy' && activeTab !== 'terms' && activeTab !== 'reset-password' && activeTab !== 'verify-email' && <Header activeTab={activeTab} onTabChange={handleTabChange} />}
 
             <div className="flex-1 flex flex-col w-full min-h-0 relative">
                 <main className="flex-1 overflow-hidden relative flex flex-col min-h-0" style={{ backgroundColor: '#000' }}>
@@ -532,14 +475,6 @@ function App() {
 
                     {activeTab === 'verify-email' && (
                         <VerifyEmailPage onTabChange={handleTabChange} />
-                    )}
-
-                    {activeTab === 'checkout' && (
-                        <CheckoutPage
-                            onTabChange={handleTabChange}
-                            plan={checkoutPlan.plan}
-                            period={checkoutPlan.period}
-                        />
                     )}
 
                     {activeTab === 'privacy' && (

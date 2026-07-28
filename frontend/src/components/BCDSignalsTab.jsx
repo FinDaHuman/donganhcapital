@@ -2,8 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SkeletonCard, SkeletonChart } from './SkeletonLoader';
 import { TrendingDown, BarChart2 } from 'lucide-react';
-import { UpgradeGate } from './AccessGate';
-import { useAccess } from '../hooks/useAccess';
 import {
     computeTradeStats,
     formatDays,
@@ -92,52 +90,11 @@ const StatusBadge = ({ status }) => {
     );
 };
 
-const ProBadge = () => (
-    <span
-        className="ml-2 px-2 py-0.5 rounded text-xs font-bold tracking-wider uppercase align-middle"
-        style={{ background: `${GOLD}18`, color: GOLD, border: `1px solid ${GOLD}30` }}
-    >
-        PRO
-    </span>
-);
-
-// Blurred placeholder card grid shown to free-tier users (mirrors the real signal cards)
-const PlaceholderCards = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 p-4">
-        {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="bg-[#111213] border border-gray-800 rounded-xl p-5">
-                <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-lg"
-                            style={{ background: `${GOLD}18`, color: GOLD }}>•</div>
-                        <span className="inline-block w-16 h-6 rounded bg-gray-800" />
-                    </div>
-                    <span className="inline-block w-20 h-6 rounded-full bg-gray-800" />
-                </div>
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="bg-[#0a0a0c] p-3 rounded-lg border border-gray-800/50">
-                        <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider font-semibold">Entry</div>
-                        <span className="inline-block w-14 h-5 rounded bg-gray-800" />
-                    </div>
-                    <div className="bg-[#0a0a0c] p-3 rounded-lg border border-gray-800/50 flex flex-col items-end">
-                        <div className="text-xs text-green-500/70 mb-1 uppercase tracking-wider font-semibold">Take Profit</div>
-                        <span className="inline-block w-14 h-5 rounded bg-gray-800" />
-                    </div>
-                </div>
-                <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-lg flex justify-between items-center">
-                    <span className="text-xs text-red-400/70 uppercase tracking-wider font-semibold">Stop Loss</span>
-                    <span className="inline-block w-14 h-5 rounded bg-gray-800" />
-                </div>
-            </div>
-        ))}
-    </div>
-);
 
 const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
-    const { user, authApi, refreshUser } = useAuth();
-    // App.jsx has already established a signed-in, verified session; all this
-    // tab still has to decide is whether the account holds the paid tier.
-    const { hasTier } = useAccess('pro');
+    const { authApi, refreshUser } = useAuth();
+    // App.jsx has already established a signed-in, verified session, and there
+    // is no paid tier above it — so there is nothing further to gate on here.
 
     // Signals state
     const [signals, setSignals] = useState([]);
@@ -214,11 +171,6 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
     }, [authApi]);
 
     useEffect(() => {
-        if (!hasTier) {
-            setLoading(false);
-            setTradesLoading(false);
-            return;
-        }
         const init = async () => {
             setLoading(true);
             const [fetchedDates, fetchedSummary] = await Promise.all([fetchDates(), fetchSummary()]);
@@ -228,7 +180,7 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
         };
         init();
         fetchTrades();
-    }, [hasTier, fetchDates, fetchSummary, fetchSignals, fetchTrades]);
+    }, [fetchDates, fetchSummary, fetchSignals, fetchTrades]);
 
     const handleDateChange = async (e) => {
         const d = e.target.value;
@@ -324,34 +276,6 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
         passed: summary.reduce((acc, s) => acc + (s.passed_count || 0), 0),
     }), [summary]);
 
-    // ── Free tier: blurred card grid + upgrade overlay ──────────────────────
-    if (!hasTier) {
-        return (
-            <div className="flex-1 w-full flex flex-col p-4 sm:p-6 overflow-auto" style={{ background: '#000' }}>
-                <div className="mb-6">
-                    <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                        BCD Recovery Signals
-                        <ProBadge />
-                    </h2>
-                    <p className="text-sm text-gray-500">Breakdown-pattern reversal candidates scored by a LightGBM recovery model</p>
-                </div>
-
-                <div className="relative rounded-xl overflow-hidden min-h-[460px]" style={{ border: '1px solid #1f2937' }}>
-                    <div style={{ filter: 'blur(4px)', userSelect: 'none', pointerEvents: 'none' }}>
-                        <PlaceholderCards />
-                    </div>
-                    <UpgradeGate
-                        onTabChange={onTabChange}
-                        overlay
-                        title="BCD Recovery Signals"
-                        description="Our LightGBM model detects B-C-D breakdown patterns and scores each one for recovery potential, with suggested entry, take-profit and stop-loss levels."
-                    />
-                </div>
-            </div>
-        );
-    }
-
-    // ── Pro / Premium ───────────────────────────────────────────────────────
     return (
         <div className="flex-1 overflow-y-auto p-6 bg-[#000]">
             <div className="max-w-6xl mx-auto">
@@ -359,7 +283,6 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                 <div className="mb-6">
                     <h2 className="text-xl font-bold text-white" style={{ fontFamily: "'Outfit', sans-serif" }}>
                         BCD Recovery Signals
-                        <ProBadge />
                     </h2>
                     <p className="text-sm text-gray-500 mt-0.5">
                         Breakdown-reversal candidates · B-C-D pattern · Generated at 15:02 Vietnam time

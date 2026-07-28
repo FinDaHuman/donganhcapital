@@ -13,7 +13,6 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, AlertCircle, CheckCircle2, Loader2, Mail } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { isTrialOfferOpen } from '../utils/trialOffer';
 
 const VerifyEmailPage = ({ onTabChange }) => {
     const { verifyEmail, resendVerification, user, isAuthenticated } = useAuth();
@@ -111,7 +110,7 @@ const VerifyEmailPage = ({ onTabChange }) => {
                                     Email Verified
                                 </h1>
                                 <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                                    {message}{isTrialOfferOpen() && ' You can now claim your free 1-week Pro trial.'}
+                                    {message}
                                 </p>
                                 <button
                                     onClick={() => onTabChange && onTabChange('dashboard')}

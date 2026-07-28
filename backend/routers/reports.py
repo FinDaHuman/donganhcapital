@@ -1,8 +1,8 @@
-"""Premium PDF Reports router — tier-gated, R2-backed.
+"""PDF research-notes router — login-gated, R2-backed.
 
-Gating: every route requires login (``get_current_user`` → 401) AND a subscription
-tier in ``REPORTS_ALLOWED_TIERS`` (Premium-only by default) → 403.
-The gate is re-checked on the download-URL route, not just the list.
+Gating: every route requires login (``get_current_user`` → 401) AND a verified
+email (→ 403). The gate is re-checked on the download-URL route, not just the
+list. These notes were once Premium-only; there are no paid tiers any more.
 
 Resilience: the PDF bytes live in Cloudflare R2 and are NEVER streamed through
 this 0.1 vCPU box — the download route mints a short-TTL presigned GET URL that the
@@ -19,11 +19,9 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Query, Depends
 
 from routers.auth import get_current_user
-from utils.security import effective_tier, report_allowed_tiers
+from utils.security import has_feature_access
 from db.report_queries import list_reports, get_report_object
 from db.r2 import presign_get
-
-from utils.security import BYPASS_PAYMENT, has_feature_access
 
 logger = logging.getLogger(__name__)
 
@@ -47,21 +45,16 @@ async def limit_concurrency():
 async def require_report_access(request: Request) -> dict:
     """Auth + access gate. Returns the user dict, or raises 401 / 403.
 
-    When ``BYPASS_PAYMENT`` is True, email-verified users are granted access.
-    When False, the original Premium-only tier gate applies.
+    Reports were Premium-only. With the paid tiers gone, the gate is a signed-in
+    account with a verified email — same rule as every other feature.
     """
     user = await get_current_user(request)  # 401 if unauthenticated
 
-    if BYPASS_PAYMENT:
-        if not has_feature_access(user):
-            raise HTTPException(
-                status_code=403,
-                detail="Vui lòng xác thực email để truy cập tính năng này",
-            )
-        return user
-
-    if effective_tier(user) not in report_allowed_tiers():
-        raise HTTPException(status_code=403, detail="This feature requires a Premium subscription")
+    if not has_feature_access(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Vui lòng xác thực email để truy cập tính năng này",
+        )
     return user
 
 

@@ -5,14 +5,13 @@ import {
     Activity, TrendingUp, BarChart3, LineChart,
     Lock, Calendar, Globe, Server, Database,
     ChevronDown, ChevronUp, MapPin, Users, Mail, Facebook, Youtube, ShieldCheck,
-    CheckCircle2, Clock, Sparkles, Send, ArrowRight,
+    CheckCircle2, Clock, Send, ArrowRight,
     Bot, Brain, Target, Shield, Zap, BarChart2, Eye, Cpu,
     XCircle, TrendingDown, AlertTriangle, BarChart,
     Newspaper, Settings, Play, BadgeCheck, Infinity, Rocket,
-    CreditCard, Building2, Loader2, Crown
+    Loader2
 } from 'lucide-react';
 import { subscribeEmail } from '../services/stock_api';
-import { isTrialOfferOpen } from '../utils/trialOffer';
 
 /* ============================================================
    ANIMATION VARIANTS
@@ -1048,135 +1047,36 @@ const EmailSubscribeForm = ({ variant = 'default', ctaText = 'Get Notified at La
 
 
 /* ============================================================
-   PRICING SECTION — 3-tier with preorder
+   ACCESS SECTION
+
+   Replaces the former three-tier pricing block (Free / Pro 199.000đ /
+   Premium 499.000đ) and its SePay-VietQR checkout. DongAnh Capital is a
+   non-commercial academic project with no registered business entity, so it
+   cannot lawfully sell a subscription: doing so would require a đăng ký kinh
+   doanh, a tax code, and e-invoicing under Nghị định 70/2025, and would also
+   recast the service as a paid securities service under Điều 12.4 Luật Chứng
+   khoán. The payment code remains in the repository, unreferenced, should an
+   entity ever be registered.
    ============================================================ */
-export const PricingSection = ({ onTabChange }) => {
-    const { isAuthenticated, loading: authLoading, user, claimProTrial } = useAuth();
-    const [isYearly, setIsYearly] = useState(false);
-    const [trialClaiming, setTrialClaiming] = useState(false);
-    const [trialMsg, setTrialMsg] = useState(null);
+export const AccessSection = ({ onTabChange }) => {
+    const { isAuthenticated } = useAuth();
 
-    const tierRank = { free: 0, pro: 1, premium: 2 };
-    const currentTier = user?.subscription_tier || 'free';
-    const currentRank = tierRank[currentTier] ?? 0;
-
-    // Trial users have Pro access without a paid plan. The pricing cards still
-    // (truthfully) show Pro as their "Current Plan"; a separate banner offers
-    // conversion to a paid plan so we never have to special-case the rank logic.
-    const isTrial = currentTier === 'pro' && user?.subscription_period === 'trial';
-    const trialDaysLeft = user?.subscription_expires_at
-        ? Math.max(0, Math.ceil((new Date(user.subscription_expires_at) - Date.now()) / 86400000))
-        : null;
-
-    // Limited-time free Pro trial — offer closes end of 2026-07-07 (VN, UTC+7).
-    // Server enforces eligibility; this only controls whether the CTA is shown.
-    const trialEligible =
-        isAuthenticated && !authLoading &&
-        currentTier === 'free' &&
-        !user?.pro_trial_claimed &&
-        isTrialOfferOpen();
-
-    const handleClaimTrial = async () => {
-        if (trialClaiming) return;
-        setTrialClaiming(true);
-        setTrialMsg(null);
-        const res = await claimProTrial();
-        setTrialClaiming(false);
-        setTrialMsg(
-            res.success
-                ? { type: 'success', text: res.message || 'Your free 1-week Pro trial is now active!' }
-                : { type: 'error', text: res.error }
-        );
-    };
-
-    const handlePlanClick = useCallback((planName) => {
-        // While auth is loading, route to checkout (we don't know auth state yet).
-        // This matches pre-existing behavior and avoids incorrectly sending users to register.
-        if (authLoading) {
-            onTabChange && onTabChange('checkout', { plan: planName.toLowerCase(), period: isYearly ? 'yearly' : 'monthly' });
-            return;
-        }
-        if (!isAuthenticated) {
-            onTabChange && onTabChange('register');
-            return;
-        }
-        const planRank = tierRank[planName.toLowerCase()] ?? 0;
-        if (planRank <= currentRank) return; // already on this or higher tier
-        onTabChange && onTabChange('checkout', { plan: planName.toLowerCase(), period: isYearly ? 'yearly' : 'monthly' });
-    }, [isAuthenticated, authLoading, isYearly, currentRank, onTabChange]);
-
-    const getPlanCta = (planName) => {
-        if (authLoading || !isAuthenticated) return planName === 'Free' ? 'Start Free' : `Get ${planName}`;
-        const planRank = tierRank[planName.toLowerCase()] ?? 0;
-        if (planRank <= currentRank) return 'Current Plan';
-        return `Upgrade to ${planName}`;
-    };
-
-    const isPlanDisabled = (planName) => {
-        if (authLoading || !isAuthenticated) return false;
-        const planRank = tierRank[planName.toLowerCase()] ?? 0;
-        return planRank <= currentRank;
-    };
-
-    const plans = [
+    const points = [
         {
-            name: 'Free',
-            badge: isAuthenticated && currentTier === 'free' ? 'Current Plan' : 'Free Forever',
-            badgeStyle: { background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)', border: '1px solid rgba(77,184,130,0.25)' },
-            priceMonthly: '0',
-            priceYearly: '0',
-            priceSuffix: 'VND',
-            description: 'Everything you need to start.',
-            features: [
-                { text: 'Vietnam market dashboard', included: true },
-                { text: 'Daily news & price board', included: true },
-                { text: '1 basic AI model', included: true },
-                { text: 'AI news analysis agent', included: false },
-                { text: 'Investment advisory chatbot', included: false },
-                { text: 'FinAI Stock Predict model', included: false },
-            ],
-            highlight: false,
+            icon: BadgeCheck,
+            title: 'Free, with no paid tier',
+            body: 'Every feature is available to every signed-in account. There is no subscription, no trial that converts, and no payment method on file.',
         },
         {
-            name: 'Pro',
-            badge: isAuthenticated && currentTier === 'pro' ? 'Current Plan' : 'Most Popular',
-            badgeStyle: { background: 'rgba(201,169,110,0.12)', color: 'var(--gold-primary)', border: '1px solid rgba(201,169,110,0.25)' },
-            priceMonthly: '199,000',
-            priceYearly: '1,990,000',
-            priceSuffix: 'VND',
-            description: 'For active traders who want an edge.',
-            features: [
-                { text: 'Vietnam market dashboard', included: true },
-                { text: 'Daily news & price board', included: true },
-                { text: 'AI news analysis (limited)', included: true },
-                { text: 'Investment chatbot (limited)', included: true },
-                { text: '1 FinAI Stock Predict model', included: true },
-            ],
-            highlight: true,
+            icon: ShieldCheck,
+            title: 'Not a financial service',
+            body: 'We are not a securities company, hold no State Securities Commission licence, and provide no investment advice. Outputs are statistical model results — the decision is always yours.',
         },
         {
-            name: 'Premium',
-            badge: isAuthenticated && currentTier === 'premium' ? 'Current Plan' : 'Full Access',
-            badgeStyle: { background: 'rgba(168,85,247,0.12)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)' },
-            priceMonthly: '499,000',
-            priceYearly: '4,990,000',
-            priceSuffix: 'VND',
-            description: 'Full power. Unlimited access.',
-            features: [
-                { text: 'Vietnam market dashboard', included: true },
-                { text: 'Daily news & price board', included: true },
-                { text: 'Full AI model access', included: true },
-                { text: 'AI news analysis (unlimited)', included: true },
-                { text: 'Investment chatbot (unlimited)', included: true },
-                { text: '2 FinAI Stock Predict models', included: true },
-            ],
-            highlight: false,
+            icon: Infinity,
+            title: 'Academic and open-ended',
+            body: 'This is a student research project studying what machine learning can and cannot tell us about the Vietnamese market. Methods and limitations are published alongside the results.',
         },
-    ];
-
-    const paymentMethods = [
-        { name: 'Bank Transfer (VietQR)', icon: Building2 },
-        { name: 'More coming soon', icon: CreditCard },
     ];
 
     return (
@@ -1185,285 +1085,61 @@ export const PricingSection = ({ onTabChange }) => {
             variants={sectionVariants}
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, amount: 0.1 }}
-            className="w-full max-w-6xl mx-auto px-4 py-16 md:py-24"
+            viewport={{ once: true, amount: 0.15 }}
+            className="w-full max-w-5xl mx-auto px-4 py-16 md:py-24"
         >
             <div className="text-center mb-10">
                 <motion.div variants={itemVariants}>
-                    <SectionLabel>Transparent Pricing</SectionLabel>
+                    <SectionLabel>Access</SectionLabel>
                 </motion.div>
                 <motion.h2 variants={itemVariants} className="type-section mb-4" style={{ color: 'var(--text-primary)' }}>
-                    Choose Your Plan
+                    Free for Everyone
                 </motion.h2>
-                <motion.p variants={itemVariants} className="type-body-lg max-w-xl mx-auto mb-6" style={{ color: 'var(--text-secondary)' }}>
-                    Start free. Upgrade when you're ready. Pro & Premium plans are live — cancel anytime.
+                <motion.p variants={itemVariants} className="type-body-lg max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
+                    Create an account, verify your email, and you have the whole platform. Nothing here is for sale.
                 </motion.p>
-
-                {/* Bypass-mode banner: all features currently free */}
-                {user?.bypass_payment && (
-                    <motion.div
-                        variants={itemVariants}
-                        className="max-w-lg mx-auto mb-6 px-5 py-3.5 rounded-2xl text-center"
-                        style={{
-                            background: 'linear-gradient(135deg, rgba(77,184,130,0.08), rgba(77,184,130,0.02))',
-                            border: '1px solid rgba(77,184,130,0.2)',
-                        }}
-                    >
-                        <p className="text-sm font-semibold mb-0.5" style={{ color: '#4DB882', fontFamily: "'Outfit', sans-serif" }}>
-                            🎉 Hiện tại tất cả tính năng được mở khóa miễn phí
-                        </p>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
-                            Chỉ cần tạo tài khoản và xác thực email để truy cập toàn bộ tính năng.
-                        </p>
-                    </motion.div>
-                )}
-
-                {/* Monthly / Yearly Toggle */}
-                <motion.div variants={itemVariants} className="flex items-center justify-center gap-3 mb-3">
-                    <span className="text-sm font-medium" style={{ color: !isYearly ? 'var(--gold-primary)' : 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>Monthly</span>
-                    <button
-                        onClick={() => setIsYearly(v => !v)}
-                        className="relative w-12 h-6 rounded-full transition-colors duration-300 cursor-pointer"
-                        style={{ background: isYearly ? 'var(--gold-primary)' : 'rgba(201,169,110,0.25)', border: 'none' }}
-                        aria-label="Toggle billing period"
-                        id="pricing-billing-toggle"
-                    >
-                        <motion.div
-                            className="absolute top-0.5 w-5 h-5 rounded-full"
-                            style={{ background: 'var(--bg-void)' }}
-                            animate={{ left: isYearly ? '26px' : '2px' }}
-                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        />
-                    </button>
-                    <span className="text-sm font-medium" style={{ color: isYearly ? 'var(--gold-primary)' : 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
-                        Yearly
-                        <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)' }}>Save 17%</span>
-                    </span>
-                </motion.div>
-                {!isTrial && (
-                    <motion.p variants={itemVariants} className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
-                        Already subscribed? Unused days are credited when you upgrade or switch to yearly.
-                    </motion.p>
-                )}
             </div>
 
-            {/* Limited-time free Pro trial banner */}
-            {trialEligible && (
-                <motion.div variants={itemVariants} className="max-w-3xl mx-auto mb-8">
-                    <div
-                        className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left"
-                        style={{
-                            background: 'linear-gradient(135deg, rgba(201,169,110,0.14), rgba(201,169,110,0.04))',
-                            border: '1px solid rgba(201,169,110,0.3)',
-                        }}
-                    >
-                        <div className="shrink-0 w-12 h-12 rounded-full flex items-center justify-center" style={{ background: 'rgba(201,169,110,0.15)' }}>
-                            <Sparkles size={22} style={{ color: 'var(--gold-primary)' }} />
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="mb-1" style={{ fontFamily: "'Outfit', sans-serif", fontWeight: 600, fontSize: '18px', color: 'var(--text-primary)' }}>
-                                Try Pro free for 1 week
-                            </h3>
-                            <p className="type-body-sm" style={{ color: 'var(--text-secondary)' }}>
-                                Unlock every Pro feature for 7 days — no card required. Offer ends Jul 7.
-                            </p>
-                        </div>
-                        <button
-                            onClick={handleClaimTrial}
-                            disabled={trialClaiming}
-                            className="btn-primary cursor-pointer flex items-center justify-center gap-2 shrink-0"
-                            style={{ padding: '12px 24px', fontSize: '14px', opacity: trialClaiming ? 0.7 : 1 }}
-                            id="pricing-claim-trial"
-                        >
-                            {trialClaiming ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                            {trialClaiming ? 'Activating…' : 'Claim free week'}
-                        </button>
-                    </div>
-                </motion.div>
-            )}
-
-            {/* Trial claim result message */}
-            {trialMsg && (
-                <motion.div variants={itemVariants} className="max-w-3xl mx-auto mb-8 text-center">
-                    <p
-                        className="type-body-sm inline-block px-4 py-3 rounded-xl"
-                        style={trialMsg.type === 'success'
-                            ? { background: 'rgba(77,184,130,0.12)', color: 'var(--market-up)', border: '1px solid rgba(77,184,130,0.25)' }
-                            : { background: 'rgba(229,115,115,0.12)', color: '#e57373', border: '1px solid rgba(229,115,115,0.25)' }}
-                    >
-                        {trialMsg.text}
-                    </p>
-                </motion.div>
-            )}
-
-            {/* Trial → paid conversion banner (shown while a free trial is active) */}
-            {isTrial && (
-                <motion.div variants={itemVariants} className="max-w-3xl mx-auto mb-8">
-                    <div
-                        className="rounded-2xl p-5 sm:p-6 flex flex-col gap-4"
-                        style={{
-                            background: 'linear-gradient(135deg, rgba(201,169,110,0.14), rgba(201,169,110,0.04))',
-                            border: '1px solid rgba(201,169,110,0.3)',
-                        }}
-                    >
-                        <div className="flex items-center gap-4 text-center sm:text-left flex-col sm:flex-row">
-                            <div className="shrink-0 w-12 h-12 rounded-full flex items-center justify-center" style={{ background: 'rgba(201,169,110,0.15)' }}>
-                                <Crown size={22} style={{ color: 'var(--gold-primary)' }} />
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="mb-1" style={{ fontFamily: "'Outfit', sans-serif", fontWeight: 600, fontSize: '18px', color: 'var(--text-primary)' }}>
-                                    Keep your Pro access
-                                </h3>
-                                <p className="type-body-sm" style={{ color: 'var(--text-secondary)' }}>
-                                    You're on a free Pro trial{trialDaysLeft !== null ? ` — ${trialDaysLeft} day${trialDaysLeft !== 1 ? 's' : ''} left` : ''}.
-                                    Subscribe any time to stay on Pro after it ends. Trial days don't carry over.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <button
-                                onClick={() => onTabChange && onTabChange('checkout', { plan: 'pro', period: 'monthly' })}
-                                className="cursor-pointer rounded-xl px-5 py-3 flex items-center justify-between gap-2"
-                                style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.2)' }}
-                                id="pricing-keep-pro-monthly"
-                            >
-                                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Keep Pro · Monthly</span>
-                                <span className="text-sm" style={{ color: 'var(--gold-primary)', fontFamily: "'DM Mono', monospace" }}>199,000<span className="text-xs" style={{ color: 'var(--text-muted)' }}>/mo</span></span>
-                            </button>
-                            <button
-                                onClick={() => onTabChange && onTabChange('checkout', { plan: 'pro', period: 'yearly' })}
-                                className="cursor-pointer rounded-xl px-5 py-3 flex items-center justify-between gap-2"
-                                style={{ background: 'rgba(201,169,110,0.08)', border: '1px solid rgba(201,169,110,0.35)' }}
-                                id="pricing-keep-pro-yearly"
-                            >
-                                <span className="text-sm font-medium flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
-                                    Keep Pro · Yearly <span className="text-xs font-semibold" style={{ color: 'var(--market-up)' }}>-17%</span>
-                                </span>
-                                <span className="text-sm" style={{ color: 'var(--gold-primary)', fontFamily: "'DM Mono', monospace" }}>1,990,000<span className="text-xs" style={{ color: 'var(--text-muted)' }}>/yr</span></span>
-                            </button>
-                        </div>
-                    </div>
-                </motion.div>
-            )}
-
-            {/* Pricing Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
-                {plans.map((plan, i) => (
+                {points.map((p, i) => (
                     <motion.div
                         key={i}
                         variants={itemVariants}
-                        className={`relative rounded-3xl p-6 sm:p-7 overflow-hidden flex flex-col ${plan.highlight ? 'ring-1' : ''}`}
-                        style={{
-                            background: plan.highlight
-                                ? 'linear-gradient(135deg, rgba(201,169,110,0.08) 0%, var(--bg-surface) 100%)'
-                                : 'var(--bg-surface)',
-                            border: `1px solid ${plan.highlight ? 'rgba(201,169,110,0.3)' : 'rgba(201,169,110,0.12)'}`,
-                            ...(plan.highlight ? { ringColor: 'rgba(201,169,110,0.2)' } : {}),
-                        }}
+                        className="rounded-2xl p-6 flex flex-col gap-3"
+                        style={{ background: 'var(--bg-surface)', border: '1px solid rgba(201,169,110,0.12)' }}
                     >
-                        {/* Top glow line for highlighted plan */}
-                        {plan.highlight && (
-                            <div className="absolute top-0 left-0 right-0 h-[2px]"
-                                style={{ background: 'linear-gradient(90deg, transparent, var(--gold-primary), transparent)' }}
-                            />
-                        )}
-
-                        {/* Badge */}
-                        <div className="flex items-center gap-2 mb-4">
-                            <span
-                                className="px-3 py-1 rounded-full text-xs font-bold uppercase"
-                                style={{ ...plan.badgeStyle, fontFamily: "'Outfit', sans-serif", letterSpacing: '0.1em' }}
-                            >
-                                {plan.badge}
-                            </span>
-                        </div>
-
-                        {/* Plan Name */}
-                        <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '32px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1, marginBottom: '4px' }}>
-                            {plan.name}
-                        </h3>
-
-                        {/* Price */}
-                        <div className="flex items-end gap-1.5 mb-2 mt-2">
-                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 'clamp(24px, 4vw, 32px)', fontWeight: 500, color: plan.name === 'Free' ? 'var(--market-up)' : 'var(--gold-primary)', lineHeight: 1 }}>
-                                {isYearly ? plan.priceYearly : plan.priceMonthly}
-                            </span>
-                            <span className="text-xs mb-1" style={{ color: 'var(--text-muted)', fontFamily: "'Outfit', sans-serif" }}>
-                                {plan.priceSuffix}{plan.name !== 'Free' ? (isYearly ? '/year' : '/mo') : ''}
-                            </span>
-                        </div>
-
-                        <p className="type-body-sm mb-5" style={{ color: 'var(--text-muted)' }}>{plan.description}</p>
-
-                        {/* Features */}
-                        <ul className="space-y-2.5 mb-6 flex-1">
-                            {plan.features.map((feat, j) => (
-                                <li key={j} className="flex items-start gap-2.5">
-                                    {feat.included ? (
-                                        <CheckCircle2 size={15} className="shrink-0 mt-0.5" style={{ color: 'var(--market-up)' }} />
-                                    ) : (
-                                        <XCircle size={15} className="shrink-0 mt-0.5" style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
-                                    )}
-                                    <span className="type-body-sm" style={{ color: feat.included ? 'var(--text-secondary)' : 'var(--text-muted)', opacity: feat.included ? 1 : 0.5 }}>
-                                        {feat.text}
-                                    </span>
-                                </li>
-                            ))}
-                        </ul>
-
-                        {/* CTA */}
-                        <button
-                            onClick={() => {
-                                if (plan.name === 'Free') {
-                                    isAuthenticated ? onTabChange && onTabChange('dashboard') : onTabChange && onTabChange('register');
-                                } else {
-                                    handlePlanClick(plan.name);
-                                }
-                            }}
-                            disabled={isPlanDisabled(plan.name)}
-                            className={`w-full flex items-center justify-center gap-2 ${isPlanDisabled(plan.name) ? '' : 'btn-primary cursor-pointer'}`}
-                            style={{
-                                padding: '13px 24px', fontSize: '14px',
-                                ...(isPlanDisabled(plan.name) ? {
-                                    background: 'rgba(78,97,122,0.15)',
-                                    border: '1px solid rgba(78,97,122,0.2)',
-                                    color: 'var(--text-muted)',
-                                    borderRadius: '50px',
-                                    fontFamily: "'Outfit', sans-serif",
-                                    fontWeight: 500,
-                                    cursor: 'default',
-                                } : {}),
-                            }}
-                            id={`pricing-cta-${plan.name.toLowerCase()}`}
+                        <div
+                            className="w-11 h-11 rounded-xl flex items-center justify-center"
+                            style={{ background: 'rgba(201,169,110,0.1)', border: '1px solid var(--gold-border)' }}
                         >
-                            {!isPlanDisabled(plan.name) && <Bot size={16} />}
-                            {getPlanCta(plan.name)}
-                            {!isPlanDisabled(plan.name) && <ArrowRight size={14} />}
-                        </button>
+                            <p.icon size={20} style={{ color: 'var(--gold-primary)' }} />
+                        </div>
+                        <h3 className="type-card-title" style={{ color: 'var(--text-primary)' }}>{p.title}</h3>
+                        <p className="type-body-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{p.body}</p>
                     </motion.div>
                 ))}
             </div>
 
-            {/* Payment Methods */}
             <motion.div variants={itemVariants} className="text-center">
-                <p className="type-label mb-4" style={{ color: 'var(--text-muted)' }}>Accepted payment methods at launch</p>
-                <div className="flex items-center justify-center flex-wrap gap-3">
-                    {paymentMethods.map((pm, i) => (
-                        <div
-                            key={i}
-                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
-                            style={{
-                                background: 'var(--bg-surface)',
-                                border: '1px solid rgba(201,169,110,0.1)',
-                            }}
-                        >
-                            <pm.icon size={16} style={{ color: 'var(--gold-muted)' }} />
-                            <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)', fontFamily: "'Outfit', sans-serif" }}>{pm.name}</span>
-                        </div>
-                    ))}
-                </div>
-                <p className="type-caption mt-4" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>
-                    Payments are processed securely via bank transfer through SePay. Subscriptions renew monthly or yearly.
+                {!isAuthenticated && (
+                    <button
+                        onClick={() => onTabChange && onTabChange('register')}
+                        className="btn-primary inline-flex items-center gap-2 group"
+                        style={{ padding: '14px 32px', fontSize: '15px' }}
+                    >
+                        Create a free account
+                        <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                )}
+                <p className="type-caption mt-5 max-w-xl mx-auto leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                    Thông tin trên trang này chỉ mang tính tham khảo, không phải khuyến nghị đầu tư.{' '}
+                    <button
+                        onClick={() => onTabChange && onTabChange('disclaimer')}
+                        className="underline underline-offset-2 cursor-pointer"
+                        style={{ background: 'none', border: 'none', color: 'var(--gold-primary)', font: 'inherit', padding: 0 }}
+                    >
+                        Đọc miễn trừ trách nhiệm →
+                    </button>
                 </p>
             </motion.div>
         </motion.section>
@@ -1500,11 +1176,15 @@ export const QAndASection = () => {
         },
         {
             q: "Is DongAnh Capital really free?",
-            a: "Yes, the core platform is completely free. No credit card required, no hidden fees. Our mission is to democratize financial analytics for the Vietnamese market. We also offer Pro and Premium paid plans with advanced AI features — pricing starts at 199,000 VND/month. The core platform will always remain free."
+            a: "Yes — entirely. There is no paid tier, no trial that converts, and no payment method on file. This is a non-commercial academic research project, not a business, so nothing here is offered for sale."
         },
         {
             q: "How accurate are the AI predictions?",
-            a: "Our AI models provide analytical signals and trend indicators based on historical data and machine learning. They are tools to support your investment decisions, not guarantees of future performance. Always do your own research before making investment decisions."
+            a: "Our models produce statistical scores from historical data. A confidence score expresses how strongly a model ranks a setup — it is not a win rate, not an accuracy figure, and not a forecast of return. Past performance does not guarantee future results, and no model output should be read as a recommendation to buy or sell."
+        },
+        {
+            q: "Is this investment advice?",
+            a: "No. DongAnh Capital is not a securities company and holds no licence from the State Securities Commission (UBCKNN). We provide no investment advisory service, no personalised recommendations, and no portfolio management. Everything on this site is information and analysis for research and education — every investment decision, and its consequences, are yours alone."
         },
         {
             q: "When will the AI Agent be available?",

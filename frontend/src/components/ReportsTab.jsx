@@ -3,15 +3,12 @@ import { useAuth } from '../context/AuthContext';
 import { getSectors } from '../services/stock_api';
 import { SkeletonCard } from './SkeletonLoader';
 import { FileText, Download, Eye, Search } from 'lucide-react';
-import { UpgradeGate } from './AccessGate';
-import { useAccess } from '../hooks/useAccess';
 
 const GOLD = '#C9A96E';
 
-// Reports are Premium-only, mirroring the backend REPORTS_ALLOWED_TIERS default
-// (the beta that included Pro has ended). Enforced via useAccess('premium').
-
-const PLACEHOLDER_ROWS = Array.from({ length: 5 }, (_, i) => ({ id: i, stock_id: '•••' }));
+// Reports were Premium-only. There are no paid tiers any more, so the backend
+// gate is simply "signed in with a verified email" and App.jsx has already
+// applied it before this component renders.
 
 const formatBytes = (b) => {
     if (!b && b !== 0) return '—';
@@ -20,10 +17,7 @@ const formatBytes = (b) => {
 };
 
 const ReportsTab = ({ onTabChange }) => {
-    const { user, authApi, refreshUser } = useAuth();
-    // App.jsx has already established a signed-in, verified session; all this
-    // tab still has to decide is whether the account holds the paid tier.
-    const { hasTier: eligible } = useAccess('premium');
+    const { authApi, refreshUser } = useAuth();
 
     const [reports, setReports] = useState([]);
     const [sectors, setSectors] = useState({});
@@ -63,15 +57,11 @@ const ReportsTab = ({ onTabChange }) => {
     }, [authApi, stock, sector, dateFrom, dateTo, refreshUser]);
 
     useEffect(() => {
-        if (!eligible) {
-            setLoading(false);
-            return;
-        }
         getSectors().then(setSectors).catch(() => setSectors({}));
         fetchReports();
         // Initial load only; subsequent loads are triggered by the Apply button.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [eligible]);
+    }, []);
 
     const openReport = async (report, disposition) => {
         setBusyId(report.id);
@@ -110,58 +100,6 @@ const ReportsTab = ({ onTabChange }) => {
         }
     };
 
-    // ── Not eligible: blurred placeholder + upgrade overlay ───────────────────
-    if (!eligible) {
-        return (
-            <div className="flex-1 w-full flex flex-col p-4 sm:p-6 overflow-auto" style={{ background: '#000' }}>
-                <div className="mb-6">
-                    <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                        Research Reports
-                        <span
-                            className="ml-2 px-2 py-0.5 rounded text-xs font-bold tracking-wider uppercase align-middle"
-                            style={{ background: `${GOLD}18`, color: GOLD, border: `1px solid ${GOLD}30` }}
-                        >
-                            Premium
-                        </span>
-                    </h2>
-                    <p className="text-sm text-gray-500">Hand-prepared PDF research on individual stocks</p>
-                </div>
-                <div className="relative rounded-xl overflow-hidden min-h-[460px]" style={{ border: '1px solid #1f2937' }}>
-                    <div style={{ filter: 'blur(4px)', userSelect: 'none', pointerEvents: 'none' }}>
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr style={{ background: '#0d1117', borderBottom: '1px solid #1f2937' }}>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-400">Title</th>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-400">Stock</th>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-400">Sector</th>
-                                    <th className="px-4 py-3 text-left font-medium text-gray-400">Date</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {PLACEHOLDER_ROWS.map((row) => (
-                                    <tr key={row.id} style={{ borderBottom: '1px solid #111827', background: '#0a0f1a' }}>
-                                        <td className="px-4 py-3"><span className="inline-block w-40 h-4 rounded bg-gray-800" /></td>
-                                        <td className="px-4 py-3 text-gray-600 font-bold">{row.stock_id}</td>
-                                        <td className="px-4 py-3"><span className="inline-block w-24 h-4 rounded bg-gray-800" /></td>
-                                        <td className="px-4 py-3"><span className="inline-block w-20 h-4 rounded bg-gray-800" /></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    <UpgradeGate
-                        onTabChange={onTabChange}
-                        overlay
-                        plan="premium"
-                        title="Premium Research Reports"
-                        description="In-depth PDF research reports on individual stocks, hand-prepared by our analysts. Available exclusively to Premium subscribers."
-                    />
-                </div>
-            </div>
-        );
-    }
-
-    // ── Eligible: filters + report list ───────────────────────────────────────
     const inputStyle = {
         background: '#0d1117',
         border: '1px solid #1f2937',
@@ -174,16 +112,11 @@ const ReportsTab = ({ onTabChange }) => {
         <div className="flex-1 w-full flex flex-col p-4 sm:p-6 overflow-auto" style={{ background: '#000' }}>
             <div className="mb-5">
                 <h2 className="text-xl font-bold text-white" style={{ fontFamily: "'Outfit', sans-serif" }}>
-                    Research Reports
-                    <span
-                        className="ml-2 px-2 py-0.5 rounded text-xs font-bold tracking-wider uppercase align-middle"
-                        style={{ background: `${GOLD}18`, color: GOLD, border: `1px solid ${GOLD}30` }}
-                    >
-                        Premium
-                    </span>
+                    Research Notes
                 </h2>
                 <p className="text-sm text-gray-500 mt-0.5">
-                    Hand-prepared PDF research on individual stocks. For research only — not financial advice.
+                    Hand-prepared PDF notes on individual stocks, published for research and educational purposes.
+                    Không phải khuyến nghị đầu tư — not investment advice.
                 </p>
             </div>
 

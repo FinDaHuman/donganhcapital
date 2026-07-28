@@ -115,26 +115,31 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-# ── Payment Bypass Feature Flag ──
-# When True, all email-verified users get full access (no subscription required).
-# Controlled via env var so it can be toggled on Render without a code change.
-# Set BYPASS_PAYMENT=false to re-enable the subscription payment flow.
-BYPASS_PAYMENT = os.getenv("BYPASS_PAYMENT", "true").strip().lower() in ("true", "1", "yes")
+# ── Feature access ──
+# There are no paid tiers. DongAnh Capital is a non-commercial academic project:
+# it has no registered business entity, so it cannot lawfully sell a
+# subscription, and the payments router is no longer mounted. Access is
+# therefore a single question — is this a signed-in account with a verified
+# email? The subscription_* columns remain on `users` but no longer gate
+# anything; they are retained so the paid flow can be restored if an entity is
+# ever registered.
+#
+# BYPASS_PAYMENT is kept as an always-true constant purely so that any straggling
+# import does not break; it is not read from the environment any more.
+BYPASS_PAYMENT = True
 
-# Daily quota for chatbot + news analysis when payment is bypassed.
+# Daily quota for chatbot + news analysis, shared by every account.
 BYPASS_DAILY_LIMIT = 5
 
 
 def has_feature_access(user: dict) -> bool:
-    """Check if a user can access gated features (signals, reports, chat, etc.).
+    """Can this user reach the gated features (signals, reports, chat)?
 
-    When ``BYPASS_PAYMENT`` is True, any email-verified user is granted access.
-    When False, the user must hold an active Pro or Premium subscription (the
-    original monetisation model).
+    Signed in with a verified email is the whole test. Email verification is
+    what stops a throwaway address from consuming the Gemini and vnstock quotas
+    that the free-tier infrastructure depends on.
     """
-    if BYPASS_PAYMENT:
-        return bool(user.get("email_verified"))
-    return effective_tier(user) in ("pro", "premium")
+    return bool(user.get("email_verified"))
 
 
 # ── Subscription Tier Gating ──

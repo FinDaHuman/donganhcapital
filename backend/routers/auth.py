@@ -309,9 +309,11 @@ async def get_optional_user(request: Request) -> Optional[dict]:
 
 # ── Helper: format user for response ──
 def _format_user(user: dict) -> dict:
-    """Format a user row for API response."""
-    from utils.security import BYPASS_PAYMENT
+    """Format a user row for API response.
 
+    Deliberately an allowlist, not a filtered copy of the row: password and token
+    hashes must never be reachable from here even if a column is added later.
+    """
     return {
         "id": str(user["id"]),
         "email": user["email"],
@@ -319,19 +321,10 @@ def _format_user(user: dict) -> dict:
         "avatar_url": user.get("avatar_url"),
         "auth_provider": user.get("auth_provider", "email"),
         "risk_appetite": user.get("risk_appetite", "moderate"),
-        "subscription_tier": user.get("subscription_tier", "free"),
-        "subscription_period": user.get("subscription_period"),  # "monthly" | "yearly" | None
-        "subscription_expires_at": user["subscription_expires_at"].isoformat() if user.get("subscription_expires_at") else None,
-        # Limited-time free Pro trial: True once the account has claimed it (ever).
-        # Lets the UI hide the offer for users who've already used it.
-        "pro_trial_claimed": bool(user.get("pro_trial_claimed_at")),
-        # Email/password accounts must verify their inbox before claiming the Pro trial.
-        # Google OAuth users are always True (verified by Google on signup).
+        # Email/password accounts must confirm their inbox; Google OAuth accounts
+        # arrive already verified. This is now the only thing that gates access.
         "email_verified": bool(user.get("email_verified")),
         "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
-        # Feature flag: when True the payment flow is bypassed and all email-verified
-        # users have full access. The frontend uses this to hide pricing/upgrade UI.
-        "bypass_payment": BYPASS_PAYMENT,
     }
 
 

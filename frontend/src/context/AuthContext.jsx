@@ -373,18 +373,6 @@ export const AuthProvider = ({ children }) => {
         }
     }, []);
 
-    // ── Claim the free 1-week Pro trial (limited-time offer) ──
-    const claimProTrial = useCallback(async () => {
-        try {
-            const { data } = await authApi.post('/api/payments/claim-trial');
-            await refreshUser(); // sync new tier/expiry/claimed flag from server
-            return { success: true, message: data.message };
-        } catch (err) {
-            const message = extractError(err, 'Could not claim the trial. Please try again.');
-            return { success: false, error: message };
-        }
-    }, [refreshUser]);
-
     // ── Update profile ──
     const updateProfile = useCallback(async (updates) => {
         try {
@@ -412,7 +400,6 @@ export const AuthProvider = ({ children }) => {
         logout,
         updateProfile,
         refreshUser,
-        claimProTrial,
         verifyEmail,
         resendVerification,
         authApi,

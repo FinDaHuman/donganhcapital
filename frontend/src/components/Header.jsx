@@ -19,10 +19,12 @@ const Header = ({ activeTab, onTabChange }) => {
         { id: 'analyst',      label: 'AI Analyst' },
         { id: 'data-analyst', label: 'Data Analyst' },
         { id: 'news',         label: 'News' },
-        { id: 'chatbot',      label: 'AI Chat', badge: user?.bypass_payment ? null : 'PRO' },
-        { id: 'ltr-signals',  label: 'Pro Signals', badge: user?.bypass_payment ? null : 'PRO' },
-        { id: 'bcd-signals',  label: 'BCD Signals', badge: user?.bypass_payment ? null : 'PRO' },
-        { id: 'reports',      label: 'Reports', badge: user?.bypass_payment ? null : 'PREMIUM' },
+        // PRO/PREMIUM badges are gone with the paid tiers — every signed-in,
+        // email-verified account gets everything.
+        { id: 'chatbot',      label: 'AI Chat' },
+        { id: 'ltr-signals',  label: 'LTR Signals' },
+        { id: 'bcd-signals',  label: 'BCD Signals' },
+        { id: 'reports',      label: 'Reports' },
     ];
 
     return (

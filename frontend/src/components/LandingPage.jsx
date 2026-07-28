@@ -8,7 +8,7 @@ import {
     AIAdvantageSection,
     SocialProofSection,
     FutureSection,
-    PricingSection,
+    AccessSection,
     QAndASection,
     AboutUsSection,
     FooterSection,
@@ -679,7 +679,7 @@ const LandingPage = ({ onTabChange }) => {
                     <AIAgentSection onTabChange={onTabChange} />
                     <AIAdvantageSection onTabChange={onTabChange} />
                     <FutureSection />
-                    <PricingSection onTabChange={onTabChange} />
+                    <AccessSection onTabChange={onTabChange} />
                     <QAndASection />
                     <AboutUsSection />
                     <FooterSection onTabChange={onTabChange} />
