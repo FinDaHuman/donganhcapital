@@ -106,7 +106,11 @@ async def list_categories(request: Request):
 
 @router.get("/{url_hash}")
 async def news_detail(url_hash: str, request: Request, _concurrency=Depends(limit_concurrency)):
-    """Full article (incl. raw_text + key metrics). Requires login (any tier)."""
+    """Article excerpt + AI summary and key metrics. Requires login.
+
+    Returns a bounded excerpt, never the full press article body — see
+    db/news_queries.py::EXCERPT_CHARS for why.
+    """
     await get_current_user(request)
 
     if not _HASH_RE.match(url_hash):

@@ -6,12 +6,13 @@ Schema notes (world_macro_news.articles):
   - _id: ObjectId tiebreaker for docs that share the same published_at.
   - summary.summary_vi: Vietnamese bullet-point array (primary display).
   - summary.title_vi: Vietnamese headline.
-  - summary.full_translation_vi: full Vietnamese body (detail endpoint only).
+  - summary.full_translation_vi: full Vietnamese body. Stored, but only ever
+    served as a bounded excerpt.
   - source: attribution string ("Fed", "AP Economy", "World Bank").
   - topic_hint: coarse topic tag — matches summary.macro_topic.
   - region_hint: ISO-2 code(s) or "Global" (display-only; not used as a filter
     because some values are comma-separated multi-country strings).
-  - List responses never carry raw_text or full_translation_vi.
+  - No response carries raw_text or full_translation_vi in full.
 """
 
 import logging
@@ -21,6 +22,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 
 from db.macro_mongo import get_macro_collection
+from db.news_queries import excerpt
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +152,11 @@ def get_macro_news(topic=None, impact=None, cursor=None, limit=MAX_LIMIT):
 
 
 def get_macro_news_detail(url_hash: str):
-    """Return a single macro article with full content, or None."""
+    """Return a single macro article as a bounded excerpt + metadata, or None.
+
+    Deliberately never returns the full body or full translation — see
+    ``db.news_queries.EXCERPT_CHARS``.
+    """
     coll = get_macro_collection()
     if coll is None:
         raise RuntimeError("macro news store unavailable")
@@ -179,9 +185,13 @@ def get_macro_news_detail(url_hash: str):
         "created_at": _iso(doc.get("created_at")),
         "summary": [x for x in (s.get("summary_vi") or []) if isinstance(x, str)],
         "summary_en": [x for x in (s.get("summary_en") or []) if isinstance(x, str)],
-        "full_translation_vi": s.get("full_translation_vi") or "",
         "impact": s.get("impact"),
         "sentiment_score": s.get("sentiment_score"),
         "key_metrics": s.get("key_metrics") or {},
-        "raw_text": doc.get("raw_text") or "",
+        # Excerpt only, of the Vietnamese translation where available. Serving a
+        # full machine translation of a press article is a derivative work
+        # published without licence — see the note in db/news_queries.py.
+        # The full text and translation stay in Mongo and are never served.
+        "excerpt": excerpt(s.get("full_translation_vi") or doc.get("raw_text")),
+        "is_excerpt": True,
     }

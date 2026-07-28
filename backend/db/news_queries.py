@@ -1,10 +1,11 @@
 """Read-only queries for the CafeF news feed (MongoDB).
 
 Design constraints (see PRODUCTION_CONSTRAINTS.md / NEWS_FEATURE_PLAN.md):
-  - List responses NEVER carry the full ``raw_text`` (~3.5 KB avg, up to ~88 KB).
-    Only a bounded ~280-char preview is returned, and only for the rare
-    (~0.1 %) docs whose AI summary is too thin. The slice is computed inside
-    Mongo via ``$substrCP`` so the full body never leaves the database.
+  - NO response ever carries the full ``raw_text`` (~3.5 KB avg, up to ~88 KB).
+    Lists carry a ~280-char preview, and only for the rare (~0.1 %) docs whose
+    AI summary is too thin; that slice is computed inside Mongo via ``$substrCP``
+    so the full body never leaves the database. The detail route carries a
+    bounded excerpt (``EXCERPT_CHARS``) — never the whole article.
   - Sorting / pagination is on ``published_at`` (uniformly a BSON Date on all
     done docs after the 2026-06 DB rework, backed by the ``status_published_at``
     compound index). ``_id`` is used as a tiebreaker because up to ~10 docs can
@@ -156,8 +157,37 @@ def get_news(category=None, ticker=None, impact=None, cursor=None, limit=MAX_LIM
     return {"items": items, "next_cursor": next_cursor}
 
 
+#: Longest article body we will serve. Republishing a press article in full
+#: would make this site a "trang thông tin điện tử tổng hợp" under Nghị định
+#: 147/2024, which requires a licence conditioned on being a Vietnamese
+#: organisation with matching registered business lines, at least three press
+#: sources and a one-hour delay — none of which a personal research project can
+#: satisfy. It would also be a copyright exposure under Luật Sở hữu trí tuệ.
+#: An excerpt plus attribution and a link to the original is the lawful form.
+EXCERPT_CHARS = 600
+
+
+def excerpt(text: str, limit: int = EXCERPT_CHARS) -> str:
+    """Trim to a whole word near ``limit`` and mark the truncation."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    # Prefer a sentence boundary, then a word boundary, so the excerpt does not
+    # end mid-word.
+    for sep in (". ", "! ", "? ", "\n"):
+        idx = cut.rfind(sep)
+        if idx > limit * 0.5:
+            return cut[: idx + 1].rstrip() + " […]"
+    idx = cut.rfind(" ")
+    return (cut[:idx] if idx > 0 else cut).rstrip() + " […]"
+
+
 def get_news_detail(url_hash: str):
-    """Return a single article with full ``raw_text`` + key metrics, or None."""
+    """Return a single article as a bounded excerpt + metadata, or None.
+
+    Deliberately never returns the full body — see ``EXCERPT_CHARS``.
+    """
     coll = get_news_collection()
     if coll is None:
         raise RuntimeError("news store unavailable")
@@ -185,5 +215,7 @@ def get_news_detail(url_hash: str):
         "impact": sj.get("impact"),
         "sector": sj.get("sector"),
         "key_metrics": sj.get("key_metrics") or {},
-        "raw_text": doc.get("raw_text") or "",
+        # Excerpt only. The full text stays in Mongo and is never served.
+        "excerpt": excerpt(doc.get("raw_text")),
+        "is_excerpt": True,
     }

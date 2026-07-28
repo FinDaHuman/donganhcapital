@@ -100,7 +100,11 @@ async def macro_news_detail(
     request: Request,
     _concurrency=Depends(limit_concurrency),
 ):
-    """Full macro article (incl. full_translation_vi + key metrics). Requires login (any tier)."""
+    """Macro article excerpt + AI summary and key metrics. Requires login.
+
+    Returns a bounded excerpt, never the full body or full translation — see
+    db/news_queries.py::EXCERPT_CHARS for why.
+    """
     await get_current_user(request)
 
     if not _HASH_RE.match(url_hash):

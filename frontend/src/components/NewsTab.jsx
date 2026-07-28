@@ -327,7 +327,11 @@ const NewsDetailModal = ({ article, loading, onClose, onSelectStock, onTabChange
     const metrics = article?.key_metrics ? Object.entries(article.key_metrics) : [];
     const displayTitle = isMacro ? (article?.title_vi || article?.title) : article?.title;
     const sourceLink = isMacro ? article?.url : article?.source_url;
-    const bodyText = isMacro ? article?.full_translation_vi : article?.raw_text;
+    // Excerpt only — the API no longer serves full article bodies. Republishing a
+    // press article in full would make this a licensed "trang thông tin điện tử
+    // tổng hợp" under Nghị định 147/2024, and is a copyright exposure besides.
+    const bodyText = article?.excerpt;
+    const sourceName = isMacro ? (article?.source || 'nguồn gốc') : 'CafeF';
 
     return (
         <div
@@ -422,10 +426,22 @@ const NewsDetailModal = ({ article, loading, onClose, onSelectStock, onTabChange
 
                         {/* Body text */}
                         {bodyText && (
-                            <p className="text-[15px] leading-[1.8] whitespace-pre-line mb-6" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>
-                                {bodyText}
-                            </p>
+                            <>
+                                <div className="mb-2"><SectionLabel>Trích đoạn</SectionLabel></div>
+                                <p className="text-[15px] leading-[1.8] whitespace-pre-line mb-3" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>
+                                    {bodyText}
+                                </p>
+                            </>
                         )}
+
+                        {/* Attribution + continue-at-source. Required by Nghị định
+                            147/2024 and by facebook_bot/rule.md §2, which the bot has
+                            always followed and the website never did. */}
+                        <p className="text-[13px] leading-relaxed mb-4" style={{ color: '#4E617A', fontFamily: "'Outfit', sans-serif" }}>
+                            Nguồn: <span style={{ color: '#94A3BC' }}>{sourceName}</span>
+                            {bodyText ? ' — đây là trích đoạn ngắn. Đọc toàn văn tại bài gốc.' : ' — đọc toàn văn tại bài gốc.'}
+                            {' '}Bản quyền nội dung thuộc về đơn vị xuất bản.
+                        </p>
 
                         {/* Source link */}
                         {sourceLink && (
@@ -436,7 +452,7 @@ const NewsDetailModal = ({ article, loading, onClose, onSelectStock, onTabChange
                                 className="inline-flex items-center gap-2 mt-1 px-5 py-2.5 rounded-full text-sm font-medium cursor-pointer"
                                 style={{ background: 'transparent', color: isMacro ? MACRO_BLUE : GOLD, border: `1px solid ${isMacro ? MACRO_BLUE : GOLD}40`, fontFamily: "'Outfit', sans-serif" }}
                             >
-                                {isMacro ? 'Xem bài gốc' : 'Xem bài gốc trên CafeF'} <ExternalLink size={14} />
+                                {isMacro ? 'Đọc toàn văn tại bài gốc' : 'Đọc toàn văn trên CafeF'} <ExternalLink size={14} />
                             </a>
                         )}
                     </div>
@@ -532,7 +548,8 @@ const NewsTab = ({ onSelectStock, onTabChange }) => {
             const res = await authApi.get(endpoint);
             setDetail(res.data);
         } catch {
-            setDetail({ ...item, raw_text: item.preview || '', full_translation_vi: item.preview || '', key_metrics: {} });
+            // Fall back to the list preview, which is already a bounded slice.
+            setDetail({ ...item, excerpt: item.preview || '', is_excerpt: true, key_metrics: {} });
         } finally {
             setDetailLoading(false);
         }
