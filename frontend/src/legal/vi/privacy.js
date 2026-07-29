@@ -18,8 +18,11 @@ export default {
         {
             heading: '1. Bên kiểm soát dữ liệu',
             body: [
-                'Bên kiểm soát dữ liệu cá nhân là cá nhân vận hành DongAnh Capital — một dự án nghiên cứu học thuật ' +
-                'phi thương mại, không phải doanh nghiệp.',
+                'Bên kiểm soát dữ liệu cá nhân là ông Trần Huy Tuấn, người vận hành DongAnh Capital — một dự án ' +
+                'nghiên cứu học thuật phi thương mại do nhóm sinh viên Đại học FPT thực hiện, không phải doanh nghiệp.',
+                'Nhóm thực hiện gồm 5 thành viên (danh sách tại trang Về dự án). Các thành viên có thể truy cập hệ ' +
+                'thống trong quá trình phát triển và vận hành, và đều chịu ràng buộc bởi chính sách này. Chúng tôi ' +
+                'không chia sẻ dữ liệu cá nhân của bạn với bất kỳ bên nào ngoài các bên xử lý nêu tại mục 5.',
                 'Mọi yêu cầu liên quan đến dữ liệu cá nhân xin gửi về: support@donganhcapital.com',
             ],
         },

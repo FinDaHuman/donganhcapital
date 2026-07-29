@@ -9,10 +9,11 @@ export default {
         {
             heading: '1. Bên cung cấp dịch vụ',
             body: [
-                'DongAnh Capital là một dự án nghiên cứu học thuật phi thương mại, do một cá nhân vận hành. Đây không phải ' +
-                'là doanh nghiệp, không có đăng ký kinh doanh và không có mã số thuế, vì nền tảng không kinh doanh và ' +
-                'không cung cấp bất kỳ dịch vụ nào có thu phí.',
-                'Thông tin liên hệ của người vận hành được công bố tại trang Liên hệ.',
+                'DongAnh Capital là một dự án nghiên cứu học thuật phi thương mại, do một nhóm sinh viên Đại học FPT ' +
+                'thực hiện. Đây không phải là doanh nghiệp, không có đăng ký kinh doanh và không có mã số thuế, vì nền ' +
+                'tảng không kinh doanh và không cung cấp bất kỳ dịch vụ nào có thu phí.',
+                'Người vận hành nền tảng và là bên giao kết các điều khoản này với bạn: ông Trần Huy Tuấn. Danh sách ' +
+                'đầy đủ nhóm thực hiện được công bố tại trang Về dự án; thông tin liên hệ tại trang Liên hệ.',
             ],
         },
         {

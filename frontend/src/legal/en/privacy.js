@@ -10,8 +10,11 @@ export default {
         {
             heading: '1. Data controller',
             body: [
-                'The data controller is the individual who operates DongAnh Capital — a non-commercial academic research ' +
-                'project, not a company.',
+                'The data controller is Mr Trần Huy Tuấn, who operates DongAnh Capital — a non-commercial academic ' +
+                'research project built by a team of students at FPT University, not a company.',
+                'The team has five members (listed on the About page). Members may access the systems in the course of ' +
+                'development and operations, and are bound by this policy. We do not share your personal data with ' +
+                'anyone outside the processors listed in section 5.',
                 'Send any personal-data request to: support@donganhcapital.com',
             ],
         },

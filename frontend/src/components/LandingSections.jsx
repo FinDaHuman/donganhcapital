@@ -1317,8 +1317,10 @@ export const AboutUsSection = () => {
                         tell us about the Vietnamese equity market. Everything here is published openly, free of charge, as a
                         research tool — never as advice.
                     </p>
-                    {/* The headcount tile previously asserted a "lean team of 6". There is no
-                        such team; this is a student project run by one person. */}
+                    {/* Headcount is 5 and the names are real — the previous "lean team of
+                        6" was simply wrong. Note the wording: students *at* FPT University,
+                        never a project *by* the university, which would imply an
+                        endorsement that is not ours to claim. */}
                     <div className="card-premium rounded-xl p-5 sm:p-6 mb-8">
                         <div className="flex items-center gap-4">
                             <div className="w-12 sm:w-14 h-12 sm:h-14 rounded-xl flex items-center justify-center shrink-0"
@@ -1326,9 +1328,10 @@ export const AboutUsSection = () => {
                                 <Users size={24} style={{ color: 'var(--gold-primary)' }} />
                             </div>
                             <div>
-                                <p className="type-body-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                                    An independent student research project — not a company, not a fund, and not a licensed
-                                    securities advisory firm. No service is offered for sale.
+                                <span className="type-number-lg" style={{ color: 'var(--gold-primary)' }}>5</span>
+                                <p className="type-body-sm mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                                    Sinh viên Đại học FPT — an independent student research team. Not a company, not a fund,
+                                    and not a licensed securities advisory firm. Nothing here is offered for sale.
                                 </p>
                             </div>
                         </div>

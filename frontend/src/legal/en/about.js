@@ -7,16 +7,32 @@ export default {
         'equity market. This page discloses in full who operates the platform.',
     sections: [
         {
-            heading: '1. Who operates this',
+            heading: '1. The team',
             body: [
-                'The platform is operated by an individual, as a personal research project undertaken during study.',
-                'It is NOT a company. There is no business registration certificate, no tax code and no registered office, ' +
-                'because the platform does not trade and offers no service for a fee.',
+                'DongAnh Capital is a research project by a team of five students currently studying at FPT University:',
+            ],
+            list: [
+                'Đoàn Duy Long — Team Leader',
+                'Trần Huy Tuấn — Member, platform operations',
+                'Nguyễn Nhật Minh — Member',
+                'Đoàn Minh Hiếu — Member',
+                'Hoàng Hiếu Trung — Member',
+            ],
+            note:
+                'This is independent student research. It is NOT an official product of FPT University, and the ' +
+                'university neither sponsors it nor bears responsibility for its content.',
+        },
+        {
+            heading: '2. Legal status',
+            body: [
+                'This is NOT a company. There is no business registration certificate, no tax code and no registered ' +
+                'office, because the platform does not trade and offers no service for a fee.',
+                'The contact and responsible operator of the platform is Mr Trần Huy Tuấn.',
                 'Based in: Hoa Lac Hi-Tech Park, Hanoi, Vietnam.',
             ],
         },
         {
-            heading: '2. What this project is NOT',
+            heading: '3. What this project is NOT',
             list: [
                 'Not a securities company, and not licensed by the State Securities Commission of Vietnam',
                 'Not an investment fund or fund manager — we manage no one’s money',
@@ -26,7 +42,7 @@ export default {
             ],
         },
         {
-            heading: '3. What the platform does',
+            heading: '4. What the platform does',
             body: [
                 'It collects price and volume data for 226 tickers across HOSE, HNX and UPCoM, plus the VN30F1M futures ' +
                 'contract, runs machine-learning models over that data, and publishes the results as statistical scores.',
@@ -37,7 +53,7 @@ export default {
             ],
         },
         {
-            heading: '4. Free and non-commercial',
+            heading: '5. Free and non-commercial',
             body: [
                 'The entire platform is free. There is no paid tier, no advertising, no sale of user data, and no revenue ' +
                 'of any kind.',
@@ -45,7 +61,7 @@ export default {
             ],
         },
         {
-            heading: '5. Contact',
+            heading: '6. Contact',
             body: ['For any question, report or personal-data request, please see the Contact page.'],
             email: 'contact@donganhcapital.com',
         },

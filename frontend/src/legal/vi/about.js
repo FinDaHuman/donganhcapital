@@ -7,16 +7,32 @@ export default {
         'Việt Nam. Trang này công bố đầy đủ thông tin về bên vận hành nền tảng.',
     sections: [
         {
-            heading: '1. Bên vận hành',
+            heading: '1. Nhóm thực hiện',
             body: [
-                'Nền tảng do một cá nhân vận hành, dưới hình thức dự án nghiên cứu cá nhân trong quá trình học tập.',
+                'DongAnh Capital là dự án nghiên cứu của một nhóm gồm 5 sinh viên đang theo học tại Đại học FPT:',
+            ],
+            list: [
+                'Đoàn Duy Long — Trưởng nhóm',
+                'Trần Huy Tuấn — Thành viên, phụ trách vận hành nền tảng',
+                'Nguyễn Nhật Minh — Thành viên',
+                'Đoàn Minh Hiếu — Thành viên',
+                'Hoàng Hiếu Trung — Thành viên',
+            ],
+            note:
+                'Đây là dự án nghiên cứu độc lập do sinh viên thực hiện. Dự án KHÔNG phải là sản phẩm chính thức của ' +
+                'Đại học FPT và không được nhà trường bảo trợ hay chịu trách nhiệm về nội dung.',
+        },
+        {
+            heading: '2. Tư cách pháp lý',
+            body: [
                 'Đây KHÔNG phải là doanh nghiệp. Không có giấy chứng nhận đăng ký kinh doanh, không có mã số thuế và không có ' +
                 'trụ sở đăng ký, bởi vì nền tảng không kinh doanh và không cung cấp bất kỳ dịch vụ nào có thu phí.',
+                'Người đại diện liên hệ và chịu trách nhiệm vận hành nền tảng: ông Trần Huy Tuấn.',
                 'Địa bàn hoạt động: Khu Công nghệ cao Hòa Lạc, Hà Nội, Việt Nam.',
             ],
         },
         {
-            heading: '2. Những gì dự án này KHÔNG phải',
+            heading: '3. Những gì dự án này KHÔNG phải',
             list: [
                 'Không phải công ty chứng khoán và không có giấy phép của Uỷ ban Chứng khoán Nhà nước',
                 'Không phải quỹ đầu tư hay công ty quản lý quỹ — chúng tôi không quản lý tiền của bất kỳ ai',
@@ -26,7 +42,7 @@ export default {
             ],
         },
         {
-            heading: '3. Nền tảng làm gì',
+            heading: '4. Nền tảng làm gì',
             body: [
                 'Nền tảng thu thập dữ liệu giá và khối lượng của 226 mã cổ phiếu trên HOSE, HNX, UPCoM cùng hợp đồng ' +
                 'tương lai VN30F1M, chạy các mô hình học máy trên dữ liệu đó, và công bố kết quả dưới dạng điểm số thống kê.',
@@ -37,7 +53,7 @@ export default {
             ],
         },
         {
-            heading: '4. Miễn phí và phi thương mại',
+            heading: '5. Miễn phí và phi thương mại',
             body: [
                 'Toàn bộ nền tảng miễn phí. Không có gói trả phí, không có quảng cáo, không bán dữ liệu người dùng, và ' +
                 'không có bất kỳ hình thức tạo doanh thu nào.',
@@ -45,7 +61,7 @@ export default {
             ],
         },
         {
-            heading: '5. Liên hệ',
+            heading: '6. Liên hệ',
             body: [
                 'Mọi thắc mắc, phản ánh hoặc yêu cầu liên quan đến dữ liệu cá nhân, vui lòng xem trang Liên hệ.',
             ],

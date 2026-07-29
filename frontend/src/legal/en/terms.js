@@ -9,10 +9,11 @@ export default {
         {
             heading: '1. Who provides this service',
             body: [
-                'DongAnh Capital is a non-commercial academic research project operated by an individual. It is not a ' +
-                'company, has no business registration and no tax code, because it does not trade and offers no service ' +
-                'for a fee.',
-                'The operator’s contact details are published on the Contact page.',
+                'DongAnh Capital is a non-commercial academic research project built by a team of students at FPT ' +
+                'University. It is not a company, has no business registration and no tax code, because it does not ' +
+                'trade and offers no service for a fee.',
+                'The platform is operated by, and these terms are entered into with, Mr Trần Huy Tuấn. The full team is ' +
+                'listed on the About page and contact details are on the Contact page.',
             ],
         },
         {

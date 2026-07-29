@@ -7,19 +7,23 @@
  * Keep it that way: if any of this stops being true, the legal pages, the
  * pricing surface and the tax/registration position all have to change together.
  *
- * TODO(Finn): fill in `operatorName` and `institution` before deploying. The
- * Terms name the operator as the contracting party — a document that names
+ * The Terms name the operator as the contracting party — a document that names
  * nobody is not enforceable, which is the gap this file exists to close.
  */
 export const COMPANY = {
     // Brand shown in the UI.
     tradingName: 'DongAnh Capital',
 
-    // The natural person who operates the site and is the data controller.
-    operatorName: '[TODO: họ và tên đầy đủ của người vận hành]',
+    // The natural person who operates the site. Named in the Terms as the
+    // contracting party and in the Privacy Policy as the data controller — those
+    // roles need one identifiable person, which is why this is a single name and
+    // not the whole team below.
+    operatorName: 'Trần Huy Tuấn',
 
-    // Academic affiliation, if you want to state it. Leave '' to omit the line.
-    institution: '',
+    // Where the team studies. Stated as "students at", never as a project by or
+    // endorsed by the university — see the note on TEAM.
+    institution: 'Đại học FPT (FPT University)',
+    institutionShort: 'Đại học FPT',
 
     // Nature of the project — surfaced verbatim on /about.
     natureVi: 'Dự án nghiên cứu học thuật phi thương mại',
@@ -45,6 +49,21 @@ export const COMPANY = {
     youtube: 'https://www.youtube.com/@DongAnhCapital',
 
     // Governing law for both language versions.
+    // The project team. All five are current students at FPT University.
+    //
+    // Deliberately does NOT claim the project is run, sponsored or endorsed by
+    // FPT University: "a project by students who study there" and "a university
+    // project" are different claims, and only the first one is ours to make.
+    // If this ever becomes an official capstone with the university's backing,
+    // that is a different statement and needs its own wording.
+    team: [
+        { name: 'Đoàn Duy Long', roleVi: 'Trưởng nhóm', roleEn: 'Team Leader' },
+        { name: 'Trần Huy Tuấn', roleVi: 'Thành viên', roleEn: 'Member' },
+        { name: 'Nguyễn Nhật Minh', roleVi: 'Thành viên', roleEn: 'Member' },
+        { name: 'Đoàn Minh Hiếu', roleVi: 'Thành viên', roleEn: 'Member' },
+        { name: 'Hoàng Hiếu Trung', roleVi: 'Thành viên', roleEn: 'Member' },
+    ],
+
     governingLawVi: 'Pháp luật Việt Nam',
     governingLawEn: 'the laws of Vietnam',
     jurisdictionVi: 'Toà án nhân dân có thẩm quyền tại Hà Nội',
