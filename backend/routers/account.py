@@ -282,7 +282,10 @@ async def delete_account(
     # Password re-check for email/password accounts, so a hijacked session alone
     # cannot destroy an account.
     if user.get("auth_provider") == "email" and user.get("hashed_password"):
-        if not body.password or not verify_password(body.password, user["hashed_password"]):
+        # to_thread: bcrypt at cost 12 blocks the event loop for seconds on 0.1 vCPU.
+        if not body.password or not await asyncio.to_thread(
+            verify_password, body.password, user["hashed_password"]
+        ):
             raise HTTPException(status_code=401, detail="Incorrect password.")
 
     try:

@@ -21,6 +21,7 @@ Security:
 """
 
 import re
+import asyncio
 import secrets
 import logging
 import os
@@ -40,6 +41,8 @@ from utils.security import (
     decode_token, hash_token,
     verify_google_token, get_google_oauth_url,
     check_auth_rate_limit,
+    check_identity_rate_limit,
+    check_global_auth_ceiling,
     is_account_locked, get_lockout_until,
     LOCKOUT_THRESHOLD,
     get_client_ip,
@@ -56,6 +59,33 @@ from utils.legal import LEGAL_VERSIONS, hash_ip, hash_email
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+TOO_MANY_REQUESTS = "Too many requests. Please try again later."
+
+
+def _guard_auth_request(request: Request, identity: Optional[str] = None) -> str:
+    """Apply all three rate limits to an auth attempt; return the resolved IP.
+
+    Three keys, because each covers a gap the others leave:
+
+    - the client IP, which is the normal per-user limit;
+    - ``identity`` (the targeted email, when the endpoint takes one), so an
+      attacker spreading requests across spoofed source IPs still gets only a
+      handful of attempts against any single account;
+    - an instance-wide ceiling, which no per-caller key can be rotated to escape.
+
+    Raises 429 on the first limit that trips.
+    """
+    client_ip = get_client_ip(request)
+
+    if not check_auth_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail=TOO_MANY_REQUESTS)
+    if identity and not check_identity_rate_limit(identity):
+        raise HTTPException(status_code=429, detail=TOO_MANY_REQUESTS)
+    if not check_global_auth_ceiling():
+        raise HTTPException(status_code=429, detail=TOO_MANY_REQUESTS)
+
+    return client_ip
 
 
 def _record_consent(conn, *, user_id, email, request, docs, action="accept", channel="web"):
@@ -127,6 +157,13 @@ REFRESH_COOKIE = "dac_refresh_token"
 # response as the real cookies, so it can never drift out of sync with them.
 SESSION_HINT_COOKIE = "dac_session"
 
+# Anti-CSRF nonce for the Google sign-in round trip. Issued by /google/url and
+# checked in /google/callback: without it, an attacker can feed a victim's browser
+# their own authorization code and silently sign the victim into the attacker's
+# account. httpOnly because only the server ever compares it.
+OAUTH_STATE_COOKIE = "dac_oauth_state"
+OAUTH_STATE_MAX_AGE = 600  # 10 min — a consent screen either completes or is abandoned
+
 RESET_TOKEN_EXPIRE_MINUTES = 60
 VERIFY_TOKEN_EXPIRE_HOURS = 24
 
@@ -189,6 +226,12 @@ class LoginRequest(BaseModel):
 
 class GoogleCallbackRequest(BaseModel):
     code: str = Field(..., min_length=10, max_length=2048)
+
+    # Echoed back from the consent redirect and matched against OAUTH_STATE_COOKIE.
+    # Optional at the model level so a frontend deployed before this change keeps
+    # working; the endpoint still rejects a present-but-wrong value. See the
+    # verification block in google_oauth_callback.
+    state: Optional[str] = Field(None, max_length=512)
 
     # Consent carried across the OAuth redirect. The redirect destroys React
     # state, so the client stashes these in sessionStorage before leaving and
@@ -287,6 +330,18 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         samesite=COOKIE_SAMESITE,
         max_age=7 * 24 * 3600,  # 7 days — match REFRESH_COOKIE
         path="/",
+        domain=COOKIE_DOMAIN,
+    )
+
+
+def _clear_oauth_state_cookie(response: Response):
+    """Consume the OAuth state nonce — attributes must match set_cookie exactly."""
+    response.delete_cookie(
+        key=OAUTH_STATE_COOKIE,
+        path="/api/auth",
+        secure=COOKIE_SECURE,
+        httponly=True,
+        samesite=COOKIE_SAMESITE,
         domain=COOKIE_DOMAIN,
     )
 
@@ -406,15 +461,16 @@ async def register(body: RegisterRequest, request: Request, response: Response, 
     as FALSE. A verification link is emailed in the background; the Pro trial
     claim is gated until the user clicks it.
     """
-    client_ip = get_client_ip(request)
-    if not check_auth_rate_limit(client_ip):
-        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    _guard_auth_request(request, body.email)
 
     engine = get_engine()
     if engine is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    hashed_pw = hash_password(body.password)
+    # bcrypt at cost 12 is deliberately expensive — on 0.1 vCPU it can take
+    # seconds, and running it inline would stall the whole event loop (every
+    # other request, including health checks) for that entire time.
+    hashed_pw = await asyncio.to_thread(hash_password, body.password)
 
     # Generate email verification token before the INSERT so we can store its
     # hash atomically with the user row (single round trip, no race window).
@@ -524,9 +580,7 @@ async def register(body: RegisterRequest, request: Request, response: Response, 
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response):
     """Login with email and password."""
-    client_ip = get_client_ip(request)
-    if not check_auth_rate_limit(client_ip):
-        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    _guard_auth_request(request, body.email)
 
     engine = get_engine()
     if engine is None:
@@ -549,7 +603,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
     if not user:
         # Run a throwaway bcrypt verify so a non-existent email costs the same
         # wall-clock time as a real one — prevents email enumeration by timing.
-        verify_password(body.password, DUMMY_PASSWORD_HASH)
+        await asyncio.to_thread(verify_password, body.password, DUMMY_PASSWORD_HASH)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     user = dict(user)
@@ -574,7 +628,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
             detail="This account uses Google Sign-In. Please sign in with Google."
         )
 
-    if not verify_password(body.password, user["hashed_password"]):
+    if not await asyncio.to_thread(verify_password, body.password, user["hashed_password"]):
         # Increment failed attempts
         with engine.begin() as conn:
             new_attempts = user.get("failed_login_attempts", 0) + 1
@@ -764,9 +818,7 @@ async def forgot_password(
     "sign in with Google" notice instead. Email is sent in the background so the
     network call never holds a request slot.
     """
-    client_ip = get_client_ip(request)
-    if not check_auth_rate_limit(client_ip):
-        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    _guard_auth_request(request, body.email)
 
     engine = get_engine()
     if engine is None:
@@ -829,15 +881,19 @@ async def reset_password(
     revokes all existing sessions by clearing the refresh token hash. Also clears
     any account lockout. Does NOT log the user in — they sign in fresh afterwards.
     """
-    client_ip = get_client_ip(request)
-    if not check_auth_rate_limit(client_ip):
-        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    # No identity key: the reset token is the credential and carries no email.
+    _guard_auth_request(request)
 
     engine = get_engine()
     if engine is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     token_hash = hash_token(body.token)
+
+    # Hash the new password before opening the transaction. bcrypt takes seconds
+    # on 0.1 vCPU, and doing it mid-transaction would hold a scarce DB connection
+    # open for that whole time. Cost on an invalid token is the price of that.
+    new_password_hash = await asyncio.to_thread(hash_password, body.password)
 
     with engine.begin() as conn:
         user = conn.execute(
@@ -868,7 +924,7 @@ async def reset_password(
                     updated_at = NOW()
                 WHERE id = :id
             """),
-            {"pw": hash_password(body.password), "id": user["id"]},
+            {"pw": new_password_hash, "id": user["id"]},
         )
 
     # Defensively clear any auth cookies on this device so the old session can't linger.
@@ -890,9 +946,8 @@ async def verify_email(body: VerifyEmailRequest, request: Request, background_ta
     device than where they registered. Idempotent: a second call with the same
     token fails because the token is cleared on first use.
     """
-    client_ip = get_client_ip(request)
-    if not check_auth_rate_limit(client_ip):
-        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    # No identity key: the verification token is the credential.
+    _guard_auth_request(request)
 
     engine = get_engine()
     if engine is None:
@@ -954,9 +1009,9 @@ async def resend_verification(
     (both have nothing to verify). Sends to the user's own email — no email
     parameter is accepted to prevent enumeration and spam abuse.
     """
-    client_ip = get_client_ip(request)
-    if not check_auth_rate_limit(client_ip):
-        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    # Authenticated endpoint, so the identity key is the caller's own address —
+    # it caps how often one account can trigger outbound verification email.
+    _guard_auth_request(request, user.get("email"))
 
     # Google accounts and already-verified accounts need nothing.
     if user.get("email_verified") or user.get("auth_provider") == "google":
@@ -1122,10 +1177,30 @@ async def record_consent(
 # ══════════════════════════════════════
 
 @router.get("/google/url")
-async def google_oauth_url():
-    """Return the Google OAuth consent URL for the frontend to redirect to."""
-    url = get_google_oauth_url()
-    return {"url": url}
+async def google_oauth_url(response: Response):
+    """Return the Google OAuth consent URL for the frontend to redirect to.
+
+    Mints a single-use ``state`` nonce, embeds it in the consent URL, and stores
+    it in an httpOnly cookie. Google echoes the value back on the redirect, and
+    the callback below requires the two to match — which is what prevents an
+    attacker from completing the flow with their own authorization code in a
+    victim's browser (login CSRF).
+    """
+    state = secrets.token_urlsafe(32)
+
+    response.set_cookie(
+        key=OAUTH_STATE_COOKIE,
+        value=state,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        max_age=OAUTH_STATE_MAX_AGE,
+        # Scoped to the auth routes — this cookie has no business on any other path.
+        path="/api/auth",
+        domain=COOKIE_DOMAIN,
+    )
+
+    return {"url": get_google_oauth_url(state)}
 
 
 @router.post("/google/callback")
@@ -1136,9 +1211,29 @@ async def google_oauth_callback(
     background_tasks: BackgroundTasks,
 ):
     """Handle Google OAuth callback — exchange code, find/create user, issue JWT."""
-    client_ip = get_client_ip(request)
-    if not check_auth_rate_limit(client_ip):
-        raise HTTPException(status_code=429, detail="Too many requests")
+    # No identity key: the email only becomes known after Google verifies the code.
+    _guard_auth_request(request)
+
+    # Anti-CSRF: the state echoed by Google must match the nonce we issued.
+    #
+    # Enforced only when the cookie is present. A browser running the previous
+    # frontend build never received one, so it keeps working through the rollout;
+    # once the client change ships, tighten this to require the cookie outright.
+    # A cookie that IS present must match — that is the case an attacker controls.
+    expected_state = request.cookies.get(OAUTH_STATE_COOKIE)
+    if expected_state:
+        if not body.state or not secrets.compare_digest(body.state, expected_state):
+            logger.warning("Google OAuth state mismatch — rejecting callback")
+            raise HTTPException(
+                status_code=400,
+                detail="Sign-in session expired or invalid. Please try signing in again.",
+            )
+
+    # Consume the nonce on the success path. Raising HTTPException below builds a
+    # fresh response and discards anything set here, so on a failed sign-in the
+    # cookie simply lives out its 10-minute TTL — harmless, since it is httpOnly
+    # and only ever compared against a value the same browser echoes back.
+    _clear_oauth_state_cookie(response)
 
     # Verify Google token
     google_user = await verify_google_token(body.code)

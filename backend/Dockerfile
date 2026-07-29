@@ -1,5 +1,7 @@
-# Use official Python runtime as a parent image
-FROM python:3.9-slim
+# Use official Python runtime as a parent image.
+# Must track the version the project targets (3.11) — Render deploys via the root
+# Procfile, so drift here goes unnoticed until someone actually builds this image.
+FROM python:3.11-slim
 
 # Set the working directory in the container
 WORKDIR /code

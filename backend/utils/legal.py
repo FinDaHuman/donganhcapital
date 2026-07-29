@@ -88,11 +88,11 @@ CHAT_DISCLAIMER = (
 def with_notice(payload):
     """Attach :data:`NOTICE` to a dict payload, returning a shallow copy.
 
-    The copy matters: ``get_cached`` in ``main.py`` stores the raw computed value,
-    so mutating in place would leak the notice into the cached object and alias it
-    across requests. Always wrap *outside* the cache call::
+    The copy matters: ``get_cached_async`` in ``main.py`` stores the raw computed
+    value, so mutating in place would leak the notice into the cached object and
+    alias it across requests. Always wrap *outside* the cache call::
 
-        return with_notice(get_cached(key, ttl, compute))
+        return with_notice(await get_cached_async(key, ttl, compute))
 
     Non-dict payloads (the list-returning endpoints) pass through untouched —
     turning a list into a dict would break the frontend contract.

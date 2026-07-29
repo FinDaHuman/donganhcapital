@@ -11,7 +11,8 @@ import os
 import json
 import gc
 import re
-from fastapi import Depends
+from collections import OrderedDict
+from fastapi import Depends, Query
 from typing import Any, Optional
 import time
 
@@ -27,7 +28,10 @@ from db.queries import (
     get_bcd_signals, get_bcd_signals_dates,
     get_bcd_signals_summary, get_bcd_trade_history,
 )
-from utils.security import get_client_ip
+from utils.security import (
+    get_client_ip, request_from_edge, edge_header_present,
+    check_identity_rate_limit, EDGE_SHARED_SECRET,
+)
 from utils.legal import NOTICE_HEADER, with_notice, FRONTEND_URL as _LEGAL_FRONTEND_URL, PUBLIC_API_URL
 from db.analytics import (
     get_market_intelligence_bootstrap,
@@ -52,8 +56,9 @@ MAX_ROWS_PER_TICKER = 60  # Keep only ~60 trading days to save memory
 concurrency_limiter = asyncio.Semaphore(5)
 # Stricter limiter for memory-intensive analytics endpoints (Fix 4)
 analytics_limiter = asyncio.Semaphore(1)
-# Simple in‑memory cache with TTL
-_cache: dict[str, tuple[Any, float]] = {}
+# Simple in‑memory cache with TTL. OrderedDict, not dict, so eviction can drop
+# the least-recently-stored entry when nothing has expired yet — see _cache_put.
+_cache: "OrderedDict[str, tuple[Any, float]]" = OrderedDict()
 ANALYTICS_TTL_SHORT = 300
 ANALYTICS_TTL_LONG = 900
 
@@ -76,21 +81,91 @@ async def limit_analytics_concurrency():
 
 MAX_CACHE_ENTRIES = 25  # Fix 6: cap cache size to prevent memory creep
 
+# /api/predict responses get their own store. A single entry carries the full
+# formatted history (up to 2000 candles as dicts), so a handful of them dwarfs
+# everything else in _cache; sharing one 25-slot budget let ~226 tickers accrue
+# tens of MB on a 512 MB instance. Small store, small cap, evicted independently.
+_predict_cache: "OrderedDict[str, tuple[Any, float]]" = OrderedDict()
+MAX_PREDICT_CACHE_ENTRIES = 8
 
-def get_cached(key: str, ttl: int, compute):
-    """Return cached value if fresh, otherwise compute and store it."""
+# Never evicted: the background poller writes this key and every request handler
+# reads it. Dropping it would silently disable live pricing until the next fetch.
+_PINNED_CACHE_KEYS = frozenset({"live_quotes"})
+
+
+def _cache_put(store, key: str, value: Any, ttl: int, cap: int) -> None:
+    """Store a value with a TTL, enforcing a hard entry cap.
+
+    Expired entries go first; if the store is still full, the oldest surviving
+    entry is dropped. That second step is the point — evicting only expired
+    entries is not a cap at all, because cache keys are built from user-supplied
+    query parameters, so a caller can mint unlimited *fresh* keys and grow the
+    store without bound. Pinned keys are exempt.
+    """
+    now = time.time()
+
+    if len(store) >= cap:
+        for k, (_, expires_at) in list(store.items()):
+            if now > expires_at and k not in _PINNED_CACHE_KEYS:
+                store.pop(k, None)
+
+    while len(store) >= cap:
+        for k in store:
+            if k not in _PINNED_CACHE_KEYS:
+                store.pop(k, None)
+                break
+        else:
+            break  # everything left is pinned; nothing to evict
+
+    store[key] = (value, now + ttl)
+    store.move_to_end(key)
+
+
+# One lock per in-flight cache key. Without this, ``compute`` running in a worker
+# thread lets two concurrent misses on the same cold key both hit the database —
+# a purely synchronous version could never race, because it never yielded.
+# Entries are removed as soon as the last waiter for a key is done, so the dict
+# only ever holds keys currently being computed.
+_cache_locks: dict[str, tuple[asyncio.Lock, int]] = {}
+
+
+async def get_cached_async(key: str, ttl: int, compute):
+    """Return the cached value if fresh, else compute it in a worker thread.
+
+    Cache hits stay on the event loop; only misses pay for a thread hop.
+
+    Every ``compute`` in this module is synchronous pandas/SQLAlchemy work. Run
+    inline in an ``async def`` it would block the single event loop for the whole
+    query — the ``Semaphore(5)`` limiter does not help, because a blocked loop
+    stalls every other request too, health checks included.
+    """
     now = time.time()
     entry = _cache.get(key)
     if entry and now < entry[1]:
         return entry[0]
-    # Evict expired entries when cache grows large (Fix 6)
-    if len(_cache) >= MAX_CACHE_ENTRIES:
-        expired = [k for k, (_, exp) in list(_cache.items()) if now > exp]
-        for k in expired:
-            _cache.pop(k, None)
-    value = compute()
-    _cache[key] = (value, now + ttl)
-    return value
+
+    lock, waiters = _cache_locks.get(key, (None, 0))
+    if lock is None:
+        lock = asyncio.Lock()
+    _cache_locks[key] = (lock, waiters + 1)
+
+    try:
+        async with lock:
+            # Re-check: a request we queued behind may have just populated this key.
+            now = time.time()
+            entry = _cache.get(key)
+            if entry and now < entry[1]:
+                return entry[0]
+
+            value = await asyncio.to_thread(compute)
+            _cache_put(_cache, key, value, ttl, MAX_CACHE_ENTRIES)
+            return value
+    finally:
+        held_lock, waiters = _cache_locks.get(key, (None, 0))
+        if waiters <= 1:
+            _cache_locks.pop(key, None)
+        else:
+            _cache_locks[key] = (held_lock, waiters - 1)
 
 def run_vn30f1m_sync():
     """Fetch and upsert today's VN30F1M 1-minute candles. Raises on failure."""
@@ -312,6 +387,8 @@ def refresh_live_quotes_sync() -> int:
     symbols = symbols[:_MAX_LIVE_QUOTE_SYMBOLS]
     quotes = get_live_quotes(symbols)
     if quotes:
+        # Pinned key (see _PINNED_CACHE_KEYS): stored directly so a full cache
+        # can never evict the live quote map out from under the request handlers.
         _cache[LIVE_QUOTES_CACHE_KEY] = (quotes, time.time() + LIVE_QUOTES_TTL)
     return len(quotes)
 
@@ -710,9 +787,32 @@ def home():
     }
 
 @app.get("/api/health")
-def health():
-    """Simple health check endpoint"""
-    return {"status": "ok", "model_loaded": predictor is not None}
+def health(request: Request):
+    """Simple health check endpoint.
+
+    The ``edge`` block exists to make the Cloudflare rollout verifiable in the
+    right order. Enabling EDGE_SHARED_SECRET while the Transform Rule is missing
+    would bucket every real user under the single Render proxy IP and rate-limit
+    the whole site, so the rule has to be confirmed working first:
+
+      - ``header_present`` — the Transform Rule is firing. True as soon as the
+        rule exists, with or without the secret configured. Check this first.
+      - ``enforcing`` — EDGE_SHARED_SECRET is set, so proxy headers are now
+        trusted only on edge-signed requests. Flip this on once the above is true.
+      - ``verified`` — this request's header actually matched the secret.
+
+    Exposes no secret and not even the header's name — only booleans about the
+    request in hand.
+    """
+    return {
+        "status": "ok",
+        "model_loaded": predictor is not None,
+        "edge": {
+            "header_present": edge_header_present(request),
+            "enforcing": bool(EDGE_SHARED_SECRET),
+            "verified": request_from_edge(request),
+        },
+    }
 
 @app.get("/api/loading-progress")
 def loading_progress():
@@ -726,17 +826,20 @@ async def get_stocks(concurrency: Any = Depends(limit_concurrency)):
     def compute():
         stocks = get_stocks_from_db()
         return {"count": len(stocks), "stocks": stocks}
-    return get_cached("stocks", 120, compute)
+    return await get_cached_async("stocks", 120, compute)
 
 @app.get("/api/market-status")
 async def get_market_status(concurrency: Any = Depends(limit_concurrency)):
     """Return latest snapshot for heatmap (cached 120s)"""
     def compute():
         return get_market_status_from_db()
-    return get_cached("market_status", 120, compute)
+    return await get_cached_async("market_status", 120, compute)
 
 @app.get("/api/vnindex")
-async def get_vnindex_endpoint(limit: Optional[int] = None, concurrency: Any = Depends(limit_concurrency)):
+async def get_vnindex_endpoint(
+    limit: Optional[int] = Query(None, ge=1, le=2000),
+    concurrency: Any = Depends(limit_concurrency),
+):
     """Return VNINDEX data"""
     def compute():
         df = get_vnindex_from_db(limit)
@@ -746,7 +849,7 @@ async def get_vnindex_endpoint(limit: Optional[int] = None, concurrency: Any = D
         # Convert Timestamp to ISO format string
         df['Date'] = df['Date'].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
         return df.to_dict(orient="records")
-    return get_cached(f"vnindex_{limit}", 120, compute)
+    return await get_cached_async(f"vnindex_{limit}", 120, compute)
 
 # These three used to be public and unauthenticated, which meant per-ticker
 # entry / take-profit / stop-loss levels and a probability score were published
@@ -762,9 +865,9 @@ async def get_ai_signals_endpoint(request: Request, date: Optional[str] = None, 
         return get_ai_signals(date, latest)
     # cache for 2 mins
     cache_key = f"ai_signals_{date}_{latest}"
-    # with_notice wraps OUTSIDE get_cached: the cache stores the raw computed
-    # value, so mutating it in place would alias the notice across requests.
-    return with_notice(get_cached(cache_key, 120, compute))
+    # with_notice wraps OUTSIDE get_cached_async: the cache stores the raw
+    # computed value, so mutating it in place would alias the notice across requests.
+    return with_notice(await get_cached_async(cache_key, 120, compute))
 
 @app.get("/api/ai-signals/dates")
 async def get_ai_signals_dates_endpoint(request: Request, concurrency: Any = Depends(limit_concurrency)):
@@ -774,7 +877,7 @@ async def get_ai_signals_dates_endpoint(request: Request, concurrency: Any = Dep
         return get_ai_signals_dates()
     # Returns a list — header-only notice, since turning it into a dict would
     # break the frontend contract.
-    return get_cached("ai_signals_dates", 120, compute)
+    return await get_cached_async("ai_signals_dates", 120, compute)
 
 @app.get("/api/ai-signals/summary")
 async def get_ai_signals_summary_endpoint(request: Request, concurrency: Any = Depends(limit_concurrency)):
@@ -782,7 +885,7 @@ async def get_ai_signals_summary_endpoint(request: Request, concurrency: Any = D
     await _require_verified_account(request)
     def compute():
         return get_daily_signal_summary()
-    return get_cached("ai_signals_summary", 120, compute)
+    return await get_cached_async("ai_signals_summary", 120, compute)
 
 
 async def _require_verified_account(request: Request):
@@ -822,7 +925,7 @@ async def get_ltr_signals_endpoint(
     def compute():
         return get_ltr_signals(date, latest)
 
-    return with_notice(get_cached(cache_key, 120, compute))
+    return with_notice(await get_cached_async(cache_key, 120, compute))
 
 
 @app.get("/api/ltr-signals/dates")
@@ -836,7 +939,7 @@ async def get_ltr_signals_dates_endpoint(
     def compute():
         return get_ltr_signals_dates()
 
-    return get_cached("ltr_signals_dates", 120, compute)
+    return await get_cached_async("ltr_signals_dates", 120, compute)
 
 
 @app.get("/api/bcd-signals")
@@ -857,7 +960,7 @@ async def get_bcd_signals_endpoint(
     def compute():
         return get_bcd_signals(date, latest)
 
-    return with_notice(get_cached(cache_key, 120, compute))
+    return with_notice(await get_cached_async(cache_key, 120, compute))
 
 
 @app.get("/api/bcd-signals/dates")
@@ -871,7 +974,7 @@ async def get_bcd_signals_dates_endpoint(
     def compute():
         return get_bcd_signals_dates()
 
-    return get_cached("bcd_signals_dates", 120, compute)
+    return await get_cached_async("bcd_signals_dates", 120, compute)
 
 
 @app.get("/api/bcd-signals/summary")
@@ -885,7 +988,7 @@ async def get_bcd_signals_summary_endpoint(
     def compute():
         return get_bcd_signals_summary()
 
-    return with_notice(get_cached("bcd_signals_summary", 120, compute))
+    return with_notice(await get_cached_async("bcd_signals_summary", 120, compute))
 
 
 @app.get("/api/bcd-trade-history")
@@ -900,7 +1003,7 @@ async def get_bcd_trade_history_endpoint(
     def compute():
         return get_bcd_trade_history(status)
 
-    return with_notice(get_cached(f"bcd_trade_history_{status}", 120, compute))
+    return with_notice(await get_cached_async(f"bcd_trade_history_{status}", 120, compute))
 
 
 @app.get("/api/trade-history")
@@ -910,7 +1013,7 @@ async def get_trade_history_endpoint(request: Request, status: Optional[str] = N
     def compute():
         return get_trade_history(status)
     cache_key = f"trade_history_{status}"
-    return get_cached(cache_key, 120, compute)
+    return await get_cached_async(cache_key, 120, compute)
 
 @app.get("/api/trade-history/stats")
 async def get_trade_history_stats_endpoint(request: Request, concurrency: Any = Depends(limit_concurrency)):
@@ -918,7 +1021,7 @@ async def get_trade_history_stats_endpoint(request: Request, concurrency: Any = 
     await _require_verified_account(request)
     def compute():
         return get_trade_history_stats()
-    return with_notice(get_cached("trade_history_stats", 120, compute))
+    return with_notice(await get_cached_async("trade_history_stats", 120, compute))
 
 
 @app.get("/api/analytics/overview")
@@ -934,7 +1037,7 @@ async def get_market_intelligence_overview_endpoint(
     await _require_verified_account(request)
     def compute():
         return get_market_intelligence_overview(start_date, end_date, sector, ticker, status)
-    return with_notice(get_cached(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
+    return with_notice(await get_cached_async(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/bootstrap")
@@ -950,7 +1053,7 @@ async def get_market_intelligence_bootstrap_endpoint(
     await _require_verified_account(request)
     def compute():
         return get_market_intelligence_bootstrap(start_date, end_date, sector, ticker, status)
-    return with_notice(get_cached(f"analytics_bootstrap_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
+    return with_notice(await get_cached_async(f"analytics_bootstrap_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/market")
@@ -965,7 +1068,7 @@ async def get_market_intelligence_market_endpoint(
     await _require_verified_account(request)
     def compute():
         return get_market_intelligence_market(start_date, end_date, sector, ticker)
-    return with_notice(get_cached(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", ANALYTICS_TTL_SHORT, compute))
+    return with_notice(await get_cached_async(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/signals")
@@ -981,7 +1084,7 @@ async def get_market_intelligence_signals_endpoint(
     await _require_verified_account(request)
     def compute():
         return get_market_intelligence_signals(start_date, end_date, sector, ticker, probability_bucket)
-    return with_notice(get_cached(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", ANALYTICS_TTL_SHORT, compute))
+    return with_notice(await get_cached_async(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/trades")
@@ -997,7 +1100,7 @@ async def get_market_intelligence_trades_endpoint(
     await _require_verified_account(request)
     def compute():
         return get_market_intelligence_trades(start_date, end_date, sector, ticker, status)
-    return with_notice(get_cached(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
+    return with_notice(await get_cached_async(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/pipeline-health")
@@ -1005,7 +1108,7 @@ async def get_market_intelligence_pipeline_health_endpoint(request: Request, con
     await _require_verified_account(request)
     def compute():
         return get_market_intelligence_pipeline_health()
-    return get_cached("analytics_pipeline_health", ANALYTICS_TTL_LONG, compute)
+    return await get_cached_async("analytics_pipeline_health", ANALYTICS_TTL_LONG, compute)
 
 @app.get("/api/sectors")
 async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):
@@ -1033,7 +1136,7 @@ async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):
             print(f"Error loading sectors: {e}")
             return {}
             
-    return get_cached("sectors", 3600, compute)
+    return await get_cached_async("sectors", 3600, compute)
 
 @app.post("/api/subscribe")
 async def subscribe_email(body: SubscribeRequest, request: Request, background_tasks: BackgroundTasks):
@@ -1047,7 +1150,7 @@ async def subscribe_email(body: SubscribeRequest, request: Request, background_t
       1. Pydantic validation (length, required field)
       2. Regex email format check
       3. Dangerous char rejection (SQL injection / XSS)
-      4. IP-based rate limiting
+      4. IP-based rate limiting, plus a per-address limit that survives IP spoofing
       5. Parameterized SQL in queries module
       6. Opaque response (never reveal if email existed)
       7. Double opt-in, with a 1/hour resend throttle enforced in SQL
@@ -1071,6 +1174,13 @@ async def subscribe_email(body: SubscribeRequest, request: Request, background_t
     if "." not in domain:
         raise HTTPException(status_code=422, detail="Invalid email format.")
 
+    # Layer 4b: per-address limit, applied after format validation so malformed
+    # input cannot fill the store. The IP limit above is only as trustworthy as
+    # the proxy headers behind it; this one is keyed on the address being
+    # subscribed, so rotating source IPs buys no extra attempts against it.
+    if not check_identity_rate_limit(email):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+
     # Layers 5 + 7: parameterized insert that only yields a row when a
     # confirmation is actually due (see insert_subscriber for the conditions).
     import secrets as _secrets
@@ -1092,7 +1202,15 @@ async def subscribe_email(body: SubscribeRequest, request: Request, background_t
 
 
 @app.get("/api/ohlc/{stock_id}")
-async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any = Depends(limit_concurrency)):
+async def get_ohlc(
+    stock_id: str,
+    # Bounded here rather than deeper in: validate_limit() raises ValueError from
+    # inside get_stock_ohlc, which nothing on this path catches, so an
+    # out-of-range value used to surface as a 500. Query() rejects it with a 422
+    # before the handler runs, and keeps the cache-key space finite.
+    limit: Optional[int] = Query(None, ge=1, le=2000),
+    concurrency: Any = Depends(limit_concurrency),
+):
     """Return stock OHLC data"""
     try:
         stock_id = validate_stock_id(stock_id)
@@ -1113,7 +1231,7 @@ async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any 
             "Volume": row['Volume']
         }, axis=1).tolist()
         return formatted
-    return get_cached(f"ohlc_{stock_id}_{limit}", 120, compute)
+    return await get_cached_async(f"ohlc_{stock_id}_{limit}", 120, compute)
 
 @app.get("/api/predict/{stock_id}")
 async def predict_stock(request: Request, stock_id: str, concurrency: Any = Depends(limit_concurrency)):
@@ -1130,7 +1248,7 @@ async def predict_stock(request: Request, stock_id: str, concurrency: Any = Depe
         
         # Fast path for VN30F1M -> No prediction
         if stock_id == "VN30F1M":
-            cached = _cache.get(cache_key)
+            cached = _predict_cache.get(cache_key)
             if cached and time.time() < cached[1]:
                 return cached[0]
 
@@ -1151,14 +1269,14 @@ async def predict_stock(request: Request, stock_id: str, concurrency: Any = Depe
                 "forecast": []
             }
             # Cache for a very short time (20s) because it's realtime
-            _cache[cache_key] = (result, time.time() + 20)
+            _cache_put(_predict_cache, cache_key, result, 20, MAX_PREDICT_CACHE_ENTRIES)
             return result
         
         # 1. Check Model & Data
         if predictor is None:
             raise HTTPException(status_code=503, detail="Prediction model is not loaded.")
 
-        cached = _cache.get(cache_key)
+        cached = _predict_cache.get(cache_key)
         if cached and time.time() < cached[1]:
             return _attach_live_price(cached[0], stock_id)
 
@@ -1228,7 +1346,11 @@ async def predict_stock(request: Request, stock_id: str, concurrency: Any = Depe
             prices_low.append(price_path_low)
             prices_high.append(price_path_high)
 
-            next_date = last_date + pd.Timedelta(days=i+1)
+            # Business days, not calendar days: a Friday prediction was putting
+            # forecast candles on Saturday and Sunday, when the market is shut.
+            # BDay skips weekends only — Vietnamese public holidays still land on
+            # a trading day here, which is acceptable for a reference band.
+            next_date = last_date + pd.tseries.offsets.BDay(i + 1)
             
             forecast_results.append({
                 "Date": next_date.isoformat(),
@@ -1257,7 +1379,7 @@ async def predict_stock(request: Request, stock_id: str, concurrency: Any = Depe
         }
         
         # Cache for 10 minutes
-        _cache[cache_key] = (result, time.time() + 600)
+        _cache_put(_predict_cache, cache_key, result, 600, MAX_PREDICT_CACHE_ENTRIES)
         
         # Free the fetched DataFrame immediately
         del df, history_df, input_prices, input_ret

@@ -138,6 +138,11 @@ export const getPrediction = async (ticker) => {
         return response.data;
     } catch (error) {
         console.error(`Error predicting for ${ticker}:`, error);
+        // Rethrow — there is no cached fallback for predictions, unlike the
+        // endpoints above. Swallowing this returned undefined, so the caller's
+        // catch never fired and the chart's error panel (with Retry) was
+        // unreachable: a failed load silently dumped the user back to search.
+        throw error;
     }
 };
 

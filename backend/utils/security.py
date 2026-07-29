@@ -17,6 +17,7 @@ import secrets
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import urlencode
 
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -35,6 +36,13 @@ if not JWT_SECRET_KEY:
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 60 min > Render free-tier sleep window (15 min)
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+# Shared secret injected by a Cloudflare Transform Rule on api.donganhcapital.com.
+# Its only job is to prove a request actually came through the edge — see
+# get_client_ip below for why that matters. Unset (the default) keeps the old
+# permissive behaviour so the backend can ship before the Cloudflare rule exists.
+EDGE_SHARED_SECRET = os.getenv("EDGE_SHARED_SECRET", "").strip()
+EDGE_SECRET_HEADER = "x-dac-edge"
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
@@ -267,8 +275,9 @@ def get_google_oauth_url(state: Optional[str] = None) -> str:
     if state:
         params["state"] = state
 
-    query = "&".join(f"{k}={v}" for k, v in params.items())
-    return f"https://accounts.google.com/o/oauth2/v2/auth?{query}"
+    # urlencode, not a manual join: the redirect URI and scope contain characters
+    # (":", "/", " ") that must be percent-encoded to survive intact.
+    return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
 
 # ── CSRF Protection ──
@@ -283,6 +292,33 @@ def verify_csrf_token(token: str, stored_token: str) -> bool:
 
 
 # ── Client IP Resolution ──
+def request_from_edge(request) -> bool:
+    """True if this request carries the shared secret injected by Cloudflare.
+
+    Returns False whenever ``EDGE_SHARED_SECRET`` is unset — callers must treat
+    "unconfigured" and "not from the edge" differently; only ``get_client_ip``
+    knows which of the two it is looking at.
+    """
+    if not EDGE_SHARED_SECRET:
+        return False
+    presented = request.headers.get(EDGE_SECRET_HEADER, "")
+    return secrets.compare_digest(presented, EDGE_SHARED_SECRET)
+
+
+def edge_header_present(request) -> bool:
+    """True if the edge header exists at all, regardless of its value.
+
+    Deliberately independent of ``EDGE_SHARED_SECRET``: this is what makes the
+    Cloudflare Transform Rule verifiable *before* enforcement is switched on.
+    ``request_from_edge`` cannot serve that purpose — with no secret configured
+    there is nothing to compare against, so it always returns False and the
+    rollout would have to enable enforcement blind.
+
+    Reveals only that some value arrived, never the header name or the value.
+    """
+    return bool(request.headers.get(EDGE_SECRET_HEADER))
+
+
 def get_client_ip(request) -> str:
     """Resolve the real client IP behind the Cloudflare/Render proxy chain.
 
@@ -290,13 +326,36 @@ def get_client_ip(request) -> str:
     the ``CF-Connecting-IP`` header (``request.client.host`` would otherwise be a
     proxy address, making per-IP rate limiting useless). Falls back to the first
     hop of ``X-Forwarded-For``, then to the direct peer.
+
+    When ``EDGE_SHARED_SECRET`` is set, those headers are trusted only on
+    requests carrying the matching ``X-DAC-Edge`` header. This is a *latent*
+    safeguard and is off by default — measured against production on 2026-07-29,
+    the header-spoofing attack it defends against is not currently reachable:
+
+      - ``donganhcapital.onrender.com`` is itself fronted by Render's Cloudflare,
+        which rejects any client-supplied ``CF-Connecting-IP`` with 403 error 1000;
+      - that same edge sets a genuine ``CF-Connecting-IP``, and since it is checked
+        first, a forged ``X-Forwarded-For`` is never read. Verified empirically:
+        7 requests with 7 distinct forged XFF values were rate-limited at 5,
+        i.e. all of them shared one bucket.
+
+    Enable it only if that stops being true — if the service ever moves off a
+    Cloudflare-fronted origin, direct traffic could set ``X-Forwarded-For``
+    freely and every per-IP limit here would become bypassable. Note that a
+    peer-address check against Cloudflare's ranges could not substitute: Render's
+    load balancer is the direct peer, so ``request.client.host`` is never a
+    Cloudflare address.
     """
-    cf_ip = request.headers.get("cf-connecting-ip")
-    if cf_ip:
-        return cf_ip.strip()
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
+    trust_proxy_headers = not EDGE_SHARED_SECRET or request_from_edge(request)
+
+    if trust_proxy_headers:
+        cf_ip = request.headers.get("cf-connecting-ip")
+        if cf_ip:
+            return cf_ip.strip()
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            return xff.split(",")[0].strip()
+
     return request.client.host if request.client else "unknown"
 
 
@@ -329,6 +388,80 @@ def check_auth_rate_limit(client_ip: str) -> bool:
 
     timestamps.append(now)
     _auth_rate_store[client_ip] = timestamps
+    return True
+
+
+# ── Rate Limiting (identity- and instance-wide) ──
+# check_auth_rate_limit above is keyed on the client IP, which an attacker who
+# reaches the origin directly can rotate freely. These two limits are keyed on
+# things they cannot rotate: the account they are trying to reach, and the
+# instance as a whole. They hold even if the Cloudflare edge rule is removed.
+_identity_rate_store: dict[str, list[float]] = {}
+# Deliberately looser than LOCKOUT_THRESHOLD: failed logins are already capped at
+# 5 by account lockout, so this limit's real work is the endpoints with no
+# lockout (register, forgot-password, resend-verification, subscribe) plus a
+# spoof-proof ceiling everywhere. It counts successful attempts too, so a tight
+# value would lock out someone signing in across several devices.
+IDENTITY_RATE_LIMIT = 10  # max attempts per window, per email address
+IDENTITY_RATE_WINDOW = 900  # 15 minutes
+
+_global_auth_attempts: list[float] = []
+GLOBAL_AUTH_LIMIT = 300  # attempts per window across every caller
+GLOBAL_AUTH_WINDOW = 300  # 5 minutes
+
+
+def check_identity_rate_limit(identity: str) -> bool:
+    """Return True if allowed, False if this email has been targeted too often.
+
+    Keyed on the address rather than the caller, so spreading an attack across
+    thousands of spoofed source IPs does not buy any extra attempts against a
+    given account.
+    """
+    if not identity:
+        return True
+
+    key = identity.strip().lower()
+    now = time.time()
+
+    if len(_identity_rate_store) >= MAX_AUTH_RATE_ENTRIES:
+        stale = [
+            ident for ident, ts_list in _identity_rate_store.items()
+            if not ts_list or ts_list[-1] < now - IDENTITY_RATE_WINDOW
+        ]
+        for ident in stale:
+            _identity_rate_store.pop(ident, None)
+
+    timestamps = [t for t in _identity_rate_store.get(key, []) if now - t < IDENTITY_RATE_WINDOW]
+
+    if len(timestamps) >= IDENTITY_RATE_LIMIT:
+        _identity_rate_store[key] = timestamps
+        return False
+
+    timestamps.append(now)
+    _identity_rate_store[key] = timestamps
+    return True
+
+
+def check_global_auth_ceiling() -> bool:
+    """Return True if allowed, False if the instance-wide auth budget is spent.
+
+    A backstop against distributed spraying: no per-caller key can be rotated to
+    escape it. Sized far above anything this project sees organically, so it
+    should never fire for real users — if it does, that is the signal.
+    """
+    global _global_auth_attempts
+    now = time.time()
+
+    _global_auth_attempts = [t for t in _global_auth_attempts if now - t < GLOBAL_AUTH_WINDOW]
+
+    if len(_global_auth_attempts) >= GLOBAL_AUTH_LIMIT:
+        logger.warning(
+            "Global auth ceiling reached (%d attempts in %ds) — possible distributed attack",
+            len(_global_auth_attempts), GLOBAL_AUTH_WINDOW,
+        )
+        return False
+
+    _global_auth_attempts.append(now)
     return True
 
 

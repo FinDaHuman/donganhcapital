@@ -291,14 +291,20 @@ export const AuthProvider = ({ children }) => {
         }
     }, []);
 
-    const loginWithGoogle = useCallback(async (code, consent = {}) => {
+    const loginWithGoogle = useCallback(async (code, state, consent = {}) => {
         setError(null);
         loginInProgress.current = true;
         try {
             // `consent` is replayed from sessionStorage: the OAuth redirect
             // destroys React state, so the checkbox result has to survive it out
             // of band. It is ignored by the backend for existing accounts.
-            const { data } = await authApi.post('/api/auth/google/callback', { code, ...consent });
+            //
+            // `state` is the anti-CSRF nonce Google echoes back on the redirect.
+            // The backend compares it against an httpOnly cookie it set when it
+            // built the consent URL, which is what stops someone completing this
+            // flow with their own code in your browser. Nothing to store here —
+            // we only forward what came back in the URL.
+            const { data } = await authApi.post('/api/auth/google/callback', { code, state, ...consent });
             setUser(data.user);
             writeCache(data.user);
             return { success: true, user: data.user };

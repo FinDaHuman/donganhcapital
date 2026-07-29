@@ -150,9 +150,17 @@ async def generate(
                 break
             attempt_read = min(PER_ATTEMPT_TIMEOUT, remaining)
             attempt_timeout = httpx.Timeout(attempt_read, connect=min(CONNECT_TIMEOUT, attempt_read))
-            url = f"{GEMINI_API_BASE}/{model}:generateContent?key={key}"
+            # Key goes in a header, never the query string: URLs end up in access
+            # logs, exception messages and error reports, and a leaked key there
+            # is a leaked key everywhere.
+            url = f"{GEMINI_API_BASE}/{model}:generateContent"
             try:
-                resp = await client.post(url, json=payload, timeout=attempt_timeout)
+                resp = await client.post(
+                    url,
+                    json=payload,
+                    headers={"x-goog-api-key": key},
+                    timeout=attempt_timeout,
+                )
             except httpx.HTTPError as e:
                 last_err = e
                 # str(e) is often empty for timeouts — log the type so it's diagnosable.

@@ -133,12 +133,13 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
         if (!canAutoOpen) await copyBrowserLink();
     };
 
-    // Handle Google OAuth callback (URL contains ?code=...)
+    // Handle Google OAuth callback (URL contains ?code=...&state=...)
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
+        const state = urlParams.get('state');
         if (code) {
-            handleGoogleCallback(code);
+            handleGoogleCallback(code, state);
             // Clean up URL
             window.history.replaceState({}, document.title, window.location.pathname);
         }
@@ -183,13 +184,13 @@ const AuthPage = ({ onTabChange, initialMode = 'login' }) => {
         }
     };
 
-    const handleGoogleCallback = async (code) => {
+    const handleGoogleCallback = async (code, state) => {
         setLoading(true);
         setError('');
         // Consumed once — if it is missing (in-app browser, different device,
         // cleared storage) the backend records no consent and the re-consent
         // prompt asks for it on the next gated screen.
-        const result = await loginWithGoogle(code, takePendingConsent());
+        const result = await loginWithGoogle(code, state, takePendingConsent());
         setLoading(false);
         if (result.success) {
             setSuccess('Welcome! Redirecting...');
