@@ -90,6 +90,9 @@ const ChatbotTab = ({ onTabChange }) => {
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState(null);
+    // false only when the backend says the failure is a configuration
+    // problem — retrying that can never succeed, so we stop implying it might.
+    const [retryable, setRetryable] = useState(true);
     const [quota, setQuota] = useState(null); // { used, limit }
 
     const scrollRef = useRef(null);
@@ -131,6 +134,7 @@ const ChatbotTab = ({ onTabChange }) => {
         setInput('');
         setSending(true);
         setError(null);
+        setRetryable(true);
 
         // First chat can include Render cold start. Do not retry POSTs here:
         // chat sends consume quota and call Gemini, so duplicate requests are costly.
@@ -170,7 +174,13 @@ const ChatbotTab = ({ onTabChange }) => {
                     ? 'Server có thể vẫn đang khởi động. Vui lòng thử lại sau giây lát.'
                     : 'Server phản hồi quá lâu. Vui lòng thử lại.');
             } else {
-                setError('Trợ lý đang bận, vui lòng thử lại sau giây lát.');
+                // The backend distinguishes a busy/throttled model from a broken
+                // configuration. Surfacing that matters: telling someone to retry
+                // a request that can never succeed is how a dead API key stayed
+                // invisible in production for days.
+                const d = err.response?.data?.detail;
+                setError((d && d.message) || 'Trợ lý đang bận, vui lòng thử lại sau giây lát.');
+                setRetryable(d?.retryable !== false);
             }
         } finally {
             setSending(false);
@@ -180,6 +190,7 @@ const ChatbotTab = ({ onTabChange }) => {
     const clearChat = useCallback(() => {
         setMessages([]);
         setError(null);
+        setRetryable(true);
     }, []);
 
     const onKeyDown = (e) => {
@@ -291,7 +302,14 @@ const ChatbotTab = ({ onTabChange }) => {
                                 className="flex justify-center"
                                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                             >
-                                <p className="chat-error">{error}</p>
+                                <p className="chat-error" style={!retryable ? { opacity: 0.95 } : undefined}>
+                                    {error}
+                                    {!retryable && (
+                                        <span style={{ display: 'block', marginTop: 4, opacity: 0.75, fontSize: '0.9em' }}>
+                                            Thử lại sẽ không khắc phục được sự cố này.
+                                        </span>
+                                    )}
+                                </p>
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -314,7 +332,10 @@ const ChatbotTab = ({ onTabChange }) => {
                     />
                     <button
                         onClick={() => send()}
-                        disabled={sending || !input.trim()}
+                        // Blocked outright when the backend reported a configuration
+                        // failure: every further send would burn a Gemini call and
+                        // fail identically.
+                        disabled={sending || !input.trim() || !retryable}
                         aria-label="Gửi"
                         className="chat-send-btn"
                     >

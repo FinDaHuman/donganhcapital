@@ -275,7 +275,11 @@ const AnalysisSection = ({ article, onClose, onTabChange }) => {
                 setError('Phiên đăng ký đã thay đổi. Đang cập nhật…');
                 await refreshUser();
             } else {
-                setError('Trợ lý đang bận, vui lòng thử lại sau giây lát.');
+                // Same distinction as the chat tab: a busy model resolves itself,
+                // a broken configuration does not, and saying "try again" for the
+                // latter is what let a dead API key go unnoticed in production.
+                const d = err.response?.data?.detail;
+                setError((d && d.message) || 'Trợ lý đang bận, vui lòng thử lại sau giây lát.');
             }
         } finally {
             setAnalyzing(false);

@@ -144,6 +144,45 @@ _ADVICE_RE = re.compile(
     re.IGNORECASE,
 )
 
+def _llm_http_error(err: LLMError, where: str) -> HTTPException:
+    """Map an LLM failure to a 503 that tells the truth about what went wrong.
+
+    Both cases are 503 — the feature really is unavailable either way — but the
+    message and the log severity differ, because the user's options differ. A
+    throttled model resolves itself; a rejected API key does not, and telling
+    someone to "try again shortly" is both useless to them and the reason a dead
+    key can sit unnoticed in production. The ``code`` lets the UI stop offering
+    a retry that cannot work.
+    """
+    if err.is_config_error:
+        # CRITICAL, not error: this needs a human to change a deployment secret.
+        logger.critical(
+            "%s unavailable — LLM CONFIGURATION FAILURE (fix CHAT_GEMINI_API_KEY): %s",
+            where, err,
+        )
+        return HTTPException(
+            status_code=503,
+            detail={
+                "code": "llm_unavailable",
+                "message": (
+                    "Tính năng AI hiện không khả dụng do sự cố cấu hình. "
+                    "Chúng tôi đã được thông báo và đang khắc phục — vui lòng quay lại sau."
+                ),
+                "retryable": False,
+            },
+        )
+
+    logger.error("%s LLM error: %s", where, err)
+    return HTTPException(
+        status_code=503,
+        detail={
+            "code": "llm_busy",
+            "message": "Trợ lý đang bận, vui lòng thử lại sau giây lát.",
+            "retryable": True,
+        },
+    )
+
+
 #: Returned verbatim when the classifier fires. States what we cannot do, then
 #: what we can, so the refusal is still useful.
 ADVICE_REFUSAL = (
@@ -477,8 +516,7 @@ async def chat_message(body: ChatRequest, request: Request, _c=Depends(limit_cha
         reply = await generate(system, msgs, temperature=0.5, max_output_tokens=2048)
     except LLMError as e:
         await asyncio.to_thread(_refund_quota_sync, user_id)
-        logger.error(f"chat LLM error: {e}")
-        raise HTTPException(status_code=503, detail="Trợ lý đang bận, vui lòng thử lại sau giây lát.")
+        raise _llm_http_error(e, "chat")
 
     # Disclaimer appended here, not requested from the model — a prompt
     # instruction is not a control.
@@ -533,8 +571,7 @@ async def analyze_news(body: AnalyzeRequest, request: Request, _c=Depends(limit_
         )
     except LLMError as e:
         await asyncio.to_thread(_refund_quota_sync, user_id)
-        logger.error(f"analyze-news LLM error: {e}")
-        raise HTTPException(status_code=503, detail="Trợ lý đang bận, vui lòng thử lại sau giây lát.")
+        raise _llm_http_error(e, "analyze-news")
 
     return {"analysis": _finalize(analysis), "article_id": body.url_hash, "quota": quota}
 
