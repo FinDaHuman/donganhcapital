@@ -48,7 +48,30 @@ def _models() -> list[str]:
 
 
 class LLMError(Exception):
-    """Raised when the LLM is unconfigured or all fallback models fail."""
+    """Raised when the LLM is unconfigured or all fallback models fail.
+
+    ``kind`` distinguishes failures the user can do something about from ones
+    they cannot:
+
+      ``"transient"``  — throttling, timeouts, a model having a bad minute.
+                         Retrying genuinely might work.
+      ``"config"``     — the API key is missing, rejected (401) or forbidden
+                         (403). No amount of retrying will help; a human has to
+                         fix the deployment.
+
+    This distinction exists because it was collapsed once already, with real
+    consequences: a dead Gemini key returned 401 on every call, the UI told
+    everyone "the assistant is busy, try again shortly", and the chat stayed
+    broken in production unnoticed because that message looks like normal load.
+    """
+
+    def __init__(self, message: str, kind: str = "transient"):
+        super().__init__(message)
+        self.kind = kind
+
+    @property
+    def is_config_error(self) -> bool:
+        return self.kind == "config"
 
 
 def is_configured() -> bool:
@@ -82,7 +105,7 @@ async def generate(
     """
     key = os.getenv("CHAT_GEMINI_API_KEY")
     if not key:
-        raise LLMError("CHAT_GEMINI_API_KEY not configured")
+        raise LLMError("CHAT_GEMINI_API_KEY not configured", kind="config")
 
     contents = []
     for m in messages:
@@ -114,6 +137,9 @@ async def generate(
         payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
 
     last_err = None
+    # Sticky across the model cascade: a rejected credential fails identically for
+    # every model, so one 401 anywhere means the key is the problem.
+    auth_failed = False
     deadline = time.monotonic() + OVERALL_DEADLINE
     async with httpx.AsyncClient() as client:
         for model in _models():
@@ -148,6 +174,18 @@ async def generate(
 
             # 429 (quota) or 5xx (server) or 4xx (bad model) → advance to next model.
             last_err = RuntimeError(f"{model} HTTP {resp.status_code}")
-            logger.warning(f"Gemini {model} HTTP {resp.status_code}: {resp.text[:200]}")
+            # 401/403 is the credential itself being rejected, which is identical
+            # for every model in the cascade — worth its own loud log line, since
+            # it means the deployment is broken rather than merely busy.
+            if resp.status_code in (401, 403):
+                auth_failed = True
+                logger.error(
+                    "Gemini %s HTTP %s — API KEY REJECTED (check CHAT_GEMINI_API_KEY): %s",
+                    model, resp.status_code, resp.text[:200],
+                )
+            else:
+                logger.warning(f"Gemini {model} HTTP {resp.status_code}: {resp.text[:200]}")
 
-    raise LLMError(f"all Gemini models failed: {last_err}")
+    if auth_failed:
+        raise LLMError(f"Gemini rejected the API key: {last_err}", kind="config")
+    raise LLMError(f"all Gemini models failed: {last_err}", kind="transient")

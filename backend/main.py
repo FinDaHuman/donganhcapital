@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
@@ -28,6 +28,7 @@ from db.queries import (
     get_bcd_signals_summary, get_bcd_trade_history,
 )
 from utils.security import get_client_ip
+from utils.legal import NOTICE_HEADER, with_notice, FRONTEND_URL as _LEGAL_FRONTEND_URL, PUBLIC_API_URL
 from db.analytics import (
     get_market_intelligence_bootstrap,
     get_market_intelligence_overview,
@@ -374,9 +375,21 @@ def downgrade_expired_subscriptions_sync():
 
 
 async def subscription_expiry_checker():
-    """Run every 6 hours to downgrade expired subscriptions."""
+    """Run every 6 hours: downgrade expired subscriptions and action any
+    deletion requests whose grace period has elapsed.
+
+    The deletion sweep piggybacks on this loop deliberately — a fifth asyncio
+    task is not free on a 512 MB box, and neither job is time-critical to the
+    hour.
+    """
+    from routers.account import sweep_pending_deletions_sync
+
     while True:
         await asyncio.to_thread(downgrade_expired_subscriptions_sync)
+        try:
+            await asyncio.to_thread(sweep_pending_deletions_sync)
+        except Exception as e:
+            print(f"Deletion sweep warning: {e}")
         await asyncio.sleep(6 * 3600)
 
 
@@ -481,7 +494,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"User migration warning: {e}")
 
-    # Auto-migrate payments table
+    # Consent records + data-subject-rights columns (Luật 91/2025).
+    try:
+        from db.models_consent import run_consent_migration
+        run_consent_migration()
+    except Exception as e:
+        print(f"Consent migration warning: {e}")
+
+    # Auto-migrate payments table. Kept running even though nothing is sold any
+    # more: historical rows must stay readable and schema-consistent, and the
+    # migration is idempotent. See the note on the payments router below.
     try:
         from db.models_payment import run_payment_migration
         run_payment_migration()
@@ -542,15 +564,52 @@ app.add_middleware(
     allow_credentials=_allow_credentials,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    # Expose the legal headers so browser clients can actually read them; without
+    # this, CORS hides any non-safelisted response header from JavaScript.
+    expose_headers=["X-DAC-Disclaimer", "X-DAC-Legal"],
 )
+
+
+@app.middleware("http")
+async def add_legal_headers(request: Request, call_next):
+    """Stamp the "not investment advice" notice on every API response.
+
+    A header rather than a body rewrite: rewriting bodies would mean buffering
+    and re-serialising every response on a 512 MB / 0.1 vCPU box, and would
+    corrupt the endpoints that legitimately return a bare JSON list. Two dict
+    writes per request, body never touched.
+
+    Registered after CORSMiddleware so that it runs inside it.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        # NOTICE_HEADER is deliberately ASCII — HTTP headers are latin-1, and the
+        # Vietnamese text would raise UnicodeEncodeError on every response.
+        response.headers["X-DAC-Disclaimer"] = NOTICE_HEADER
+        response.headers["X-DAC-Legal"] = f"{_LEGAL_FRONTEND_URL}/disclaimer"
+    return response
+
 
 # --- Auth Router ---
 from routers.auth import router as auth_router
 app.include_router(auth_router)
 
-# --- Payments Router ---
-from routers.payments import router as payments_router
-app.include_router(payments_router)
+# --- Account Router (data-subject rights: export, deactivate, delete) ---
+from routers.account import router as account_router
+app.include_router(account_router)
+
+# --- Legal Router (public: unsubscribe, subscribe confirmation, doc versions) ---
+from routers.legal import router as legal_router
+app.include_router(legal_router)
+
+# --- Payments Router: DELIBERATELY NOT MOUNTED ---
+# routers/payments.py, utils/sepay.py and utils/trial.py remain in the tree but
+# are not registered, so /api/payments/* does not exist. DongAnh Capital is a
+# non-commercial academic project with no đăng ký kinh doanh and no mã số thuế;
+# taking payment would require both, plus e-invoicing under Nghị định 70/2025,
+# and would recast the service as a paid securities service. Re-mounting this
+# router is a business decision, not a code change — do not restore it without
+# an entity behind it.
 
 # --- News Router (MongoDB-backed, login-gated) ---
 from routers.news import router as news_router
@@ -570,7 +629,13 @@ app.include_router(reports_router)
 
 # --- Email Subscription Security ---
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
-DANGEROUS_CHARS = re.compile(r"[<>'\"`;\-\-]")  # SQL injection / XSS chars
+# Was [<>'"`;\-\-] — inside a character class the trailing \-\- is just a literal
+# hyphen, so this silently rejected every address containing one
+# (nguyen-van-a@gmail.com, anything @some-domain.com). The intent was to block the
+# SQL comment sequence "--", which needs to be matched outside the class.
+# Injection itself is already prevented by parameterised SQL; this is defence in
+# depth, not the control.
+DANGEROUS_CHARS = re.compile(r"[<>'\"`;]|--")
 
 
 class SubscribeRequest(BaseModel):
@@ -662,68 +727,59 @@ async def get_vnindex_endpoint(limit: Optional[int] = None, concurrency: Any = D
         return df.to_dict(orient="records")
     return get_cached(f"vnindex_{limit}", 120, compute)
 
+# These three used to be public and unauthenticated, which meant per-ticker
+# entry / take-profit / stop-loss levels and a probability score were published
+# to the open internet and to search-engine crawlers. That is the exact conduct
+# UBCKNN penalised in April 2026 (Điều 12.4 Luật Chứng khoán). They now require a
+# signed-in, verified account, which aligns the API with the UI — GATED_TABS
+# already hid these views while the API served them to anyone.
 @app.get("/api/ai-signals")
-async def get_ai_signals_endpoint(date: Optional[str] = None, latest: bool = False, concurrency: Any = Depends(limit_concurrency)):
+async def get_ai_signals_endpoint(request: Request, date: Optional[str] = None, latest: bool = False, concurrency: Any = Depends(limit_concurrency)):
     """Return AI signals for a specific date or latest"""
+    await _require_verified_account(request)
     def compute():
         return get_ai_signals(date, latest)
     # cache for 2 mins
     cache_key = f"ai_signals_{date}_{latest}"
-    return get_cached(cache_key, 120, compute)
+    # with_notice wraps OUTSIDE get_cached: the cache stores the raw computed
+    # value, so mutating it in place would alias the notice across requests.
+    return with_notice(get_cached(cache_key, 120, compute))
 
 @app.get("/api/ai-signals/dates")
-async def get_ai_signals_dates_endpoint(concurrency: Any = Depends(limit_concurrency)):
+async def get_ai_signals_dates_endpoint(request: Request, concurrency: Any = Depends(limit_concurrency)):
     """Return list of dates that have AI signals"""
+    await _require_verified_account(request)
     def compute():
         return get_ai_signals_dates()
+    # Returns a list — header-only notice, since turning it into a dict would
+    # break the frontend contract.
     return get_cached("ai_signals_dates", 120, compute)
 
 @app.get("/api/ai-signals/summary")
-async def get_ai_signals_summary_endpoint(concurrency: Any = Depends(limit_concurrency)):
+async def get_ai_signals_summary_endpoint(request: Request, concurrency: Any = Depends(limit_concurrency)):
     """Return daily signal count summary"""
+    await _require_verified_account(request)
     def compute():
         return get_daily_signal_summary()
     return get_cached("ai_signals_summary", 120, compute)
 
 
-async def _require_pro(request: Request):
-    """Raise 401 if unauthenticated, 403 unless the user has feature access.
+async def _require_verified_account(request: Request):
+    """Raise 401 if unauthenticated, 403 unless the email is verified.
 
-    When ``BYPASS_PAYMENT`` is True, email-verified users are granted access.
-    When False, the original Pro/Premium tier gate applies (with inline expiry
-    to close the ~6h background-task gap).
+    This is the single access rule for the whole API: a signed-in account with a
+    verified email. It gates every endpoint that returns model output.
     """
     from routers.auth import get_current_user as _get_current_user
-    from utils.security import BYPASS_PAYMENT, has_feature_access
+    from utils.security import has_feature_access
 
     user = await _get_current_user(request)  # raises 401 if unauthenticated
 
-    if BYPASS_PAYMENT:
-        if not has_feature_access(user):
-            raise HTTPException(
-                status_code=403,
-                detail="Vui lòng xác thực email để truy cập tính năng này",
-            )
-        return user
-
-    # Original tier-based gating (when payment flow is active)
-    from datetime import timezone as _tz
-
-    tier = user.get("subscription_tier", "free")
-    expires_at = user.get("subscription_expires_at")
-    if tier != "free" and expires_at is not None:
-        try:
-            now_utc = datetime.now(_tz.utc)
-            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=_tz.utc)
-            if exp < now_utc:
-                tier = "free"
-        except Exception:
-            pass
-
-    if tier not in ("pro", "premium"):
-        raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
+    if not has_feature_access(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Vui lòng xác thực email để truy cập tính năng này",
+        )
     return user
 
 
@@ -735,7 +791,7 @@ async def get_ltr_signals_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated LTR ranked signals. Requires Pro or Premium subscription."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     if date and not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
@@ -745,7 +801,7 @@ async def get_ltr_signals_endpoint(
     def compute():
         return get_ltr_signals(date, latest)
 
-    return get_cached(cache_key, 120, compute)
+    return with_notice(get_cached(cache_key, 120, compute))
 
 
 @app.get("/api/ltr-signals/dates")
@@ -754,7 +810,7 @@ async def get_ltr_signals_dates_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated list of dates that have LTR signals."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     def compute():
         return get_ltr_signals_dates()
@@ -770,7 +826,7 @@ async def get_bcd_signals_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated BCD breakdown-recovery signals. Requires Pro or Premium subscription."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     if date and not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
@@ -780,7 +836,7 @@ async def get_bcd_signals_endpoint(
     def compute():
         return get_bcd_signals(date, latest)
 
-    return get_cached(cache_key, 120, compute)
+    return with_notice(get_cached(cache_key, 120, compute))
 
 
 @app.get("/api/bcd-signals/dates")
@@ -789,7 +845,7 @@ async def get_bcd_signals_dates_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated list of dates that have BCD signals."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     def compute():
         return get_bcd_signals_dates()
@@ -803,12 +859,12 @@ async def get_bcd_signals_summary_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated per-date BCD event counts (event days only)."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     def compute():
         return get_bcd_signals_summary()
 
-    return get_cached("bcd_signals_summary", 120, compute)
+    return with_notice(get_cached("bcd_signals_summary", 120, compute))
 
 
 @app.get("/api/bcd-trade-history")
@@ -818,32 +874,35 @@ async def get_bcd_trade_history_endpoint(
     concurrency: Any = Depends(limit_concurrency),
 ):
     """Pro-gated BCD trade history, optionally filtered by status (TP, SL, TIMEOUT, HOLD)."""
-    await _require_pro(request)
+    await _require_verified_account(request)
 
     def compute():
         return get_bcd_trade_history(status)
 
-    return get_cached(f"bcd_trade_history_{status}", 120, compute)
+    return with_notice(get_cached(f"bcd_trade_history_{status}", 120, compute))
 
 
 @app.get("/api/trade-history")
-async def get_trade_history_endpoint(status: Optional[str] = None, concurrency: Any = Depends(limit_concurrency)):
+async def get_trade_history_endpoint(request: Request, status: Optional[str] = None, concurrency: Any = Depends(limit_concurrency)):
     """Return trade history records, optionally filtered by status (TP, SL, TIMEOUT, HOLD)"""
+    await _require_verified_account(request)
     def compute():
         return get_trade_history(status)
     cache_key = f"trade_history_{status}"
     return get_cached(cache_key, 120, compute)
 
 @app.get("/api/trade-history/stats")
-async def get_trade_history_stats_endpoint(concurrency: Any = Depends(limit_concurrency)):
+async def get_trade_history_stats_endpoint(request: Request, concurrency: Any = Depends(limit_concurrency)):
     """Return portfolio stats from trade history"""
+    await _require_verified_account(request)
     def compute():
         return get_trade_history_stats()
-    return get_cached("trade_history_stats", 120, compute)
+    return with_notice(get_cached("trade_history_stats", 120, compute))
 
 
 @app.get("/api/analytics/overview")
 async def get_market_intelligence_overview_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
@@ -851,13 +910,15 @@ async def get_market_intelligence_overview_endpoint(
     status: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_overview(start_date, end_date, sector, ticker, status)
-    return get_cached(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/bootstrap")
 async def get_market_intelligence_bootstrap_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
@@ -865,26 +926,30 @@ async def get_market_intelligence_bootstrap_endpoint(
     status: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_bootstrap(start_date, end_date, sector, ticker, status)
-    return get_cached(f"analytics_bootstrap_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_bootstrap_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/market")
 async def get_market_intelligence_market_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
     ticker: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_market(start_date, end_date, sector, ticker)
-    return get_cached(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/signals")
 async def get_market_intelligence_signals_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
@@ -892,13 +957,15 @@ async def get_market_intelligence_signals_endpoint(
     probability_bucket: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_signals(start_date, end_date, sector, ticker, probability_bucket)
-    return get_cached(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/trades")
 async def get_market_intelligence_trades_endpoint(
+    request: Request,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     sector: Optional[str] = None,
@@ -906,13 +973,15 @@ async def get_market_intelligence_trades_endpoint(
     status: Optional[str] = None,
     concurrency: Any = Depends(limit_analytics_concurrency),
 ):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_trades(start_date, end_date, sector, ticker, status)
-    return get_cached(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute)
+    return with_notice(get_cached(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
 
 
 @app.get("/api/analytics/pipeline-health")
-async def get_market_intelligence_pipeline_health_endpoint(concurrency: Any = Depends(limit_analytics_concurrency)):
+async def get_market_intelligence_pipeline_health_endpoint(request: Request, concurrency: Any = Depends(limit_analytics_concurrency)):
+    await _require_verified_account(request)
     def compute():
         return get_market_intelligence_pipeline_health()
     return get_cached("analytics_pipeline_health", ANALYTICS_TTL_LONG, compute)
@@ -946,9 +1015,13 @@ async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):
     return get_cached("sectors", 3600, compute)
 
 @app.post("/api/subscribe")
-async def subscribe_email(body: SubscribeRequest, request: Request):
+async def subscribe_email(body: SubscribeRequest, request: Request, background_tasks: BackgroundTasks):
     """Subscribe an email for product launch notifications.
-    
+
+    Double opt-in: nothing is mailed to the address until it confirms. This
+    endpoint is unauthenticated, so without confirmation anyone could sign anyone
+    else up for a list they had no way to leave.
+
     Security layers:
       1. Pydantic validation (length, required field)
       2. Regex email format check
@@ -956,6 +1029,7 @@ async def subscribe_email(body: SubscribeRequest, request: Request):
       4. IP-based rate limiting
       5. Parameterized SQL in queries module
       6. Opaque response (never reveal if email existed)
+      7. Double opt-in, with a 1/hour resend throttle enforced in SQL
     """
     # Layer 4: Rate limiting
     client_ip = get_client_ip(request)
@@ -976,11 +1050,24 @@ async def subscribe_email(body: SubscribeRequest, request: Request):
     if "." not in domain:
         raise HTTPException(status_code=422, detail="Invalid email format.")
 
-    # Layer 5: Parameterized insert (in db/queries.py)
-    insert_subscriber(email)
+    # Layers 5 + 7: parameterized insert that only yields a row when a
+    # confirmation is actually due (see insert_subscriber for the conditions).
+    import secrets as _secrets
+    import hashlib as _hashlib
+    from utils.legal import hash_ip as _hash_ip
 
-    # Layer 6: Opaque response — always succeed
-    return {"status": "ok", "message": "You're on the list! We'll notify you at launch."}
+    raw_token = _secrets.token_urlsafe(32)
+    token_hash = _hashlib.sha256(raw_token.encode()).hexdigest()
+
+    should_send = insert_subscriber(email, token_hash, _hash_ip(client_ip))
+    if should_send:
+        from utils.mailer import send_subscribe_confirm_email
+        confirm_url = f"{PUBLIC_API_URL}/api/subscribe/confirm?token={raw_token}"
+        background_tasks.add_task(send_subscribe_confirm_email, email, confirm_url)
+
+    # Layer 6: Opaque response — identical whether the address is new, pending,
+    # already confirmed, or throttled.
+    return {"status": "ok", "message": "Please check your inbox to confirm your subscription."}
 
 
 @app.get("/api/ohlc/{stock_id}")
@@ -1008,9 +1095,10 @@ async def get_ohlc(stock_id: str, limit: Optional[int] = None, concurrency: Any 
     return get_cached(f"ohlc_{stock_id}_{limit}", 120, compute)
 
 @app.get("/api/predict/{stock_id}")
-async def predict_stock(stock_id: str, concurrency: Any = Depends(limit_concurrency)):
+async def predict_stock(request: Request, stock_id: str, concurrency: Any = Depends(limit_concurrency)):
+    await _require_verified_account(request)
     global predictor
-    
+
     try:
         stock_id = validate_stock_id(stock_id)
     except ValueError as e:

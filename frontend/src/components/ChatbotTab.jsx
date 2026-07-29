@@ -4,8 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { Bot, Send, RotateCcw } from 'lucide-react';
 import { StarMark } from './StarMark';
 import RichText from './RichText';
-import { UpgradeGate } from './AccessGate';
-import { useAccess } from '../hooks/useAccess';
 
 /* ── Constants ──────────────────────────────────────────────────────────────── */
 const MAX_HISTORY = 12;   // turns kept client-side & forwarded to the backend
@@ -82,18 +80,19 @@ const useAutoResize = (value) => {
 
 /* ── Main tab ─────────────────────────────────────────────────────────────── */
 const ChatbotTab = ({ onTabChange }) => {
-    const { user, authApi, refreshUser } = useAuth();
-    // App.jsx has already established a signed-in, verified session; all this
-    // tab still has to decide is whether the account holds the paid tier.
-    // isPremium stays a separate question — it controls the message quota, not
-    // access, and while the paywall is off nobody counts as premium.
-    const { hasTier, bypassPayment: bypass } = useAccess('pro');
-    const isPremium = !bypass && user?.subscription_tier === 'premium';
+    const { authApi, refreshUser } = useAuth();
+    // App.jsx has already established a signed-in, verified session, and there
+    // are no paid tiers any more — so there is nothing left to gate on here.
+    // The daily message quota is whatever the server reports; the client no
+    // longer tries to predict it from a subscription tier.
 
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState(null);
+    // false only when the backend says the failure is a configuration
+    // problem — retrying that can never succeed, so we stop implying it might.
+    const [retryable, setRetryable] = useState(true);
     const [quota, setQuota] = useState(null); // { used, limit }
 
     const scrollRef = useRef(null);
@@ -104,23 +103,22 @@ const ChatbotTab = ({ onTabChange }) => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }, [messages, sending]);
 
-    // Load current quota for the chip (Pro only — Premium is unlimited).
+    // Load the current quota for the chip. A null limit means unlimited.
     useEffect(() => {
-        if (!hasTier || isPremium) return;
         let active = true;
         (async () => {
             try {
                 const res = await authApi.get('/api/chat/quota');
                 if (active) setQuota({ used: res.data?.used ?? 0, limit: res.data?.limit ?? null });
             } catch (err) {
-                // Expired cached-Pro user gets 403 here — re-sync auth so the gate
-                // flips to "upgrade" immediately rather than after the first send.
+                // A 403 means the session no longer qualifies — re-sync auth so the
+                // gate reacts immediately rather than after the first send.
                 if (active && err?.response?.status === 403) refreshUser();
                 // other errors are non-fatal: the chip just won't show
             }
         })();
         return () => { active = false; };
-    }, [hasTier, isPremium, authApi]);
+    }, [authApi, refreshUser]);
 
     // Use a ref for messages to avoid re-creating `send` on every message change
     const messagesRef = useRef(messages);
@@ -136,6 +134,7 @@ const ChatbotTab = ({ onTabChange }) => {
         setInput('');
         setSending(true);
         setError(null);
+        setRetryable(true);
 
         // First chat can include Render cold start. Do not retry POSTs here:
         // chat sends consume quota and call Gemini, so duplicate requests are costly.
@@ -163,9 +162,8 @@ const ChatbotTab = ({ onTabChange }) => {
             setInput((cur) => (cur ? cur : content));
             if (status === 429) {
                 const d = err.response?.data?.detail;
-                setError((d && d.message) || (bypass
-                    ? 'Bạn đã dùng hết 5 lượt miễn phí hôm nay. Vui lòng quay lại vào ngày mai.'
-                    : 'Bạn đã dùng hết lượt trò chuyện hôm nay. Nâng cấp Premium để dùng không giới hạn.'));
+                setError((d && d.message)
+                    || 'Bạn đã dùng hết lượt trò chuyện hôm nay. Vui lòng quay lại vào ngày mai.');
                 setQuota((q) => (q ? { ...q, used: q.limit ?? q.used } : q));
             } else if (status === 403) {
                 // Subscription likely expired mid-session — re-sync auth
@@ -176,7 +174,13 @@ const ChatbotTab = ({ onTabChange }) => {
                     ? 'Server có thể vẫn đang khởi động. Vui lòng thử lại sau giây lát.'
                     : 'Server phản hồi quá lâu. Vui lòng thử lại.');
             } else {
-                setError('Trợ lý đang bận, vui lòng thử lại sau giây lát.');
+                // The backend distinguishes a busy/throttled model from a broken
+                // configuration. Surfacing that matters: telling someone to retry
+                // a request that can never succeed is how a dead API key stayed
+                // invisible in production for days.
+                const d = err.response?.data?.detail;
+                setError((d && d.message) || 'Trợ lý đang bận, vui lòng thử lại sau giây lát.');
+                setRetryable(d?.retryable !== false);
             }
         } finally {
             setSending(false);
@@ -186,24 +190,12 @@ const ChatbotTab = ({ onTabChange }) => {
     const clearChat = useCallback(() => {
         setMessages([]);
         setError(null);
+        setRetryable(true);
     }, []);
 
     const onKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     };
-
-    // ── Tier gate ────────────────────────────────────────────────────────────
-    if (!hasTier) {
-        return (
-            <div className="flex-1 w-full flex flex-col" style={{ background: 'var(--bg-base)' }}>
-                <UpgradeGate
-                    onTabChange={onTabChange}
-                    title="AI Investment Assistant"
-                    description="Chat with AI to analyze news and stocks, grounded in DongAnh Capital's real market data. Pro: 20 messages/day · Premium: unlimited."
-                />
-            </div>
-        );
-    }
 
     const remaining = quota && quota.limit != null ? Math.max(quota.limit - quota.used, 0) : null;
 
@@ -235,12 +227,8 @@ const ChatbotTab = ({ onTabChange }) => {
                         </button>
                     )}
 
-                    {/* Quota / tier badge */}
-                    {isPremium ? (
-                        <span className="chat-quota-badge" style={{ color: 'var(--gold-primary)' }}>
-                            Không giới hạn
-                        </span>
-                    ) : remaining != null && (
+                    {/* Daily quota badge — hidden when the server reports no limit */}
+                    {remaining != null && (
                         <span className="chat-quota-badge" style={{ color: remaining > 0 ? 'var(--text-secondary)' : 'var(--error)' }}>
                             Còn <span className="chat-quota-value">{remaining}/{quota.limit}</span> hôm nay
                         </span>
@@ -314,7 +302,14 @@ const ChatbotTab = ({ onTabChange }) => {
                                 className="flex justify-center"
                                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                             >
-                                <p className="chat-error">{error}</p>
+                                <p className="chat-error" style={!retryable ? { opacity: 0.95 } : undefined}>
+                                    {error}
+                                    {!retryable && (
+                                        <span style={{ display: 'block', marginTop: 4, opacity: 0.75, fontSize: '0.9em' }}>
+                                            Thử lại sẽ không khắc phục được sự cố này.
+                                        </span>
+                                    )}
+                                </p>
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -337,7 +332,10 @@ const ChatbotTab = ({ onTabChange }) => {
                     />
                     <button
                         onClick={() => send()}
-                        disabled={sending || !input.trim()}
+                        // Blocked outright when the backend reported a configuration
+                        // failure: every further send would burn a Gemini call and
+                        // fail identically.
+                        disabled={sending || !input.trim() || !retryable}
                         aria-label="Gửi"
                         className="chat-send-btn"
                     >

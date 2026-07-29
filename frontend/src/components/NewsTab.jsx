@@ -249,10 +249,9 @@ const MacroNewsCard = ({ item, onOpen }) => {
 
 // ── AI deep-analysis section (Pro/Premium, VN news only) ─────────────────────
 const AnalysisSection = ({ article, onClose, onTabChange }) => {
-    const { user, authApi, refreshUser } = useAuth();
-    // Reading news only needs the app-wide gate in App.jsx; the deep AI
-    // analysis below is the paid part.
-    const { hasTier: isPro, bypassPayment: bypass } = useAccess('pro');
+    const { authApi, refreshUser } = useAuth();
+    // App.jsx already established a signed-in, verified session, and there is no
+    // longer a paid tier above it — AI analysis is available to every account.
 
     const [analysis, setAnalysis] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
@@ -270,14 +269,17 @@ const AnalysisSection = ({ article, onClose, onTabChange }) => {
             const status = err.response?.status;
             if (status === 429) {
                 const d = err.response?.data?.detail;
-                setError((d && d.message) || (bypass
-                    ? 'Bạn đã dùng hết 5 lượt miễn phí hôm nay. Vui lòng quay lại vào ngày mai.'
-                    : 'Bạn đã dùng hết lượt phân tích hôm nay. Nâng cấp Premium để dùng không giới hạn.'));
+                setError((d && d.message)
+                    || 'Bạn đã dùng hết lượt phân tích hôm nay. Vui lòng quay lại vào ngày mai.');
             } else if (status === 403) {
                 setError('Phiên đăng ký đã thay đổi. Đang cập nhật…');
                 await refreshUser();
             } else {
-                setError('Trợ lý đang bận, vui lòng thử lại sau giây lát.');
+                // Same distinction as the chat tab: a busy model resolves itself,
+                // a broken configuration does not, and saying "try again" for the
+                // latter is what let a dead API key go unnoticed in production.
+                const d = err.response?.data?.detail;
+                setError((d && d.message) || 'Trợ lý đang bận, vui lòng thử lại sau giây lát.');
             }
         } finally {
             setAnalyzing(false);
@@ -289,33 +291,16 @@ const AnalysisSection = ({ article, onClose, onTabChange }) => {
     return (
         <div className="mb-6">
             {!analysis && (
-                isPro ? (
-                    <button
-                        onClick={runAnalysis}
-                        disabled={analyzing}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer"
-                        style={{ color: '#0A1020', background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`, border: 'none', fontFamily: "'Outfit', sans-serif", opacity: analyzing ? 0.7 : 1 }}
-                    >
-                        {analyzing
-                            ? <><RefreshCw size={14} className="animate-spin" /> Đang phân tích…</>
-                            : <><Sparkles size={15} /> Phân tích chuyên sâu với AI</>}
-                    </button>
-                ) : (
-                    <button
-                        onClick={() => {
-                            if (bypass) {
-                                // In bypass mode, the locked state means unverified email — no checkout
-                                onClose();
-                            } else {
-                                onClose(); onTabChange?.('checkout', { plan: 'pro', period: 'monthly' });
-                            }
-                        }}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium cursor-pointer"
-                        style={{ color: GOLD, background: 'transparent', border: `1px solid ${GOLD}40`, fontFamily: "'Outfit', sans-serif" }}
-                    >
-                        <Lock size={14} /> {bypass ? 'Xác thực email để sử dụng' : 'Phân tích AI chuyên sâu — Nâng cấp Pro'}
-                    </button>
-                )
+                <button
+                    onClick={runAnalysis}
+                    disabled={analyzing}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer"
+                    style={{ color: '#0A1020', background: `linear-gradient(135deg, ${GOLD}, #E8C97A)`, border: 'none', fontFamily: "'Outfit', sans-serif", opacity: analyzing ? 0.7 : 1 }}
+                >
+                    {analyzing
+                        ? <><RefreshCw size={14} className="animate-spin" /> Đang phân tích…</>
+                        : <><Sparkles size={15} /> Phân tích chuyên sâu với AI</>}
+                </button>
             )}
             {error && (
                 <p className="mt-2 text-sm" style={{ color: '#E05555', fontFamily: "'Outfit', sans-serif" }}>{error}</p>
@@ -346,7 +331,11 @@ const NewsDetailModal = ({ article, loading, onClose, onSelectStock, onTabChange
     const metrics = article?.key_metrics ? Object.entries(article.key_metrics) : [];
     const displayTitle = isMacro ? (article?.title_vi || article?.title) : article?.title;
     const sourceLink = isMacro ? article?.url : article?.source_url;
-    const bodyText = isMacro ? article?.full_translation_vi : article?.raw_text;
+    // Excerpt only — the API no longer serves full article bodies. Republishing a
+    // press article in full would make this a licensed "trang thông tin điện tử
+    // tổng hợp" under Nghị định 147/2024, and is a copyright exposure besides.
+    const bodyText = article?.excerpt;
+    const sourceName = isMacro ? (article?.source || 'nguồn gốc') : 'CafeF';
 
     return (
         <div
@@ -441,10 +430,22 @@ const NewsDetailModal = ({ article, loading, onClose, onSelectStock, onTabChange
 
                         {/* Body text */}
                         {bodyText && (
-                            <p className="text-[15px] leading-[1.8] whitespace-pre-line mb-6" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>
-                                {bodyText}
-                            </p>
+                            <>
+                                <div className="mb-2"><SectionLabel>Trích đoạn</SectionLabel></div>
+                                <p className="text-[15px] leading-[1.8] whitespace-pre-line mb-3" style={{ color: '#94A3BC', fontFamily: "'Outfit', sans-serif" }}>
+                                    {bodyText}
+                                </p>
+                            </>
                         )}
+
+                        {/* Attribution + continue-at-source. Required by Nghị định
+                            147/2024 and by facebook_bot/rule.md §2, which the bot has
+                            always followed and the website never did. */}
+                        <p className="text-[13px] leading-relaxed mb-4" style={{ color: '#4E617A', fontFamily: "'Outfit', sans-serif" }}>
+                            Nguồn: <span style={{ color: '#94A3BC' }}>{sourceName}</span>
+                            {bodyText ? ' — đây là trích đoạn ngắn. Đọc toàn văn tại bài gốc.' : ' — đọc toàn văn tại bài gốc.'}
+                            {' '}Bản quyền nội dung thuộc về đơn vị xuất bản.
+                        </p>
 
                         {/* Source link */}
                         {sourceLink && (
@@ -455,7 +456,7 @@ const NewsDetailModal = ({ article, loading, onClose, onSelectStock, onTabChange
                                 className="inline-flex items-center gap-2 mt-1 px-5 py-2.5 rounded-full text-sm font-medium cursor-pointer"
                                 style={{ background: 'transparent', color: isMacro ? MACRO_BLUE : GOLD, border: `1px solid ${isMacro ? MACRO_BLUE : GOLD}40`, fontFamily: "'Outfit', sans-serif" }}
                             >
-                                {isMacro ? 'Xem bài gốc' : 'Xem bài gốc trên CafeF'} <ExternalLink size={14} />
+                                {isMacro ? 'Đọc toàn văn tại bài gốc' : 'Đọc toàn văn trên CafeF'} <ExternalLink size={14} />
                             </a>
                         )}
                     </div>
@@ -551,7 +552,8 @@ const NewsTab = ({ onSelectStock, onTabChange }) => {
             const res = await authApi.get(endpoint);
             setDetail(res.data);
         } catch {
-            setDetail({ ...item, raw_text: item.preview || '', full_translation_vi: item.preview || '', key_metrics: {} });
+            // Fall back to the list preview, which is already a bounded slice.
+            setDetail({ ...item, excerpt: item.preview || '', is_excerpt: true, key_metrics: {} });
         } finally {
             setDetailLoading(false);
         }

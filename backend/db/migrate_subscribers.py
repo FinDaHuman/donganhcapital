@@ -13,6 +13,7 @@ from db.connection import get_engine
 from sqlalchemy import text
 
 
+# NOTE: run_migration() splits this on ";", so no statement may contain one.
 MIGRATION_SQL = """
 CREATE TABLE IF NOT EXISTS subscribers (
     id SERIAL PRIMARY KEY,
@@ -22,6 +23,16 @@ CREATE TABLE IF NOT EXISTS subscribers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_subscribers_email ON subscribers(email);
+
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS unsubscribed_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS confirm_token_hash CHAR(64);
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS confirm_sent_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS ip_hash CHAR(64);
+
+CREATE INDEX IF NOT EXISTS idx_subscribers_confirm ON subscribers(confirm_token_hash) WHERE confirm_token_hash IS NOT NULL;
+
+UPDATE subscribers SET confirmed_at = subscribed_at WHERE confirmed_at IS NULL AND confirm_token_hash IS NULL;
 """
 
 

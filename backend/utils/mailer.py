@@ -50,7 +50,14 @@ GOLD = "#C9A96E"
 # ══════════════════════════════════════
 #   CORE SENDER
 # ══════════════════════════════════════
-async def send_email(to: str, subject: str, html_body: str, text_body: str | None = None) -> bool:
+async def send_email(
+    to: str,
+    subject: str,
+    html_body: str,
+    text_body: str | None = None,
+    *,
+    unsubscribe_email: str | None = None,
+) -> bool:
     """Send one email via Resend. Returns True on success, False otherwise.
 
     Never raises — safe to call from a BackgroundTask.
@@ -67,6 +74,19 @@ async def send_email(to: str, subject: str, html_body: str, text_body: str | Non
     }
     if text_body:
         payload["text"] = text_body
+
+    # One-click unsubscribe (RFC 8058). Applied here rather than per-template so
+    # it cannot be forgotten, and passed only for non-transactional mail — adding
+    # it to a password reset would let users suppress email they need.
+    if unsubscribe_email:
+        from utils.legal import unsubscribe_url  # local import: avoids a cycle
+
+        url = unsubscribe_url(unsubscribe_email)
+        if url:
+            payload["headers"] = {
+                "List-Unsubscribe": f"<{url}>, <mailto:{SUPPORT_EMAIL}?subject=unsubscribe>",
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            }
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -88,7 +108,26 @@ async def send_email(to: str, subject: str, html_body: str, text_body: str | Non
 # ══════════════════════════════════════
 #   BRAND TEMPLATE WRAPPER
 # ══════════════════════════════════════
-def _wrap(heading: str, body_html: str) -> str:
+def _unsubscribe_html(email: str | None) -> str:
+    """Visible unsubscribe link for the email footer.
+
+    A List-Unsubscribe header alone is not enough: many clients don't surface it,
+    and a recipient must always have a link they can actually click.
+    """
+    if not email:
+        return ""
+    from utils.legal import unsubscribe_url  # local import: avoids a cycle
+
+    url = unsubscribe_url(email)
+    if not url:
+        return ""
+    return (
+        f'<br><a href="{url}" style="color:#9ca3af;text-decoration:underline;">'
+        "Huỷ nhận email này / Unsubscribe</a>"
+    )
+
+
+def _wrap(heading: str, body_html: str, unsubscribe_email: str | None = None) -> str:
     """Wrap inner HTML in the branded responsive email shell.
 
     Email clients require inline styles and a light background — they routinely
@@ -117,7 +156,9 @@ def _wrap(heading: str, body_html: str) -> str:
           <p style="margin:16px 0 0 0;font-size:12px;line-height:18px;color:#9ca3af;">
             Need help? Contact us at
             <a href="mailto:{SUPPORT_EMAIL}" style="color:{GOLD};text-decoration:none;">{SUPPORT_EMAIL}</a>.<br>
-            &copy; DongAnh Capital · Vietnamese equities market intelligence.
+            &copy; DongAnh Capital · A non-commercial academic research project.<br>
+            Informational only — not investment advice.
+            {_unsubscribe_html(unsubscribe_email)}
           </p>
         </td></tr>
       </table>
@@ -331,8 +372,9 @@ async def send_trial_started_email(
     return await send_email(
         to,
         "Your free DongAnh Capital Pro trial is active",
-        _wrap("Welcome to Pro", body),
+        _wrap("Welcome to Pro", body, unsubscribe_email=to),
         text,
+        unsubscribe_email=to,
     )
 
 
@@ -401,8 +443,9 @@ async def send_welcome_email(to: str, full_name: str | None = None) -> bool:
     return await send_email(
         to,
         "Welcome to DongAnh Capital",
-        _wrap("Welcome to DongAnh Capital", body),
+        _wrap("Welcome to DongAnh Capital", body, unsubscribe_email=to),
         text,
+        unsubscribe_email=to,
     )
 
 
@@ -445,6 +488,39 @@ async def send_feedback_request_email(to: str, full_name: str | None = None) -> 
     return await send_email(
         to,
         "DongAnh Capital — bạn thấy sản phẩm thế nào?",
-        _wrap("Chia sẻ cảm nhận của bạn", body),
+        _wrap("Chia sẻ cảm nhận của bạn", body, unsubscribe_email=to),
         text,
+        unsubscribe_email=to,
     )
+
+
+async def send_subscribe_confirm_email(to: str, confirm_url: str) -> bool:
+    """Double opt-in confirmation for the launch-notification list.
+
+    Deliberately says nothing about who signed the address up and reveals no
+    account information: this endpoint is unauthenticated, so the recipient may
+    not be the person who submitted the form. Doing nothing is a valid response
+    to this email, and the copy says so.
+    """
+    body = f"""
+      <p style="margin:0 0 16px 0;font-size:15px;line-height:24px;color:#3f3f46;">
+        Địa chỉ email này vừa được đăng ký nhận thông báo từ DongAnh Capital — một dự án
+        nghiên cứu học thuật phi thương mại về thị trường chứng khoán Việt Nam.
+      </p>
+      <p style="margin:0 0 16px 0;font-size:15px;line-height:24px;color:#3f3f46;">
+        Nếu đúng là bạn, vui lòng bấm nút bên dưới để xác nhận. Chúng tôi sẽ không gửi
+        bất kỳ email nào cho tới khi bạn xác nhận.
+      </p>
+      {_button("Xác nhận đăng ký", confirm_url)}
+      <p style="margin:16px 0 0 0;font-size:13px;line-height:20px;color:#71717a;">
+        Nếu bạn không đăng ký, hãy bỏ qua email này — sẽ không có gì được gửi thêm và
+        địa chỉ của bạn sẽ không được sử dụng.
+      </p>
+    """
+    text = (
+        "Địa chỉ email này vừa được đăng ký nhận thông báo từ DongAnh Capital.\n\n"
+        "Nếu đúng là bạn, xác nhận tại đây:\n"
+        f"{confirm_url}\n\n"
+        "Nếu bạn không đăng ký, hãy bỏ qua email này — sẽ không có gì được gửi thêm."
+    )
+    return await send_email(to, "Xác nhận đăng ký nhận tin — DongAnh Capital", _wrap("Xác nhận đăng ký", body), text)

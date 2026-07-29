@@ -1,11 +1,11 @@
-"""AI chat + news-analysis router — Pro/Premium gated, Gemini-backed.
+"""AI data assistant + news-analysis router — login gated, Gemini-backed.
 
-Delivers the two features the pricing page promises: an investment chatbot and
-on-demand AI news analysis. Both:
+Two features: a data assistant and on-demand news analysis. Neither gives
+investment advice; three deterministic guardrails below enforce that
+independently of whether the model complies with its prompt. Both:
 
-  - require login + a Pro/Premium subscription (free → 403);
-  - share ONE DB-backed daily quota (Pro = ``PRO_DAILY_LIMIT`` calls/day,
-    Premium = unlimited best-effort). The counter lives on the ``users`` row so it
+  - require login + a verified email (unverified → 403);
+  - share ONE DB-backed daily quota. The counter lives on the ``users`` row so it
     survives Render cold starts — the in-memory auth rate-limiter does not;
   - run under a DEDICATED ``Semaphore(2)``, never the global request semaphore, so
     a slow 5–20 s LLM call can't starve the rest of the API on the 0.1 vCPU box;
@@ -70,12 +70,14 @@ async def limit_chat_concurrency():
         chat_limiter.release()
 
 
-SYSTEM_PROMPT = """Bạn là Trợ lý Đầu tư AI của DongAnh Capital, nền tảng phân tích thị trường chứng khoán Việt Nam.
+SYSTEM_PROMPT = """Bạn là Trợ lý Dữ liệu AI của DongAnh Capital, một công cụ phân tích dữ liệu thị trường chứng khoán Việt Nam.
 
 NGUYÊN TẮC BẮT BUỘC:
 - Luôn trả lời bằng tiếng Việt, văn phong chuyên nghiệp, rõ ràng, thân thiện.
 - Xưng "Chúng tôi", tuyệt đối KHÔNG xưng "Tôi".
-- KHÔNG cam kết hay hứa hẹn lợi nhuận; KHÔNG đưa ra khuyến nghị mua/bán như một điều chắc chắn.
+- DongAnh Capital KHÔNG phải tổ chức tư vấn đầu tư được cấp phép. TUYỆT ĐỐI KHÔNG đưa ra khuyến nghị mua/bán/nắm giữ chứng khoán dưới bất kỳ hình thức nào.
+- KHÔNG cam kết hay hứa hẹn lợi nhuận. KHÔNG nêu mức giá mục tiêu. KHÔNG gợi ý tỷ trọng vị thế, khối lượng đặt lệnh, hay việc sử dụng đòn bẩy/margin.
+- Nhiệm vụ của bạn là trình bày và giải thích dữ liệu: giá, xu hướng, chỉ báo kỹ thuật, tin tức, và ý nghĩa của điểm số mô hình.
 - Luôn nhắc rằng đây là thông tin tham khảo, không phải lời khuyên đầu tư, và đầu tư luôn có rủi ro.
 - Khi có DỮ LIỆU NỀN bên dưới, hãy ưu tiên dựa vào đó và trích dẫn cụ thể (giá, tín hiệu, tin tức). Nếu không có, hãy nói rõ đây là nhận định chung.
 - KHÔNG bịa số liệu. Nếu không chắc, hãy nói là không chắc.
@@ -86,7 +88,112 @@ ANALYSIS_INSTRUCTION = """Nhiệm vụ: Phân tích sâu bài báo dưới đây
 1. Tóm tắt cốt lõi (2-3 ý chính).
 2. Tác động đến thị trường / ngành / các mã cổ phiếu liên quan.
 3. Điều nhà đầu tư nên lưu ý (cả cơ hội lẫn rủi ro).
-Kết thúc bằng một câu nhắc rằng đây là thông tin tham khảo, không phải khuyến nghị đầu tư."""
+KHÔNG đưa ra khuyến nghị mua/bán, không nêu mức giá mục tiêu, không gợi ý tỷ trọng vị thế."""
+# The closing disclaimer is no longer requested from the model — it is appended
+# deterministically by _finalize(), so it cannot be omitted on any given turn.
+
+
+# --------------------------------------------------------------------------- #
+# Deterministic guardrails
+#
+# The system prompt above asks the model not to give advice. A prompt is not a
+# control: it is probabilistic and can be ignored on any turn. These three
+# layers do not depend on the model complying.
+# --------------------------------------------------------------------------- #
+
+#: Appended to every reply server-side. Plain text only — the client renderer
+#: handles just **bold** and "* " lists, so markdown rules would render literally.
+CHAT_DISCLAIMER = (
+    "\n\nLưu ý: Nội dung trên do AI tạo ra dựa trên dữ liệu quá khứ, chỉ mang tính "
+    "tham khảo và KHÔNG phải khuyến nghị mua/bán. Đầu tư chứng khoán có rủi ro mất vốn. "
+    "Quyết định đầu tư là của riêng bạn."
+)
+
+
+def _finalize(text: str) -> str:
+    """Append the disclaimer to a model reply. Never trust the model to do it."""
+    return (text or "").rstrip() + CHAT_DISCLAIMER
+
+
+def _prob_band(prob) -> str:
+    """Coarse confidence band, so grounding never restates a precise score."""
+    try:
+        p = float(prob)
+    except (TypeError, ValueError):
+        return "không xác định"
+    if p >= 0.7:
+        return "cao"
+    if p >= 0.5:
+        return "trung bình"
+    return "thấp"
+
+
+#: Direct requests for a buy/sell decision. Matched against the user's own last
+#: turn only, capped in length — never against history or grounding, or a quoted
+#: news headline would trip it.
+_ADVICE_RE = re.compile(
+    "|".join([
+        r"(nên|có nên|có đáng|nên có)\s*(mua|bán|short|long|all[\s-]?in|xuống tiền|giải ngân|vào lệnh)",
+        r"(khuyến nghị|tư vấn|gợi ý|recommend)\s*(mua|bán|mã nào|cổ nào)",
+        r"(mã nào|con nào|cổ nào|mua mã)\D{0,25}(nên mua|ngon|x2|ăn bằng lần|tiềm năng nhất)",
+        r"(bao giờ|khi nào|lúc nào)\s*(thì\s*)?(nên\s*)?(mua|bán|cắt lỗ|chốt lãi|vào lệnh)",
+        r"(tất tay|full margin|vay margin|dùng đòn bẩy|đánh full)",
+        r"\bshould i\s+(buy|sell|short|invest)",
+        r"\b(what|which)\s+(stock|ticker)s?\s+should i\b",
+    ]),
+    re.IGNORECASE,
+)
+
+def _llm_http_error(err: LLMError, where: str) -> HTTPException:
+    """Map an LLM failure to a 503 that tells the truth about what went wrong.
+
+    Both cases are 503 — the feature really is unavailable either way — but the
+    message and the log severity differ, because the user's options differ. A
+    throttled model resolves itself; a rejected API key does not, and telling
+    someone to "try again shortly" is both useless to them and the reason a dead
+    key can sit unnoticed in production. The ``code`` lets the UI stop offering
+    a retry that cannot work.
+    """
+    if err.is_config_error:
+        # CRITICAL, not error: this needs a human to change a deployment secret.
+        logger.critical(
+            "%s unavailable — LLM CONFIGURATION FAILURE (fix CHAT_GEMINI_API_KEY): %s",
+            where, err,
+        )
+        return HTTPException(
+            status_code=503,
+            detail={
+                "code": "llm_unavailable",
+                "message": (
+                    "Tính năng AI hiện không khả dụng do sự cố cấu hình. "
+                    "Chúng tôi đã được thông báo và đang khắc phục — vui lòng quay lại sau."
+                ),
+                "retryable": False,
+            },
+        )
+
+    logger.error("%s LLM error: %s", where, err)
+    return HTTPException(
+        status_code=503,
+        detail={
+            "code": "llm_busy",
+            "message": "Trợ lý đang bận, vui lòng thử lại sau giây lát.",
+            "retryable": True,
+        },
+    )
+
+
+#: Returned verbatim when the classifier fires. States what we cannot do, then
+#: what we can, so the refusal is still useful.
+ADVICE_REFUSAL = (
+    "Chúng tôi không thể đưa ra khuyến nghị mua hay bán chứng khoán. DongAnh Capital "
+    "là công cụ phân tích dữ liệu, không phải tổ chức tư vấn đầu tư được cấp phép.\n\n"
+    "Thay vào đó, chúng tôi có thể giúp bạn:\n"
+    "* Trình bày dữ liệu giá và xu hướng của một mã cụ thể\n"
+    "* Tóm tắt tin tức gần đây liên quan đến mã hoặc ngành\n"
+    "* Giải thích ý nghĩa của một chỉ báo kỹ thuật hoặc điểm số mô hình\n\n"
+    "Bạn muốn tìm hiểu điều gì?"
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -126,46 +233,25 @@ class AnalyzeRequest(BaseModel):
 # --------------------------------------------------------------------------- #
 # Auth / tier gate (mirrors the inline pattern on /api/ltr-signals)
 # --------------------------------------------------------------------------- #
-from utils.security import BYPASS_PAYMENT, BYPASS_DAILY_LIMIT, has_feature_access
-
-
-def _effective_tier(user: dict) -> str:
-    """Tier with an inline expiry check to close the ~6 h background-downgrade gap."""
-    tier = user.get("subscription_tier", "free")
-    expires_at = user.get("subscription_expires_at")
-    if tier != "free" and expires_at is not None:
-        try:
-            now_utc = datetime.now(timezone.utc)
-            exp = expires_at if hasattr(expires_at, "tzinfo") else datetime.fromisoformat(str(expires_at))
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=timezone.utc)
-            if exp < now_utc:
-                tier = "free"
-        except Exception:
-            pass
-    return tier
+from utils.security import BYPASS_DAILY_LIMIT, has_feature_access
 
 
 async def _require_paid(request: Request) -> tuple[dict, str]:
-    """Auth + tier/access gate for chat & analysis endpoints.
+    """Auth + access gate for chat & analysis endpoints.
 
-    When ``BYPASS_PAYMENT`` is True, email-verified users are granted access
-    with tier='bypass'. When False, the original Pro/Premium gate applies.
+    Named ``_require_paid`` for historical reasons — nothing is paid for any
+    more. A signed-in account with a verified email is the whole gate; the
+    returned tier is always ``'bypass'``, which maps to the shared daily quota
+    that keeps the free-tier Gemini allowance from being exhausted by one user.
     """
     user = await get_current_user(request)  # raises 401 if unauthenticated
 
-    if BYPASS_PAYMENT:
-        if not has_feature_access(user):
-            raise HTTPException(
-                status_code=403,
-                detail="Vui lòng xác thực email để truy cập tính năng này",
-            )
-        return user, "bypass"
-
-    tier = _effective_tier(user)
-    if tier not in ("pro", "premium"):
-        raise HTTPException(status_code=403, detail="Pro or Premium subscription required")
-    return user, tier
+    if not has_feature_access(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Vui lòng xác thực email để truy cập tính năng này",
+        )
+    return user, "bypass"
 
 
 # --------------------------------------------------------------------------- #
@@ -182,8 +268,9 @@ def _consume_quota_sync(user_id, tier: str) -> dict:
     Returns ``{"used", "limit"}``. Raises ``QuotaExceeded`` if the cap is hit,
     or ``RuntimeError`` if the DB is unavailable (caller maps to 503).
 
-    Tier values: 'bypass' (BYPASS_PAYMENT on, limit=5), 'pro' (limit=20),
-    'premium' (unlimited).
+    The only tier in use is 'bypass' (the shared BYPASS_DAILY_LIMIT). The 'pro'
+    and 'premium' branches are dead but harmless, and keep the function reusable
+    if tiers are ever reintroduced.
     """
     engine = get_engine()
     if engine is None:
@@ -343,9 +430,15 @@ def _build_grounding_sync(tickers: list) -> str:
 
         s = signals_by_ticker.get(tk)
         if s:
+            # This used to inject "vào {entry}, TP {tp}, SL {sl}" — a literal trade
+            # instruction handed to a model we have told not to give trade
+            # instructions. The chatbot is the surface most likely to be read as
+            # personalised advice, so it now sees only a coarse confidence band.
+            # Exact levels remain available in the signals table, under a disclaimer.
             parts.append(
-                f"Tín hiệu AI mới nhất ({s.get('Ngay')}): vào {s.get('entry_price')}, "
-                f"TP {s.get('tp_price')}, SL {s.get('sl_price')}, xác suất {s.get('prob')}."
+                f"Tín hiệu mô hình gần nhất ({s.get('Ngay')}): mô hình xếp mã này vào nhóm "
+                f"tin cậy {_prob_band(s.get('prob'))} dựa trên dữ liệu lịch sử. "
+                "(Các mức giá tham chiếu chỉ hiển thị trong bảng Tín hiệu.)"
             )
 
         try:
@@ -379,6 +472,20 @@ async def chat_message(body: ChatRequest, request: Request, _c=Depends(limit_cha
         raise HTTPException(status_code=422, detail="Last message must be a non-empty user turn")
     last_user = msgs[-1]
 
+    # Guardrail: refuse direct "should I buy X" requests before spending quota or
+    # calling the LLM. Only the user's own last turn is tested, capped at 500
+    # chars — testing history or grounding would trip on quoted news text.
+    if _ADVICE_RE.search(last_user["content"][:500]):
+        logger.info("chat advice request refused: %r", last_user["content"][:120])
+        limit = None if tier == "premium" else (BYPASS_DAILY_LIMIT if tier == "bypass" else PRO_DAILY_LIMIT)
+        try:
+            used = await asyncio.to_thread(_read_quota_sync, user_id)
+        except Exception:
+            used = None
+        # No quota consumed and no billable call made — the refusal is free.
+        quota = {"used": used, "limit": limit} if used is not None else None
+        return {"reply": _finalize(ADVICE_REFUSAL), "quota": quota, "refused": True}
+
     # Consume quota up front (atomic, race-free) so over-limit users never trigger
     # a billable LLM call. Refunded below if the LLM call itself fails.
     try:
@@ -409,10 +516,11 @@ async def chat_message(body: ChatRequest, request: Request, _c=Depends(limit_cha
         reply = await generate(system, msgs, temperature=0.5, max_output_tokens=2048)
     except LLMError as e:
         await asyncio.to_thread(_refund_quota_sync, user_id)
-        logger.error(f"chat LLM error: {e}")
-        raise HTTPException(status_code=503, detail="Trợ lý đang bận, vui lòng thử lại sau giây lát.")
+        raise _llm_http_error(e, "chat")
 
-    return {"reply": reply, "quota": quota}
+    # Disclaimer appended here, not requested from the model — a prompt
+    # instruction is not a control.
+    return {"reply": _finalize(reply), "quota": quota}
 
 
 @router.post("/analyze-news")
@@ -463,10 +571,9 @@ async def analyze_news(body: AnalyzeRequest, request: Request, _c=Depends(limit_
         )
     except LLMError as e:
         await asyncio.to_thread(_refund_quota_sync, user_id)
-        logger.error(f"analyze-news LLM error: {e}")
-        raise HTTPException(status_code=503, detail="Trợ lý đang bận, vui lòng thử lại sau giây lát.")
+        raise _llm_http_error(e, "analyze-news")
 
-    return {"analysis": analysis, "article_id": body.url_hash, "quota": quota}
+    return {"analysis": _finalize(analysis), "article_id": body.url_hash, "quota": quota}
 
 
 @router.get("/quota")

@@ -607,10 +607,24 @@ const DataAnalystTab = ({ onSelectStock, stockList = [] }) => {
 
                         {/* ═══ OVERVIEW ═══ */}
                         <section className={`space-y-4 transition-opacity duration-200 ${activeSection !== 'overview' || (sectionLoading[activeSection] && !loadedSections[activeSection]) ? 'hidden' : ''}`}>
+                            {/* This tab shows an equity curve, win rate and max drawdown and
+                                previously carried no disclaimer at all — and was listed in
+                                sitemap.xml, so it was the performance page search engines saw. */}
+                            <div
+                                className="flex items-start gap-3 p-3 rounded-xl text-xs text-gray-400 leading-relaxed"
+                                style={{ background: 'rgba(201,169,110,0.05)', border: '1px solid rgba(201,169,110,0.15)' }}
+                            >
+                                <AlertTriangle size={14} style={{ color: '#C9A96E', marginTop: 1, flexShrink: 0 }} />
+                                <span>
+                                    All figures on this page are computed over <strong style={{ color: '#C9A96E' }}>historical data</strong> — a simulation of how the model's signals would have behaved, not the result of real trading and not a forecast.
+                                    Backtests are subject to survivorship bias, look-ahead bias, transaction costs and slippage.
+                                    Thông tin tham khảo, <strong style={{ color: '#C9A96E' }}>không phải khuyến nghị đầu tư</strong>.
+                                </span>
+                            </div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
                                 <KpiCard label="Tracked Tickers" value={formatNumber(data.overview.summary.total_tickers || 0, 0)} icon={Layers} accentColor="#6366f1" />
                                 <KpiCard label="Total Breakouts" value={formatNumber(data.overview.summary.total_signals || 0, 0)} tone="text-blue-400" icon={Zap} accentColor="#3b82f6" />
-                                <KpiCard label="Win Rate" value={formatPercent(data.overview.summary.win_rate || 0)} tone="text-emerald-400" icon={Target} accentColor="#10b981" />
+                                <KpiCard label="Backtest Win Rate" value={formatPercent(data.overview.summary.win_rate || 0)} tone="text-emerald-400" icon={Target} accentColor="#10b981" />
                                 <KpiCard label="Avg Return" value={formatPercent(data.overview.summary.avg_return || 0)} tone={(data.overview.summary.avg_return || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} icon={TrendingUp} accentColor={(data.overview.summary.avg_return || 0) >= 0 ? '#10b981' : '#ef4444'} />
                                 <KpiCard label="Max Drawdown" value={formatPercent(data.overview.summary.max_drawdown || 0)} tone="text-red-400" icon={ArrowDownRight} accentColor="#ef4444" subtitle={`Avg hold ${formatNumber(data.overview.summary.avg_holding_days || 0, 1)}d`} />
                             </div>
