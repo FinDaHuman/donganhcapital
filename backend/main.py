@@ -316,12 +316,33 @@ def refresh_live_quotes_sync() -> int:
     return len(quotes)
 
 
+def is_equity_market_open():
+    """Trading window for the CASH equity board — not the same as VN30F1M.
+
+    The future opens at 08:45 and this loop used ``is_vn30f1m_open()`` (which
+    starts polling at 08:50), so for the ten minutes before the equity board
+    actually opens we were fetching quotes for stocks that had not traded yet.
+    Combined with the reference-price fallback in db/live_quotes._norm, that made
+    every ticker read 0.00%.
+
+    HOSE continuous session: 09:00-11:30 and 13:00-14:45 (ATC to 14:45).
+    Small tails included so the closing values stay live for a few minutes.
+    """
+    import pytz
+    from datetime import datetime, time as dt_time
+    now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
+    if now.weekday() > 4:
+        return False
+    t = now.time()
+    return (dt_time(9, 0) <= t <= dt_time(11, 35)) or (dt_time(13, 0) <= t <= dt_time(15, 5))
+
+
 async def realtime_equity_quotes():
-    """Refresh the shared live-quote map every 60s during trading hours."""
+    """Refresh the shared live-quote map every 60s during equity trading hours."""
     global _equity_quotes_consecutive_failures, _equity_quotes_circuit_open_until, _equity_quotes_trip_count
     while True:
         try:
-            if is_vn30f1m_open():
+            if is_equity_market_open():
                 if time.time() < _equity_quotes_circuit_open_until:
                     await asyncio.sleep(60)
                     continue
