@@ -17,36 +17,6 @@ import {
 import { StarMark } from './StarMark';
 import { useAuth } from '../context/AuthContext';
 
-/* ── Animated counter hook ── */
-const useCounter = (end, duration = 2000) => {
-    const [count, setCount] = useState(0);
-    const [hasStarted, setHasStarted] = useState(false);
-    const ref = useRef(null);
-
-    useEffect(() => {
-        const observer = new IntersectionObserver(
-            ([entry]) => { if (entry.isIntersecting && !hasStarted) setHasStarted(true); },
-            { threshold: 0.3 }
-        );
-        if (ref.current) observer.observe(ref.current);
-        return () => observer.disconnect();
-    }, [hasStarted]);
-
-    useEffect(() => {
-        if (!hasStarted) return;
-        let start = 0;
-        const increment = end / (duration / 16);
-        const timer = setInterval(() => {
-            start += increment;
-            if (start >= end) { setCount(end); clearInterval(timer); }
-            else setCount(Math.floor(start));
-        }, 16);
-        return () => clearInterval(timer);
-    }, [hasStarted, end, duration]);
-
-    return { count, ref };
-};
-
 /* ── Animation Variants ── */
 const containerVariants = {
     hidden: { opacity: 0 },
@@ -115,13 +85,6 @@ const LandingPage = ({ onTabChange }) => {
     const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
 
     const scrollContainerRef = useRef(null);
-
-    /* Animated counters */
-    const stocksCounter = useCounter(226, 2200);
-    const modelsCounter = useCounter(3, 1500);
-    // Mean confidence output of the models — deliberately NOT named "accuracy".
-    // It is not a win rate and not a return; see facebook_bot/rule.md:50.
-    const confidenceCounter = useCounter(87, 1800);
 
     /* Mouse-based spotlight */
     const handleMouseMove = useCallback((e) => {
@@ -611,13 +574,15 @@ const LandingPage = ({ onTabChange }) => {
                             }}
                         >
                             {[
-                                { ref: stocksCounter.ref, value: stocksCounter.count.toString(), label: 'Stocks Monitored' },
-                                { ref: null, value: 'Real-time', label: 'Market Intelligence' },
-                                { ref: modelsCounter.ref, value: modelsCounter.count.toString(), label: 'AI Models' },
-                                { ref: confidenceCounter.ref, value: `${confidenceCounter.count}%`, label: 'Avg. Model Confidence' },
+                                { value: '226', label: 'Stocks Monitored' },
+                                { value: 'Real-time', label: 'Market Intelligence' },
+                                { value: '3', label: 'AI Models' },
+                                // Mean confidence output of the models — deliberately NOT named "accuracy".
+                                // It is not a win rate and not a return; see facebook_bot/rule.md:50.
+                                { value: '87%', label: 'Avg. Model Confidence' },
                             ].map((stat, i, arr) => (
                                 <React.Fragment key={i}>
-                                    <div ref={stat.ref} className="flex flex-col items-center px-6 sm:px-8 py-2">
+                                    <div className="flex flex-col items-center px-6 sm:px-8 py-2">
                                         <motion.span
                                             animate={{ textShadow: ['0 0 0px rgba(201,169,110,0)', '0 0 20px rgba(201,169,110,0.4)', '0 0 0px rgba(201,169,110,0)'] }}
                                             transition={{ duration: 3, repeat: Infinity, delay: i * 0.5 }}
