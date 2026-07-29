@@ -55,9 +55,13 @@ const LegalFooter = ({ onTabChange, compact = false }) => {
     const year = new Date().getFullYear();
 
     if (compact) {
+        // The bar still scrolls if a locale's labels overrun it, but the
+        // scrollbar chrome is hidden — on a 412px screen the visible track read
+        // as the page itself being cut off. The notAdvice label drops below sm
+        // to buy the links room; the Disclaimer link carries the same message.
         return (
             <footer
-                className="w-full shrink-0 flex items-center justify-between gap-4 px-4 overflow-x-auto"
+                className="w-full shrink-0 flex items-center justify-between gap-4 px-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 style={{
                     height: 36,
                     background: '#060B14',
@@ -66,10 +70,10 @@ const LegalFooter = ({ onTabChange, compact = false }) => {
                     fontSize: 11,
                 }}
             >
-                <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                <span className="hidden sm:inline" style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                     {t.notAdvice}
                 </span>
-                <nav className="flex items-center gap-4" style={{ whiteSpace: 'nowrap' }}>
+                <nav className="flex items-center gap-3 sm:gap-4" style={{ whiteSpace: 'nowrap' }}>
                     {LEGAL_LINKS.map(({ slug, vi, en }) => (
                         <LinkButton
                             key={slug}
