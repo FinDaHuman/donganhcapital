@@ -114,8 +114,14 @@ const ReportsTab = ({ onTabChange }) => {
                 <h2 className="text-xl font-bold text-white" style={{ fontFamily: "'Outfit', sans-serif" }}>
                     Research Notes
                 </h2>
+                {/* Was "Hand-prepared", which was simply untrue — these are produced
+                    by an automated AI pipeline. Saying a human wrote them would
+                    overstate their authority, and AI-generated equity commentary needs
+                    MORE disclosure than hand-written, not less: the reader has to know
+                    no analyst reviewed it before deciding how much weight to give it. */}
                 <p className="text-sm text-gray-500 mt-0.5">
-                    Hand-prepared PDF notes on individual stocks, published for research and educational purposes.
+                    PDF notes on individual stocks, <span className="text-gray-400">generated automatically by an AI pipeline</span> and
+                    published for research and educational purposes. Not reviewed by a licensed analyst; may contain errors.
                     Không phải khuyến nghị đầu tư — not investment advice.
                 </p>
             </div>
@@ -183,8 +189,13 @@ const ReportsTab = ({ onTabChange }) => {
                     <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: '#0d1117', border: '1px solid #1f2937' }}>
                         <FileText size={24} className="text-gray-600" />
                     </div>
+                    {/* Distinguish "your filter excluded everything" from "nothing has
+                        been published yet" — telling someone to widen a filter they
+                        never set sends them looking for a problem that isn't theirs. */}
                     <p className="text-gray-400 text-sm max-w-xs">
-                        No reports match your filters yet. Try widening the date range or clearing the stock filter.
+                        {stock || sector || dateFrom || dateTo
+                            ? 'No notes match your filters. Try widening the date range or clearing the stock filter.'
+                            : 'No notes published yet. New notes appear here as they are generated.'}
                     </p>
                 </div>
             )}
