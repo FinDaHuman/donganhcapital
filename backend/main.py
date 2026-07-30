@@ -33,15 +33,6 @@ from utils.security import (
     check_identity_rate_limit, EDGE_SHARED_SECRET,
 )
 from utils.legal import NOTICE_HEADER, with_notice, FRONTEND_URL as _LEGAL_FRONTEND_URL, PUBLIC_API_URL
-from db.analytics import (
-    get_market_intelligence_bootstrap,
-    get_market_intelligence_overview,
-    get_market_intelligence_market,
-    get_market_intelligence_signals,
-    get_market_intelligence_trades,
-    get_market_intelligence_pipeline_health,
-    validate_date, validate_sector, validate_ticker, validate_analytics_status, validate_probability_bucket
-)
 
 # Disable GPU for lighter inference if needed
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -54,13 +45,9 @@ MAX_ROWS_PER_TICKER = 60  # Keep only ~60 trading days to save memory
 
 # Concurrency limiter for incoming requests (max 5 simultaneous users)
 concurrency_limiter = asyncio.Semaphore(5)
-# Stricter limiter for memory-intensive analytics endpoints (Fix 4)
-analytics_limiter = asyncio.Semaphore(1)
 # Simple in‑memory cache with TTL. OrderedDict, not dict, so eviction can drop
 # the least-recently-stored entry when nothing has expired yet — see _cache_put.
 _cache: "OrderedDict[str, tuple[Any, float]]" = OrderedDict()
-ANALYTICS_TTL_SHORT = 300
-ANALYTICS_TTL_LONG = 900
 
 async def limit_concurrency():
     """FastAPI dependency to limit concurrent requests."""
@@ -69,15 +56,6 @@ async def limit_concurrency():
         yield
     finally:
         concurrency_limiter.release()
-
-
-async def limit_analytics_concurrency():
-    """Stricter limiter for analytics endpoints - only 1 concurrent request (Fix 4)."""
-    await analytics_limiter.acquire()
-    try:
-        yield
-    finally:
-        analytics_limiter.release()
 
 MAX_CACHE_ENTRIES = 25  # Fix 6: cap cache size to prevent memory creep
 
@@ -1023,92 +1001,6 @@ async def get_trade_history_stats_endpoint(request: Request, concurrency: Any = 
         return get_trade_history_stats()
     return with_notice(await get_cached_async("trade_history_stats", 120, compute))
 
-
-@app.get("/api/analytics/overview")
-async def get_market_intelligence_overview_endpoint(
-    request: Request,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    sector: Optional[str] = None,
-    ticker: Optional[str] = None,
-    status: Optional[str] = None,
-    concurrency: Any = Depends(limit_analytics_concurrency),
-):
-    await _require_verified_account(request)
-    def compute():
-        return get_market_intelligence_overview(start_date, end_date, sector, ticker, status)
-    return with_notice(await get_cached_async(f"analytics_overview_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
-
-
-@app.get("/api/analytics/bootstrap")
-async def get_market_intelligence_bootstrap_endpoint(
-    request: Request,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    sector: Optional[str] = None,
-    ticker: Optional[str] = None,
-    status: Optional[str] = None,
-    concurrency: Any = Depends(limit_analytics_concurrency),
-):
-    await _require_verified_account(request)
-    def compute():
-        return get_market_intelligence_bootstrap(start_date, end_date, sector, ticker, status)
-    return with_notice(await get_cached_async(f"analytics_bootstrap_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
-
-
-@app.get("/api/analytics/market")
-async def get_market_intelligence_market_endpoint(
-    request: Request,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    sector: Optional[str] = None,
-    ticker: Optional[str] = None,
-    concurrency: Any = Depends(limit_analytics_concurrency),
-):
-    await _require_verified_account(request)
-    def compute():
-        return get_market_intelligence_market(start_date, end_date, sector, ticker)
-    return with_notice(await get_cached_async(f"analytics_market_{start_date}_{end_date}_{sector}_{ticker}", ANALYTICS_TTL_SHORT, compute))
-
-
-@app.get("/api/analytics/signals")
-async def get_market_intelligence_signals_endpoint(
-    request: Request,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    sector: Optional[str] = None,
-    ticker: Optional[str] = None,
-    probability_bucket: Optional[str] = None,
-    concurrency: Any = Depends(limit_analytics_concurrency),
-):
-    await _require_verified_account(request)
-    def compute():
-        return get_market_intelligence_signals(start_date, end_date, sector, ticker, probability_bucket)
-    return with_notice(await get_cached_async(f"analytics_signals_{start_date}_{end_date}_{sector}_{ticker}_{probability_bucket}", ANALYTICS_TTL_SHORT, compute))
-
-
-@app.get("/api/analytics/trades")
-async def get_market_intelligence_trades_endpoint(
-    request: Request,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    sector: Optional[str] = None,
-    ticker: Optional[str] = None,
-    status: Optional[str] = None,
-    concurrency: Any = Depends(limit_analytics_concurrency),
-):
-    await _require_verified_account(request)
-    def compute():
-        return get_market_intelligence_trades(start_date, end_date, sector, ticker, status)
-    return with_notice(await get_cached_async(f"analytics_trades_{start_date}_{end_date}_{sector}_{ticker}_{status}", ANALYTICS_TTL_SHORT, compute))
-
-
-@app.get("/api/analytics/pipeline-health")
-async def get_market_intelligence_pipeline_health_endpoint(request: Request, concurrency: Any = Depends(limit_analytics_concurrency)):
-    await _require_verified_account(request)
-    def compute():
-        return get_market_intelligence_pipeline_health()
-    return await get_cached_async("analytics_pipeline_health", ANALYTICS_TTL_LONG, compute)
 
 @app.get("/api/sectors")
 async def get_sectors_endpoint(concurrency: Any = Depends(limit_concurrency)):

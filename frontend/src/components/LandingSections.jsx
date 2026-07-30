@@ -330,10 +330,10 @@ export const FeaturesSection = () => {
         },
         {
             icon: BarChart2,
-            title: 'Quantitative Analytics Engine',
-            description: 'Five-section analytics suite: signal distribution, trade performance, market breadth by sector, data pipeline health, and equity curve visualizations — all in one dashboard.',
+            title: 'Learning-to-Rank Signal Engine',
+            description: 'A daily cross-sectional ranking across 226 Vietnamese equities, alongside a LightGBM model scoring B-C-D breakdown events. Each name carries a model confidence score and reference levels — a ranked shortlist for research, rescored after every close.',
             span: 'md:col-span-2',
-            highlight: ['5 analytics modules'],
+            highlight: ['LTR + BCD', 'Rescored daily'],
         },
     ];
 

@@ -63,8 +63,8 @@ email.
 Important areas:
 
 - `backend/main.py` exposes market data, OHLC, predictions, AI signals, LTR
-  signals, BCD signals, trade history, analytics, sectors, and email
-  subscription endpoints.
+  signals, BCD signals, trade history, sectors, and email subscription
+  endpoints.
 - `backend/routers/auth.py` handles email/password auth, Google OAuth, password
   reset, httpOnly cookie sessions, refresh-token rotation, rate limiting,
   account lockout, and consent capture.
@@ -91,7 +91,7 @@ likewise unreferenced.
 Location: `frontend/`
 
 The frontend is a Vite React 18 application styled with Tailwind CSS. It uses
-Axios for API calls, `lightweight-charts` and Plotly for market visualization,
+Axios for API calls, `lightweight-charts` for market visualization,
 Framer Motion for UI transitions, and `AuthContext` for cookie-based session
 state. UI copy is English; `frontend/src/legal/vi/` holds the Vietnamese legal
 documents.
@@ -102,9 +102,9 @@ Important areas:
   Router — routing is custom `window.history.pushState` logic.
 - `frontend/src/context/AuthContext.jsx` manages login state, refresh retries,
   cross-tab token refresh coordination, and non-sensitive session caching.
-- `frontend/src/services/stock_api.js` is the main market/analytics API client.
+- `frontend/src/services/stock_api.js` is the main market data API client.
 - `frontend/src/components/` contains dashboard, chart, landing, news, LTR, BCD,
-  AI analyst, data analyst, reports, chatbot, layout, and loading components.
+  AI analyst, reports, chatbot, layout, and loading components.
 - `frontend/vercel.json` rewrites all routes to `index.html` for SPA routing.
 
 ### Daily Suggestion Pipeline
@@ -161,7 +161,7 @@ every run. Editing it changes what the page publishes.
 | Email | Resend HTTP API |
 | AI / LLM | Gemini via `google-genai` or direct HTTP helpers |
 | ML / data | pandas, numpy, scikit-learn, LightGBM, XGBoost, joblib, vnstock |
-| Frontend | React 18, Vite, Tailwind CSS, Axios, Plotly, lightweight-charts |
+| Frontend | React 18, Vite, Tailwind CSS, Axios, lightweight-charts |
 | Automation | GitHub Actions |
 
 ## Prerequisites
@@ -384,7 +384,6 @@ Representative backend endpoints:
 | `GET /api/bcd-signals`, `/dates`, `/summary` | BCD breakdown signals |
 | `GET /api/bcd-trade-history` | BCD trade lifecycle and outcomes |
 | `GET /api/trade-history`, `/stats` | Breakout trade-manager history |
-| `GET /api/analytics/*` | Dashboard analytics and pipeline health |
 | `POST /api/subscribe` | Public email signup (double opt-in) |
 | `GET /api/subscribe/confirm`, `/api/unsubscribe` | Public list management |
 | `GET /api/legal/versions` | Current legal document versions |
@@ -476,7 +475,7 @@ service-unavailable responses without blocking the rest of the API.
 - Auth tokens are intentionally stored in httpOnly cookies, not localStorage.
   Frontend sessionStorage stores only non-sensitive profile cache data.
 - The backend uses in-memory TTL caches and semaphores to protect a small API
-  instance from expensive analytics, chat, and DB operations.
+  instance from expensive chat and DB operations.
 - Access is a single rule: signed in with a verified email. There are no tiers.
 - Model output is presented as scores and reference price levels. It is not
   investment advice, and user-facing copy must not present it as such.

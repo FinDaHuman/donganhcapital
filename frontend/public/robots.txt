@@ -14,7 +14,6 @@ Allow: /contact
 # and the signal data behind them is not for open publication.
 Disallow: /dashboard
 Disallow: /analyst
-Disallow: /data-analyst
 Disallow: /chart
 Disallow: /ltr-signals
 Disallow: /bcd-signals

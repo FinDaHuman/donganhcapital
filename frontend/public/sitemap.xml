@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  /dashboard, /analyst, /chart and /data-analyst were previously listed here.
+  /dashboard, /analyst and /chart were previously listed here.
   They are all behind a sign-in wall, so listing them told crawlers to index
   pages they can only ever see as a login prompt. They have been removed.
 

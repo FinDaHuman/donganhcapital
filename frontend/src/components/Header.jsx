@@ -17,7 +17,6 @@ const Header = ({ activeTab, onTabChange }) => {
         { id: 'dashboard',    label: 'Dashboard' },
         { id: 'chart',        label: 'Chart' },
         { id: 'analyst',      label: 'AI Analyst' },
-        { id: 'data-analyst', label: 'Data Analyst' },
         { id: 'news',         label: 'News' },
         // PRO/PREMIUM badges are gone with the paid tiers — every signed-in,
         // email-verified account gets everything.

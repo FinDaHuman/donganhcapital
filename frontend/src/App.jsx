@@ -14,13 +14,11 @@ import ReconsentModal from './components/ReconsentModal';
 import { LEGAL_TABS } from './legal/routes';
 
 // Route-level code splitting: every view except the landing page (the first
-// paint for new visitors) loads on demand. This keeps heavy chart libraries —
-// plotly (DataAnalystTab) and lightweight-charts (Dashboard, StockChart) —
-// out of the entry bundle.
+// paint for new visitors) loads on demand. This keeps the heavy chart library —
+// lightweight-charts (Dashboard, StockChart) — out of the entry bundle.
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const StockChart = lazy(() => import('./components/StockChart'));
 const AIAnalystTab = lazy(() => import('./components/AIAnalystTab'));
-const DataAnalystTab = lazy(() => import('./components/DataAnalystTab'));
 const LTRSignalsTab = lazy(() => import('./components/LTRSignalsTab'));
 const BCDSignalsTab = lazy(() => import('./components/BCDSignalsTab'));
 const ReportsTab = lazy(() => import('./components/ReportsTab'));
@@ -45,7 +43,7 @@ const TabFallback = () => (
 // mistyped or stale link renders the landing page instead of a blank screen.
 // (Single source of truth for both the initial render and popstate handling.)
 const KNOWN_TABS = new Set([
-    'home', 'dashboard', 'chart', 'analyst', 'data-analyst', 'ltr-signals', 'bcd-signals',
+    'home', 'dashboard', 'chart', 'analyst', 'ltr-signals', 'bcd-signals',
     'reports', 'news', 'chatbot', 'login', 'auth/google/callback', 'register',
     'profile', 'reset-password', 'verify-email',
     // terms, privacy, disclaimer, cookies, about, contact — spread so adding a
@@ -67,10 +65,10 @@ const CHROMELESS_TABS = new Set([
 // verify-email, reset-password) and must stay reachable.
 //
 // The guard is applied here rather than inside each tab so a new tab cannot
-// ship without it — Dashboard, Chart, AI Analyst and Data Analyst had all
-// shipped with no gate at all.
+// ship without it — Dashboard, Chart and AI Analyst had all shipped with no
+// gate at all.
 const GATED_TABS = new Set([
-    'dashboard', 'chart', 'analyst', 'data-analyst',
+    'dashboard', 'chart', 'analyst',
     'ltr-signals', 'bcd-signals', 'reports', 'news', 'chatbot',
 ]);
 
@@ -79,7 +77,7 @@ const GATED_TABS = new Set([
 // Deliberately has no 'chart' entry — you never return to the chart from the
 // chart, and the call sites fall back to 'Dashboard'.
 const TAB_LABELS = {
-    dashboard: 'Dashboard', analyst: 'AI Analyst', 'data-analyst': 'Data Analyst',
+    dashboard: 'Dashboard', analyst: 'AI Analyst',
     news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'LTR Signals', 'bcd-signals': 'BCD Signals',
     reports: 'Reports', home: 'Home',
 };
@@ -420,14 +418,6 @@ function App() {
                         <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
                             <ErrorBoundary>
                                 <AIAnalystTab onSelectStock={handleSelectStock} />
-                            </ErrorBoundary>
-                        </div>
-                    )}
-
-                    {activeTab === 'data-analyst' && canUseApp && (
-                        <div className="flex-1 w-full relative min-h-0 flex flex-col" style={{ minHeight: '600px' }}>
-                            <ErrorBoundary>
-                                <DataAnalystTab onSelectStock={handleSelectStock} stockList={stockList} />
                             </ErrorBoundary>
                         </div>
                     )}

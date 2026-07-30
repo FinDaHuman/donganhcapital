@@ -23,7 +23,6 @@ const api = axios.create({ baseURL: API_Base_URL, timeout: 15000, withCredential
 
 // --- localStorage Cache Helpers ---
 const CACHE_PREFIX = 'dac_cache_';
-const ANALYTICS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 function getCached(key, maxAgeMs) {
     try {
@@ -44,23 +43,6 @@ function setCache(key, data) {
     } catch {
         // localStorage full or unavailable, silently ignore
     }
-}
-
-function getAnalyticsCacheKey(path, filters = {}) {
-    const normalized = Object.keys(filters)
-        .sort()
-        .reduce((acc, key) => {
-            acc[key] = filters[key];
-            return acc;
-        }, {});
-    return `analytics_${path}_${JSON.stringify(normalized)}`;
-}
-
-export function readCachedAnalytics(path, filters = {}, maxAgeMs = ANALYTICS_CACHE_TTL_MS) {
-    const cached = getCached(getAnalyticsCacheKey(path, filters), maxAgeMs);
-    if (cached && !cached.stale) return cached;
-    if (cached?.data) return cached.data;
-    return null;
 }
 
 // --- API Functions ---
@@ -211,85 +193,6 @@ export const getTradeHistoryStats = async () => {
         return { total_trades: 0 };
     }
 };
-
-const buildAnalyticsParams = (filters = {}) => {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '' && value !== 'ALL') {
-            params.append(key, value);
-        }
-    });
-    const query = params.toString();
-    return query ? `?${query}` : '';
-};
-
-const fetchAnalytics = async (path, filters = {}, fallback = {}) => {
-    try {
-        const response = await api.get(`${path}${buildAnalyticsParams(filters)}`);
-        const data = response.data;
-        setCache(getAnalyticsCacheKey(path, filters), data);
-        return data;
-    } catch (error) {
-        console.error(`Error fetching analytics from ${path}:`, error);
-        const cached = readCachedAnalytics(path, filters);
-        if (cached) return cached;
-        return fallback;
-    }
-};
-
-export const getDataAnalystBootstrap = async (filters = {}) =>
-    fetchAnalytics('/analytics/bootstrap', filters, {
-        overview: {
-            summary: {},
-            daily_activity: {},
-            series: { signal_trend_30d: [], trade_close_trend_30d: [], equity_curve: [] },
-            freshness: [],
-            alerts: [],
-        },
-        health: {
-            summary: {},
-            freshness: [],
-            coverage: { unmapped_tickers: [] },
-            anomalies: [],
-        },
-    });
-
-export const getDataAnalystOverview = async (filters = {}) =>
-    fetchAnalytics('/analytics/overview', filters, {
-        summary: {},
-        daily_activity: {},
-        series: { signal_trend_30d: [], trade_close_trend_30d: [], equity_curve: [] },
-        freshness: [],
-        alerts: [],
-    });
-
-export const getDataAnalystSignals = async (filters = {}) =>
-    fetchAnalytics('/analytics/signals', filters, {
-        summary: {},
-        series: { signal_trend: [], probability_buckets: [], sector_distribution: [], top_tickers: [] },
-        tables: { recent_signals: [] },
-    });
-
-export const getDataAnalystTrades = async (filters = {}) =>
-    fetchAnalytics('/analytics/trades', filters, {
-        summary: {},
-        series: { outcome_breakdown: [], return_distribution: [], equity_curve: [] },
-        tables: { ticker_leaderboard: [], sector_leaderboard: [], open_trades: [], recent_trades: [] },
-    });
-
-export const getDataAnalystMarket = async (filters = {}) =>
-    fetchAnalytics('/analytics/market', filters, {
-        summary: { breadth: {} },
-        series: { sector_performance: [], liquidity_leaders: [], return_distribution: [], vnindex: [] },
-    });
-
-export const getDataAnalystPipelineHealth = async () =>
-    fetchAnalytics('/analytics/pipeline-health', {}, {
-        summary: {},
-        freshness: [],
-        coverage: { unmapped_tickers: [] },
-        anomalies: [],
-    });
 
 export const subscribeEmail = async (email, honeypot = '') => {
     // Honeypot check — if filled, silently succeed (bot trap)

@@ -958,16 +958,3 @@ html, body {
     max-width: 75%;
   }
 }
-
-/* ============================================
-   PLOTLY FIXES
-   ============================================ */
-
-/* Fix Plotly hover tooltip jumping from top-left on first frame */
-.plotly .hoverlayer,
-.plotly .hoverlayer .hovertext,
-.plotly .hoverlayer path,
-.plotly .hoverlayer text {
-  transition: none !important;
-  animation: none !important;
-}
