@@ -77,7 +77,7 @@ const GATED_TABS = new Set([
 // Deliberately has no 'chart' entry — you never return to the chart from the
 // chart, and the call sites fall back to 'Dashboard'.
 const TAB_LABELS = {
-    dashboard: 'Dashboard', analyst: 'AI Analyst',
+    dashboard: 'Dashboard', analyst: 'Breakout Signals',
     news: 'News', chatbot: 'AI Chat', 'ltr-signals': 'LTR Signals', 'bcd-signals': 'BCD Signals',
     reports: 'Reports', home: 'Home',
 };

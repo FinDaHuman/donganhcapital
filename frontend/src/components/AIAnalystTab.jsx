@@ -11,6 +11,12 @@ import {
     returnToneClass,
 } from '../utils/tradeStats';
 
+// The confidence level at or above which breakout signals are treated as
+// publishable. Unlike the BCD model, breakout_model.pkl ships no best_threshold
+// and ai_signals carries no model_threshold column, so this is a fixed
+// site-side cut rather than a value read from the model.
+const MODEL_THRESHOLD = 0.85;
+
 const SortIndicator = ({ sortConfig, columnKey }) => {
     if (!sortConfig || sortConfig.key !== columnKey) return null;
     return <span className="ml-1 text-blue-400">{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>;
@@ -51,7 +57,7 @@ const AIAnalystTab = ({ onSelectStock }) => {
     const [trades, setTrades] = useState([]);
     const [statusFilter, setStatusFilter] = useState(null);
     const [tradesLoading, setTradesLoading] = useState(true);
-    const [minWinRate, setMinWinRate] = useState(0.85);
+    const [minWinRate, setMinWinRate] = useState(MODEL_THRESHOLD);
     const [sortConfig, setSortConfig] = useState({ key: 'entry_date', direction: 'desc' });
 
     // Active section — default to Trade History
@@ -359,9 +365,9 @@ const AIAnalystTab = ({ onSelectStock }) => {
                                     className="bg-[#111213] border border-gray-800 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 transition-colors"
                                 >
                                     <option value={0}>Any</option>
+                                    <option value={MODEL_THRESHOLD}>Above model threshold (&ge; 85%)</option>
                                     <option value={0.65}>&ge; 65%</option>
                                     <option value={0.75}>&ge; 75%</option>
-                                    <option value={0.85}>&ge; 85%</option>
                                     <option value={0.9}>&ge; 90%</option>
                                 </select>
                             </div>
