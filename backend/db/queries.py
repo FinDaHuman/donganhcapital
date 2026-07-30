@@ -782,12 +782,23 @@ def get_bcd_signals(date_str: str = None, latest: bool = False) -> dict:
         return {"date": date_str, "signal_count": 0, "signals": []}
 
 
-def get_bcd_signals_summary() -> list:
-    """Per-date BCD event counts, newest first. BCD only has rows on event
-    days, so this lists event days (not all trading days like the AI summary)."""
+def get_bcd_signals_summary() -> dict:
+    """Per-date BCD event counts, newest first, plus the model's *current*
+    decision threshold.
+
+    BCD only has rows on event days, so this lists event days (not all trading
+    days like the AI summary).
+
+    ``model_threshold`` is the newest threshold on record, and it is served
+    explicitly rather than left for the frontend to scrape off a data row.
+    Retraining moves the threshold (0.71 -> 0.61 on 2026-07-28), and each
+    ``bcd_signals`` row keeps the threshold it was *actually* scored against, so
+    picking one off an arbitrary row gives whatever value that row happened to
+    be judged by — not today's.
+    """
     engine = get_engine()
     if not engine:
-        return []
+        return {"summary": [], "model_threshold": None}
     query = """
     SELECT date,
            COUNT(*) AS signal_count,
@@ -800,13 +811,21 @@ def get_bcd_signals_summary() -> list:
     """
     try:
         df = pd.read_sql(query, engine)
+        with engine.connect() as conn:
+            threshold = conn.execute(text("""
+                SELECT model_threshold FROM bcd_signals
+                WHERE model_threshold IS NOT NULL
+                ORDER BY date DESC LIMIT 1
+            """)).scalar()
+        threshold = _safe_round(threshold, 4) if threshold is not None else None
+
         if df.empty:
-            return []
+            return {"summary": [], "model_threshold": threshold}
         df['date'] = df['date'].apply(lambda x: x.isoformat() if pd.notnull(x) else None)
-        return df.to_dict(orient="records")
+        return {"summary": df.to_dict(orient="records"), "model_threshold": threshold}
     except Exception as e:
         print(f"Error fetching bcd_signals summary: {e}")
-        return []
+        return {"summary": [], "model_threshold": None}
 
 
 def get_bcd_trade_history(status_filter: str = None):

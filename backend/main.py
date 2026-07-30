@@ -960,7 +960,8 @@ async def get_bcd_signals_summary_endpoint(
     request: Request,
     concurrency: Any = Depends(limit_concurrency),
 ):
-    """Pro-gated per-date BCD event counts (event days only)."""
+    """Pro-gated per-date BCD event counts (event days only), plus the model's
+    current decision threshold."""
     await _require_verified_account(request)
 
     def compute():

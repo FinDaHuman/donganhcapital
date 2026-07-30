@@ -45,6 +45,18 @@ const ProbBadge = ({ prob, passed }) => {
 // word, which would imply advice.
 const RECOMMENDED = 'recommended';
 
+// The Min Confidence filter judges every trade by the model's *current*
+// threshold, so this tooltip keeps the historical record visible: the threshold
+// a trade was actually scored against, which retraining has since moved.
+const confidenceTooltip = (trade) => {
+    if (trade.prob == null) return undefined;
+    const scored = `Scored ${(trade.prob * 100).toFixed(1)}%`;
+    if (trade.model_threshold == null) return `${scored}.`;
+    const side = trade.prob >= trade.model_threshold ? 'above' : 'below';
+    const on = trade.signal_date ? ` on ${trade.signal_date}` : '';
+    return `${scored} — ${side} the model's ${(trade.model_threshold * 100).toFixed(0)}% threshold in force${on}.`;
+};
+
 const SortIndicator = ({ sortConfig, columnKey }) => {
     if (!sortConfig || sortConfig.key !== columnKey) return null;
     return <span className="ml-1" style={{ color: GOLD }}>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>;
@@ -103,6 +115,8 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
     const [date, setDate] = useState('');
     const [dates, setDates] = useState([]);
     const [summary, setSummary] = useState([]);
+    // The model's current decision threshold, served by /api/bcd-signals/summary.
+    const [modelThreshold, setModelThreshold] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -110,11 +124,12 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
     const [trades, setTrades] = useState([]);
     const [tradesLoading, setTradesLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState(null);
-    const [minScore, setMinScore] = useState(0);
+    // Open on the model's own threshold rather than "Any": the unfiltered list
+    // mixes in trades the model scored well below its decision point.
+    const [minScore, setMinScore] = useState(RECOMMENDED);
     const [sortConfig, setSortConfig] = useState({ key: 'entry_date', direction: 'desc' });
 
-    // BCD history starts sparse, so default to the signals section (AI Analyst defaults to history)
-    const [activeSection, setActiveSection] = useState('signals');
+    const [activeSection, setActiveSection] = useState('history');
 
     const fetchDates = useCallback(async () => {
         try {
@@ -128,9 +143,13 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
     const fetchSummary = useCallback(async () => {
         try {
             const res = await authApi.get('/api/bcd-signals/summary');
-            return Array.isArray(res.data) ? res.data : [];
+            const data = res.data ?? {};
+            return {
+                rows: Array.isArray(data.summary) ? data.summary : [],
+                threshold: typeof data.model_threshold === 'number' ? data.model_threshold : null,
+            };
         } catch {
-            return [];
+            return { rows: [], threshold: null };
         }
     }, [authApi]);
 
@@ -177,7 +196,8 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
             setLoading(true);
             const [fetchedDates, fetchedSummary] = await Promise.all([fetchDates(), fetchSummary()]);
             setDates(fetchedDates);
-            setSummary(fetchedSummary);
+            setSummary(fetchedSummary.rows);
+            setModelThreshold(fetchedSummary.threshold);
             await fetchSignals(null);
         };
         init();
@@ -202,27 +222,25 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
         setSortConfig({ key, direction });
     };
 
-    // The model's own decision threshold, as shipped in bcd_model.pkl. Read
-    // from the data rather than hard-coded, because it moves on every retrain.
-    const modelThreshold = useMemo(() => {
-        const v = trades.find(t => t.model_threshold != null)?.model_threshold
-            ?? signals.find(s => s.model_threshold != null)?.model_threshold;
-        return v ?? null;
-    }, [trades, signals]);
+    // Falls back to the newest trade's own threshold only when the API has none
+    // to give (fresh DB with no scored signals yet). `trades` arrives ordered
+    // entry_date DESC, so the first non-null is the most recent.
+    const activeThreshold = modelThreshold
+        ?? trades.find(t => t.model_threshold != null)?.model_threshold
+        ?? null;
 
+    // Every option compares `prob` against a single floor, so the dropdown is a
+    // monotone ladder: a stricter choice can never return more trades. The
+    // threshold option deliberately uses *today's* threshold rather than each
+    // row's stored `passed_threshold`, which was frozen against whatever
+    // threshold shipped on its signal date (retraining moved it 0.71 -> 0.61).
+    // Judging old rows at 0.71 while labelling the option "61%" is what made
+    // "above model threshold" return fewer trades than the stricter 65% option.
     const baseTrades = useMemo(() => {
-        return trades.filter(trade => {
-            if (minScore === RECOMMENDED) {
-                // Prefer the stored flag: a trade is judged by the threshold it
-                // was actually scored against, not by today's.
-                if (trade.passed_threshold != null) return Boolean(trade.passed_threshold);
-                if (trade.model_threshold == null || trade.prob == null) return false;
-                return trade.prob >= trade.model_threshold;
-            }
-            if (minScore > 0 && (!trade.prob || trade.prob < minScore)) return false;
-            return true;
-        });
-    }, [trades, minScore]);
+        const floor = minScore === RECOMMENDED ? activeThreshold : minScore;
+        if (!floor) return trades;
+        return trades.filter(trade => trade.prob != null && trade.prob >= floor);
+    }, [trades, minScore, activeThreshold]);
 
     const filteredTrades = useMemo(() => {
         return baseTrades.filter(trade => {
@@ -272,6 +290,18 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
     }, [filteredTrades, sortConfig]);
 
     const dynamicStats = useMemo(() => computeTradeStats(filteredTrades), [filteredTrades]);
+
+    // Names whichever filters are actually narrowing the table, for the empty state.
+    const activeFilterLabel = useMemo(() => {
+        const parts = [];
+        if (minScore === RECOMMENDED && activeThreshold != null) {
+            parts.push(`the model threshold (≥ ${(activeThreshold * 100).toFixed(0)}%)`);
+        } else if (minScore > 0) {
+            parts.push(`≥ ${(minScore * 100).toFixed(0)}% confidence`);
+        }
+        if (statusFilter) parts.push(`status ${STATUS_COLORS[statusFilter].label}`);
+        return parts.join(' and ');
+    }, [minScore, activeThreshold, statusFilter]);
 
     const summaryTotals = useMemo(() => ({
         events: summary.reduce((acc, s) => acc + (s.signal_count || 0), 0),
@@ -526,10 +556,11 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                                     className="bg-[#111213] border border-gray-800 text-white rounded-lg px-3 py-1.5 focus:outline-none transition-colors"
                                 >
                                     <option value={0}>Any</option>
-                                    <option value={RECOMMENDED}>
+                                    <option value={RECOMMENDED} disabled={activeThreshold == null}>
                                         {/* Was "Recommended", which reads as advice. It is simply the
-                                            model's own decision threshold. */}
-                                        Above model threshold{modelThreshold != null ? ` (≥ ${(modelThreshold * 100).toFixed(0)}%)` : ''}
+                                            model's own decision threshold. Disabled when unknown, so
+                                            it can never be selected without a floor to apply. */}
+                                        Above model threshold{activeThreshold != null ? ` (≥ ${(activeThreshold * 100).toFixed(0)}%)` : ''}
                                     </option>
                                     <option value={0.65}>&ge; 65%</option>
                                     <option value={0.75}>&ge; 75%</option>
@@ -606,11 +637,23 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                             </div>
                         ) : sortedTrades.length === 0 ? (
                             <div className="bg-[#111213] border border-gray-800 rounded-xl p-10 text-center">
-                                <h3 className="text-xl text-gray-300 mb-2">No trades yet</h3>
-                                <p className="text-gray-500 max-w-md mx-auto">
-                                    Every breakdown-recovery signal with valid Entry, TP, and SL levels
-                                    appears here while its trade lifecycle is tracked.
-                                </p>
+                                {trades.length === 0 ? (
+                                    <>
+                                        <h3 className="text-xl text-gray-300 mb-2">No trades yet</h3>
+                                        <p className="text-gray-500 max-w-md mx-auto">
+                                            Every breakdown-recovery signal with valid Entry, TP, and SL levels
+                                            appears here while its trade lifecycle is tracked.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <h3 className="text-xl text-gray-300 mb-2">No trades match this filter</h3>
+                                        <p className="text-gray-500 max-w-md mx-auto">
+                                            {trades.length} tracked {trades.length === 1 ? 'trade' : 'trades'}, none
+                                            matching {activeFilterLabel}.
+                                        </p>
+                                    </>
+                                )}
                             </div>
                         ) : (
                             <div className="bg-[#111213] border border-gray-800 rounded-xl overflow-hidden">
@@ -659,7 +702,7 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                                                         {mobileDisplayReturn != null ? `${mobileIsLive ? '~' : ''}${(mobileDisplayReturn * 100).toFixed(2)}%` : '—'}
                                                     </span>
                                                     {trade.prob != null && (
-                                                        <span className="text-xs" style={{ color: GOLD }}>Conf {(trade.prob * 100).toFixed(1)}%</span>
+                                                        <span className="text-xs" style={{ color: GOLD }} title={confidenceTooltip(trade)}>Conf {(trade.prob * 100).toFixed(1)}%</span>
                                                     )}
                                                     <span className="text-gray-500 text-xs">
                                                         {trade.holding_days != null ? `${trade.holding_days}d` : '—'}
@@ -710,7 +753,7 @@ const BCDSignalsTab = ({ onSelectStock, onTabChange }) => {
                                                             </div>
                                                         </td>
                                                         <td className="px-5 py-4 text-gray-400 text-xs">{trade.entry_date}</td>
-                                                        <td className="px-5 py-4 text-right font-medium" style={{ color: GOLD }}>{trade.prob != null ? `${(trade.prob * 100).toFixed(1)}%` : '—'}</td>
+                                                        <td className="px-5 py-4 text-right font-medium" style={{ color: GOLD }} title={confidenceTooltip(trade)}>{trade.prob != null ? `${(trade.prob * 100).toFixed(1)}%` : '—'}</td>
                                                         <td className="px-5 py-4 text-right text-gray-200 font-medium" style={{ fontFamily: MONO }}>{trade.entry_price?.toFixed(2)}</td>
                                                         <td className="px-5 py-4 text-right text-green-400/80 font-medium" style={{ fontFamily: MONO }}>{trade.tp_price?.toFixed(2)}</td>
                                                         <td className="px-5 py-4 text-right text-red-400/80 font-medium" style={{ fontFamily: MONO }}>{trade.sl_price?.toFixed(2)}</td>
