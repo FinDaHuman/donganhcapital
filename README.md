@@ -401,6 +401,23 @@ signed-in, email-verified account.
 FastAPI also exposes generated OpenAPI docs at `/docs` when the backend is
 running.
 
+### Payment code is present but not mounted
+
+`backend/routers/payments.py`, `backend/utils/sepay.py`,
+`frontend/src/pages/CheckoutPage.jsx` and `frontend/src/utils/trialOffer.js`
+remain in the tree but are **deliberately not wired up** — the payments router is
+never included in the FastAPI app (see the note at `backend/main.py:704`), and no
+route reaches the checkout page.
+
+They are leftovers from an earlier design that assumed paid tiers. That design
+was dropped: DongAnh Capital is a non-commercial student project with no
+registered entity, nothing is for sale, and access is a single rule — signed in
+with a verified email. Re-enabling any of this would be a business and legal
+decision requiring a registered company, not a code change.
+
+The files are kept only so the history of the design is legible. Treat them as
+dead code.
+
 ## Data Model Overview
 
 The backend and pipeline expect these main PostgreSQL tables:
@@ -487,3 +504,24 @@ python run_daily_pipeline.py
 cd facebook_bot
 python main.py
 ```
+
+## Licence and Reuse
+
+This repository is published for competition evaluation and study only.
+
+**No licence is granted. All rights reserved.** The source may be read, but it
+may not be copied, modified, redistributed, or reused in other work without
+written permission from the project team.
+
+This applies in particular to the **trained model artifacts**, which represent
+the bulk of the work and may not be extracted, redistributed, or reused in any
+form:
+
+- `daily_suggestion_system/model/*.pkl` — breakout, LTR and BCD models
+- `backend/models/*.pkl`, `backend/models/*.h5` — quantile LSTM and metadata
+- `backend/models/xgb_model/*.json` — XGBoost quantile boosters
+
+The market data these models were trained on is not ours to relicense either.
+
+If you want to use any part of this for something, ask — contact details are on
+the `/contact` page at https://www.donganhcapital.com.
