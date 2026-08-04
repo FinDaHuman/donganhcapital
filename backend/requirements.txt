@@ -2,15 +2,25 @@ fastapi==0.138.0
 uvicorn==0.27.0
 python-multipart
 pandas
-numpy
+# Pinned: backend/models/xgb_model/scaler.pkl was pickled by scikit-learn 1.7.2,
+# the version daily_suggestion_system/requirements.txt trains with. Unpinned,
+# Render's no-cache builds re-resolve on every deploy and loaded 1.9.0, which
+# logs InconsistentVersionWarning on every cold start. Verified 2026-08-04 that
+# 1.7.2 and 1.9.0 produce bit-identical transform/inverse_transform for this
+# scaler, so nothing was wrong -- but sklearn does not promise that, and the
+# scaler feeds /api/predict directly (main.py:1201, main.py:1213).
+# Keep in step with daily_suggestion_system/requirements.txt when retraining.
+numpy==2.4.6
 joblib
-scikit-learn
+scikit-learn==1.7.2
 pydantic
 python-dotenv
 pytz
 sqlalchemy
 psycopg2-binary
-xgboost
+# Loads the 30 native-JSON boosters in backend/models/xgb_model. That format is
+# version-portable, but pin anyway so a deploy cannot change inference silently.
+xgboost==3.2.0
 vnstock==4.0.2
 vnstock_ezchart==0.0.3
 bcrypt==3.2.2
