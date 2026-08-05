@@ -623,7 +623,35 @@ async def lifespan(app: FastAPI):
         equity_quotes_task.cancel()
     print("Shutting down...")
 
-app = FastAPI(title="DongAnh Capital AI API", lifespan=lifespan)
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+APP_ENV = os.getenv("APP_ENV", "production").strip().lower()
+IS_PRODUCTION = APP_ENV == "production"
+
+# The interactive docs are a map of the API: 59 paths with their parameters and
+# response shapes. Everything sensitive behind them already returns 401, so this
+# is disclosure rather than a breach — but a deployment does not need to hand the
+# map out. Off in production, on everywhere else.
+#
+# /openapi.json has to go with them: /docs and /redoc are only renderers, and
+# leaving the schema reachable would publish exactly what hiding them removes.
+#
+# ENABLE_API_DOCS overrides in either direction, so a deployed dev stack can turn
+# them back on without pretending to be a local environment.
+DOCS_ENABLED = _env_flag("ENABLE_API_DOCS", not IS_PRODUCTION)
+
+app = FastAPI(
+    title="DongAnh Capital AI API",
+    lifespan=lifespan,
+    docs_url="/docs" if DOCS_ENABLED else None,
+    redoc_url="/redoc" if DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if DOCS_ENABLED else None,
+)
 
 # --- CORS ---
 # In production, set ALLOWED_ORIGINS env var to your domain(s).
@@ -646,23 +674,69 @@ app.add_middleware(
 )
 
 
+# Swagger UI and ReDoc pull scripts, styles and fonts from a CDN, so the API's
+# own Content-Security-Policy would break them. They only exist when docs are
+# enabled, and are exempted below rather than weakening the policy everywhere.
+_DOCS_PATHS = frozenset({"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"})
+
+# Tight for a service that answers JSON and two static confirmation pages.
+#
+# style-src 'unsafe-inline' is deliberate and NOT laziness: the unsubscribe and
+# subscribe-confirm pages in routers/legal.py are styled entirely with inline
+# style= attributes, on purpose, because they render inside a mail client's
+# browser view where an external stylesheet may never load. Dropping it would
+# leave a user arriving from an email looking at an unstyled page, which reads
+# as a broken or spoofed site.
+#
+# Scripts stay fully blocked by default-src 'none', so HTML injection on those
+# pages still could not execute anything.
+_CSP = (
+    "default-src 'none'; "
+    "style-src 'unsafe-inline'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'none'"
+)
+
+
 @app.middleware("http")
-async def add_legal_headers(request: Request, call_next):
-    """Stamp the "not investment advice" notice on every API response.
+async def add_legal_and_security_headers(request: Request, call_next):
+    """Stamp the "not investment advice" notice, then the security headers.
 
     A header rather than a body rewrite: rewriting bodies would mean buffering
     and re-serialising every response on a 512 MB / 0.1 vCPU box, and would
-    corrupt the endpoints that legitimately return a bare JSON list. Two dict
-    writes per request, body never touched.
+    corrupt the endpoints that legitimately return a bare JSON list. A handful of
+    dict writes per request, body never touched.
 
     Registered after CORSMiddleware so that it runs inside it.
+
+    setdefault, not assignment: a route that has already made a deliberate choice
+    about one of these headers keeps it.
     """
     response = await call_next(request)
-    if request.url.path.startswith("/api/"):
+    path = request.url.path
+
+    if path.startswith("/api/"):
         # NOTICE_HEADER is deliberately ASCII — HTTP headers are latin-1, and the
         # Vietnamese text would raise UnicodeEncodeError on every response.
         response.headers["X-DAC-Disclaimer"] = NOTICE_HEADER
         response.headers["X-DAC-Legal"] = f"{_LEGAL_FRONTEND_URL}/disclaimer"
+
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+
+    if path not in _DOCS_PATHS:
+        response.headers.setdefault("Content-Security-Policy", _CSP)
+
+    # HSTS only in production. Sending it from a local HTTP server is ignored by
+    # browsers, but sending it from a localhost HTTPS experiment would pin the
+    # whole of localhost to HTTPS in that browser profile, which is a genuinely
+    # annoying thing to undo. No `preload` — that is a one-way door.
+    if IS_PRODUCTION:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+
     return response
 
 
