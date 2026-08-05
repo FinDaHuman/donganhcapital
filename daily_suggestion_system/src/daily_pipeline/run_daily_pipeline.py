@@ -87,7 +87,19 @@ def run():
 
     try:
         from vn30f1m_update import update_vn30f1m_intraday
-        update_vn30f1m_intraday()
+        rows = update_vn30f1m_intraday()
+        if rows:
+            logger.info(f"VN30F1M: {rows} candles")
+        else:
+            # Deliberately does NOT set exit_code, the same way step 5 treats
+            # zero BCD events as normal. But the fetch covers a multi-day window,
+            # so zero rows is not an ordinary quiet day — it means an extended
+            # holiday or a source that has stopped returning data. WARNING keeps
+            # it visible without training people to ignore a red run.
+            logger.warning(
+                "VN30F1M: no intraday rows in the whole window - "
+                "extended holiday, or the source needs checking"
+            )
     except Exception as e:
         logger.error(f"VN30F1M update failed: {e}")
         exit_code = 1
