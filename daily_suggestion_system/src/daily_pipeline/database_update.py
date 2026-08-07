@@ -34,7 +34,18 @@ def update_database_today():
     errors = []
 
     today = datetime.today()
-    start = today - timedelta(days=3)
+    # 10 days, not 3. The window is what lets this table repair itself after a
+    # missed run, so it has to be wider than the longest plausible outage. A
+    # 3-day window could not reach 2026-07-31: no run happened between Jul 31
+    # and Aug 3, so that day was never requested again and stayed missing for a
+    # week (stock_ohlc, vnindex_ohlc and vn30f1m_intraday all lost it).
+    #
+    # This costs nothing. StockDataUpdater issues ONE request per ticker
+    # regardless of window width, so the 20 req/min vnstock limit and the ~15 min
+    # runtime are unchanged - only the response payload grows. Storage is
+    # unchanged too: the write is ON CONFLICT DO UPDATE, so re-fetching a day we
+    # already hold rewrites the same row rather than adding one.
+    start = today - timedelta(days=10)
 
     today_str = today.strftime("%Y-%m-%d")
     start_str = start.strftime("%Y-%m-%d")

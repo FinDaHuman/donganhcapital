@@ -26,7 +26,13 @@ def update_vn30f1m_intraday():
     # was gone permanently — re-running the next day just asked for the new
     # today. The upsert is ON CONFLICT (time) DO UPDATE, so re-fetching days we
     # already hold rewrites identical rows and costs one request.
-    start = (now - timedelta(days=3)).strftime("%Y-%m-%d")
+    #
+    # Widened 3 -> 10 days on 2026-08-07. Three days was not enough to survive a
+    # real outage: no run happened between 2026-07-31 and 2026-08-03, so Jul 31
+    # fell out of every subsequent window and was still missing a week later.
+    # This is one request either way, so the only thing that grows is the
+    # response payload.
+    start = (now - timedelta(days=10)).strftime("%Y-%m-%d")
 
     print(f"Fetching VN30F1M intraday for {start} -> {today}...")
 
