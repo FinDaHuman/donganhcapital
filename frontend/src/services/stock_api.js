@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { attachColdStartHandling } from './serverWake';
 
 // Use environment variable if available, otherwise fallback to production URL
 const baseUrl = import.meta.env.VITE_API_URL || 'https://api.donganhcapital.com/api';
@@ -20,6 +21,12 @@ if (!API_Base_URL.endsWith('/api')) {
 // (The backend enables allow_credentials whenever ALLOWED_ORIGINS names specific
 // origins rather than "*", which is the case in both local and production setups.)
 const api = axios.create({ baseURL: API_Base_URL, timeout: 15000, withCredentials: true });
+
+// The 15s above is the *warm* budget. While the backend is still waking from
+// its idle spin-down, this stretches it to cover the boot instead of failing
+// every call on a first visit — and drops back to 15s the moment the server
+// answers anything. See services/serverWake.js.
+attachColdStartHandling(api);
 
 // --- localStorage Cache Helpers ---
 const CACHE_PREFIX = 'dac_cache_';
@@ -47,10 +54,16 @@ function setCache(key, data) {
 
 // --- API Functions ---
 
-export const getLoadingProgress = async () => {
+export const getLoadingProgress = async ({ timeout } = {}) => {
     // No catch: the caller polls this and needs to distinguish a real
     // "0 stocks loaded" answer from a failed request so it can back off.
-    const response = await api.get(`/loading-progress`);
+    //
+    // The caller may pass a timeout far longer than the 15s default. The
+    // backend sleeps when idle and takes ~2 minutes to boot, and Render
+    // *queues* the request that triggers the wake rather than refusing it —
+    // so a single long-lived request resolves the moment the server is ready.
+    // Aborting at 15s and retrying only throws that queued slot away.
+    const response = await api.get(`/loading-progress`, timeout ? { timeout } : undefined);
     return response.data; // { loaded: N, total: M }
 };
 

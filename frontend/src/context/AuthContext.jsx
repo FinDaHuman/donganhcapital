@@ -13,6 +13,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
+import { attachColdStartHandling } from '../services/serverWake';
 
 const API_BASE = (() => {
     let url = import.meta.env.VITE_API_URL || 'https://api.donganhcapital.com/api';
@@ -83,6 +84,16 @@ authApi.interceptors.response.use(
         return Promise.reject(error);
     }
 );
+
+// Cold-start handling, attached after the refresh interceptor so a successful
+// token rotation is still seen as proof the server is up.
+//
+// This is what stops "Sign in" failing outright when the backend has spun down:
+// the click used to abort at the 15s above, ~1m45s short of the boot, and
+// surfaced as a login error rather than as a server that is still starting.
+// Waiting is the right move here and retrying is not — a replayed /auth/register
+// would hit a duplicate-email error the user cannot make sense of.
+attachColdStartHandling(authApi);
 
 
 // ── Session hint cookie ──

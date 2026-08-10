@@ -1,10 +1,20 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { getMarketStatus, getLoadingProgress, getCachedMarketStatus, getSectors, getVnindex } from '../services/stock_api';
+import { suppressWakeToast } from '../services/serverWake';
 import { SkeletonDashboard } from './SkeletonLoader';
 import Treemap from './dashboard/Treemap';
 import { formatChange, changeColor, PANEL_LABEL_STYLE, MONO } from './dashboard/utils';
 
 const MIN_STOCKS_TO_SHOW = 15;
+
+// Cold start, measured: ~2 minutes. The backend sleeps after 15 minutes idle,
+// and a wake runs container boot → heavy ML imports on 0.1 vCPU → model load →
+// seven startup migrations before uvicorn serves anything (backend/main.py
+// lifespan). Nothing here makes that faster; these constants only make the wait
+// honest instead of looking like a broken page.
+const WAKE_TIMEOUT = 150000;      // > the measured 2 min, so one request spans the whole boot
+const COLD_START_HINT_MS = 8000;  // past this, say plainly that the server is waking
+const EXPECTED_WAKE_MS = 120000;  // drives the estimated bar until real counts arrive
 
 const Dashboard = ({ onSelectStock }) => {
     const [allStocks, setAllStocks] = useState([]);
@@ -14,6 +24,7 @@ const Dashboard = ({ onSelectStock }) => {
     // Loading gate state
     const [gateOpen, setGateOpen] = useState(false);
     const [progress, setProgress] = useState({ loaded: 0, total: 0 });
+    const [elapsed, setElapsed] = useState(0); // ms waiting, for the cold-start copy
     const gateCheckRef = useRef(null);
 
     const processMarketData = useCallback((data, vnindex) => {
@@ -97,15 +108,24 @@ const Dashboard = ({ onSelectStock }) => {
             setGateOpen(true);
         }
 
-        // 2. Loading gate: poll progress until enough stocks are warm.
-        // Self-scheduling timeout instead of setInterval so a slow request
-        // can never stack overlapping polls, with exponential backoff while
-        // the API is unreachable (cold start, proxy mitigation, bad network).
+        // 2. Loading gate: wait for the API until enough stocks are warm.
+        // Self-scheduling timeout instead of setInterval so a slow request can
+        // never stack overlapping polls.
+        //
+        // Each attempt gets WAKE_TIMEOUT, not the client's 15s default: on a
+        // cold start Render holds the request open through the boot and answers
+        // it as soon as uvicorn is up, so one long request resolves at the
+        // earliest possible instant. The old 15s timeout was shorter than the
+        // wake it was waiting for, and its backoff then doubled to 60s — so a
+        // first-time visitor could sit through several aborted attempts and end
+        // up waiting *longer* than the server actually took to boot. Retries
+        // are now a fallback for real network failures, so the delay stays
+        // short and the cap is 8s rather than 60s.
         let cancelled = false;
-        let pollDelay = 5000;
+        let pollDelay = 3000;
         const checkProgress = async () => {
             try {
-                const prog = await getLoadingProgress();
+                const prog = await getLoadingProgress({ timeout: WAKE_TIMEOUT });
                 if (cancelled) return;
                 setProgress(prog);
 
@@ -118,10 +138,10 @@ const Dashboard = ({ onSelectStock }) => {
                     setGateOpen(true);
                     return;
                 }
-                pollDelay = 5000;
+                pollDelay = 3000;
             } catch (err) {
                 console.error("Progress check failed:", err);
-                pollDelay = Math.min(pollDelay * 2, 60000);
+                pollDelay = Math.min(pollDelay * 2, 8000);
             }
             if (!cancelled) gateCheckRef.current = setTimeout(checkProgress, pollDelay);
         };
@@ -133,6 +153,28 @@ const Dashboard = ({ onSelectStock }) => {
             clearTimeout(gateCheckRef.current);
         };
     }, [processMarketData]);
+
+    // While this gate is up it already says everything the global cold-start
+    // toast says, with a progress bar on top — so claim the job and let the
+    // toast stand down rather than printing the same sentence twice.
+    // Only reachable when signed in; a signed-out visitor never renders this
+    // component, and for them the toast stays the only explanation.
+    useEffect(() => {
+        if (gateOpen) return;
+        return suppressWakeToast();
+    }, [gateOpen]);
+
+    // Elapsed-time ticker behind the loading gate. Kept in its own effect so it
+    // can never restart the poll above, and stopped as soon as the gate opens.
+    // A visibly counting number is what tells a first-time visitor the page is
+    // alive while the server boots — a bar that only moves on real data sits
+    // frozen for the entire cold start and reads as a hang.
+    useEffect(() => {
+        if (gateOpen) return;
+        const started = Date.now();
+        const ticker = setInterval(() => setElapsed(Date.now() - started), 1000);
+        return () => clearInterval(ticker);
+    }, [gateOpen]);
 
     // After gate opens: refresh market data periodically
     useEffect(() => {
@@ -162,7 +204,16 @@ const Dashboard = ({ onSelectStock }) => {
 
     // --- Loading Gate UI ---
     if (!gateOpen) {
-        const pct = progress.total > 0 ? Math.round((progress.loaded / Math.max(progress.total, MIN_STOCKS_TO_SHOW)) * 100) : 0;
+        const hasRealCounts = progress.total > 0;
+        // No real counts exist until the first response lands, which on a cold
+        // start is the whole two-minute wait. Until then the bar advances on
+        // elapsed time against the measured boot, capped at 90% — an estimate
+        // must never show 100% for work that has not finished.
+        const pct = hasRealCounts
+            ? Math.round((progress.loaded / Math.max(progress.total, MIN_STOCKS_TO_SHOW)) * 100)
+            : Math.min(Math.round((elapsed / EXPECTED_WAKE_MS) * 90), 90);
+        const isColdStart = !hasRealCounts && elapsed >= COLD_START_HINT_MS;
+        const seconds = Math.floor(elapsed / 1000);
         return (
             <div className="flex-1 w-full relative overflow-hidden" style={{ background: 'var(--bg-void)' }}>
                 {/* Background Skeleton */}
@@ -184,12 +235,22 @@ const Dashboard = ({ onSelectStock }) => {
                                     marginBottom: '8px',
                                 }}
                             >
-                                Loading Market Data
+                                {isColdStart ? 'Waking the Server' : 'Loading Market Data'}
                             </h2>
                             <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                                Fetching live data from VN stock exchange.{' '}
-                                <br className="hidden sm:block" />
-                                This takes about a minute on cold start.
+                                {isColdStart ? (
+                                    <>
+                                        This deployment runs on free-tier hosting that sleeps when idle.{' '}
+                                        <br className="hidden sm:block" />
+                                        The first visit has to start it again, which takes up to two minutes.
+                                    </>
+                                ) : (
+                                    <>
+                                        Fetching live data from VN stock exchange.{' '}
+                                        <br className="hidden sm:block" />
+                                        This takes a moment on first load.
+                                    </>
+                                )}
                             </p>
                         </div>
 
@@ -209,7 +270,9 @@ const Dashboard = ({ onSelectStock }) => {
                             </div>
                             <div className="flex justify-between">
                                 <span style={{ fontFamily: MONO, fontSize: '11px', color: 'var(--text-muted)' }}>
-                                    {progress.loaded} / {progress.total || '...'} stocks
+                                    {hasRealCounts
+                                        ? `${progress.loaded} / ${progress.total} stocks`
+                                        : `${seconds}s elapsed`}
                                 </span>
                                 <span style={{ fontFamily: MONO, fontSize: '11px', color: 'var(--gold-muted)', fontWeight: 500 }}>
                                     {pct}%
