@@ -10,6 +10,8 @@ import { useAccess } from './hooks/useAccess';
 import { AccessGuard } from './components/AccessGate';
 import LegalFooter from './components/LegalFooter';
 import CookieConsent from './components/CookieConsent';
+import ServerWakeBanner from './components/ServerWakeBanner';
+import { warmUp } from './services/serverWake';
 import ReconsentModal from './components/ReconsentModal';
 import { LEGAL_TABS } from './legal/routes';
 
@@ -104,6 +106,13 @@ function App() {
     const [dismissedVerify, setDismissedVerify] = useState(false);
     const [resendVerifyLoading, setResendVerifyLoading] = useState(false);
     const [resendVerifyMsg, setResendVerifyMsg] = useState('');
+
+    // Start the backend the moment anything mounts, including the landing page
+    // for a visitor with no account. The wake takes ~2 minutes and runs
+    // server-side regardless, so overlapping it with the time someone spends
+    // reading the landing page is most of the fix: by the time they open Sign
+    // Up or a product tab, the boot is usually already done.
+    useEffect(() => { warmUp(); }, []);
 
     const handleResendVerify = async () => {
         setResendVerifyLoading(true);
@@ -505,6 +514,10 @@ function App() {
                     />
                 )}
             </div>
+
+            {/* Cold-start notice — every tab and the landing page, signed in or not.
+                A fixed overlay, so no view's own header can draw over it. */}
+            <ServerWakeBanner />
 
             <CookieConsent onTabChange={handleTabChange} activeTab={activeTab} />
 

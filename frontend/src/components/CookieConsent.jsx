@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocale } from '../context/LocaleContext';
 import { readConsent, writeConsent } from '../utils/consent';
 
@@ -37,6 +37,33 @@ const CookieConsent = ({ onTabChange, activeTab }) => {
     const [open, setOpen] = useState(() => readConsent() === null);
     const { locale } = useLocale();
     const t = COPY[locale] || COPY.vi;
+    const barRef = useRef(null);
+
+    // Publish this bar's real height as a CSS variable so floating UI can sit
+    // above it instead of guessing. On narrow screens the layout switches to
+    // flex-col and the bar grows to ~140px; a hardcoded offset put the
+    // cold-start toast (ServerWakeBanner) right on top of these buttons, and
+    // since that toast outranks this bar in z-order, it blocked them.
+    //
+    // Must run before the early returns below — hooks cannot be conditional.
+    useEffect(() => {
+        const root = document.documentElement;
+        const clear = () => root.style.setProperty('--cookie-bar-height', '0px');
+        const el = barRef.current;
+        if (!el) {
+            clear();
+            return;
+        }
+        const publish = () => root.style.setProperty('--cookie-bar-height', `${el.offsetHeight}px`);
+        publish();
+        if (typeof ResizeObserver === 'undefined') return clear;
+        const observer = new ResizeObserver(publish);
+        observer.observe(el);
+        return () => {
+            observer.disconnect();
+            clear();
+        };
+    }, [open, activeTab, locale]);
 
     if (!open) return null;
     // Don't cover the notice page the buttons link to.
@@ -59,6 +86,7 @@ const CookieConsent = ({ onTabChange, activeTab }) => {
 
     return (
         <div
+            ref={barRef}
             role="region"
             aria-label={locale === 'vi' ? 'Thông báo cookie' : 'Cookie notice'}
             className="fixed left-0 right-0 bottom-0 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3"
