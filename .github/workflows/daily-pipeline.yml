@@ -1,8 +1,22 @@
 name: Daily Signal Pipeline
 
+# Two triggers can start this workflow: GitHub's own schedule below, and an
+# external scheduler via workflow_dispatch. A run takes ~30 min, so they can
+# overlap.
+# Queue them instead - the pipeline is safe run back-to-back, not concurrently.
+concurrency:
+  group: daily-pipeline
+  cancel-in-progress: false
+
 on:
   schedule:
-    # 08:02 UTC = 15:02 Vietnam time (UTC+7), weekdays only
+    # 08:02 UTC = 15:02 Vietnam time (UTC+7), weekdays only.
+    # NOTE: this has never actually fired - 0 schedule events across 16+
+    # weekdays (2026-08-21), with Actions enabled, the workflow active, a valid
+    # cron and the file on the default branch. An external scheduler drives the
+    # real trigger through workflow_dispatch instead. This block is kept only so
+    # we notice if GitHub ever starts honouring it; the concurrency group above
+    # bounds the cost if it does. Do not treat it as a fallback.
     - cron: '2 8 * * 1-5'
   workflow_dispatch:
     # Allow manual trigger from GitHub Actions UI

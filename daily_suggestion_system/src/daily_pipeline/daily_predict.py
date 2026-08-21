@@ -201,7 +201,10 @@ def save_db_signal(df):
             conn.execute(query, params_list)
         logger.info(f"{len(params_list)} signals saved to NeonDB (batch upsert)")
     except Exception as e:
+        # Must not be swallowed: this is the write that puts signals in front of
+        # users. Logging and returning made a run that stored nothing exit 0.
         logger.error(f"Error saving signals to DB: {e}")
+        raise
 
 
 # ===============================
@@ -234,6 +237,7 @@ def save_db_summary(signal_count):
         logger.info(f"Summary saved: {date_str} → {signal_count} signals")
     except Exception as e:
         logger.error(f"Error saving summary to DB: {e}")
+        raise
 
 # ===============================
 # PREDICT
@@ -399,6 +403,8 @@ def predict_today():
     # TRADE MANAGER
     # ===============================
 
+    write_errors = []
+
     try:
         from manager.trade_manager import TradeManager
 
@@ -421,14 +427,32 @@ def predict_today():
             tm.save_to_db()
 
     except Exception as e:
-        logger.warning(f"TradeManager error: {e}")
+        # Non-fatal for the rest of this function - the signal writes below still
+        # have to happen - but recorded so it cannot vanish into a green run.
+        logger.error(f"TradeManager error: {e}")
+        write_errors.append(f"trade_history: {e}")
 
     # ===============================
     # SAVE SIGNAL TO DB
     # ===============================
 
-    save_db_signal(today_df)
-    save_db_summary(len(today_df))
+    # Each write is attempted independently: one failing table should not stop
+    # the others from landing. The run still ends red if any of them failed.
+    try:
+        save_db_signal(today_df)
+    except Exception as e:
+        write_errors.append(f"ai_signals: {e}")
+
+    try:
+        save_db_summary(len(today_df))
+    except Exception as e:
+        write_errors.append(f"daily_signal_summary: {e}")
+
+    if write_errors:
+        raise RuntimeError(
+            "prediction step finished with failed DB writes: "
+            + "; ".join(write_errors)
+        )
 
     return today_df
 

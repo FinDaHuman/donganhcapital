@@ -68,3 +68,6 @@ REPORTS_SETUP.md
 *.log
 job-logs.txt
 temp/
+
+# Cloudflare Worker
+cloudflare/

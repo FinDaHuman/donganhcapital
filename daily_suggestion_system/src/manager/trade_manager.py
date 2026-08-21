@@ -281,4 +281,7 @@ class TradeManager:
                 conn.execute(query, params_list)
             logger.info(f"{len(params_list)} trades synced to NeonDB (batch upsert)")
         except Exception as e:
+            # Callers (predict_today, bcd_trade_tracker) both turn this into a
+            # non-zero exit. Swallowing it let a run that saved no trades pass.
             logger.error(f"Error saving trades to DB: {e}")
+            raise
