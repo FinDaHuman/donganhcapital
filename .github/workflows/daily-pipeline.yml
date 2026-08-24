@@ -11,18 +11,68 @@ concurrency:
 on:
   schedule:
     # 08:02 UTC = 15:02 Vietnam time (UTC+7), weekdays only.
-    # NOTE: this has never actually fired - 0 schedule events across 16+
-    # weekdays (2026-08-21), with Actions enabled, the workflow active, a valid
-    # cron and the file on the default branch. An external scheduler drives the
-    # real trigger through workflow_dispatch instead. This block is kept only so
-    # we notice if GitHub ever starts honouring it; the concurrency group above
-    # bounds the cost if it does. Do not treat it as a fallback.
+    # This fired ZERO times from 2026-07-30 to 2026-08-21, then started working
+    # on 2026-08-24. Even when it works it is chronically late: across 93
+    # scheduled runs measured on the archive repo (same cron), the delay after
+    # 08:02 was median 146 min, p90 248 min, max 385 min. So this is a
+    # LATE SAFETY NET, not the trigger - an external scheduler dispatches the
+    # real run ~08:10. The guard job below stops this re-doing finished work.
+    # Keep it: the external scheduler is a single point of failure for both
+    # dispatch and alerting, and a run 2 hours late beats no run at all.
     - cron: '2 8 * * 1-5'
   workflow_dispatch:
     # Allow manual trigger from GitHub Actions UI
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
+  # Cheap (~10s) gate so a late `schedule` run does not repeat work the
+  # external dispatch already finished - chiefly a second 225-ticker vnstock
+  # scan against a rate-limited free API. Only `schedule` is ever skipped;
+  # workflow_dispatch always runs, so a manual re-run is never blocked.
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          THIS_RUN: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "schedule" ]; then
+            echo "Event is $EVENT, not schedule - proceeding."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          today=$(date -u +%Y-%m-%d)
+          # Count today's OTHER runs that already succeeded or are still going.
+          # THIS_RUN must be excluded or the guard sees its own in-progress run
+          # and always skips. A FAILED earlier run deliberately does not count,
+          # so this schedule then acts as the retry.
+          n=$(gh api "repos/$REPO/actions/workflows/daily-pipeline.yml/runs?per_page=50" \
+            --jq "[.workflow_runs[]
+                   | select(.id != ($THIS_RUN|tonumber))
+                   | select(.created_at | startswith(\"$today\"))
+                   | select(.conclusion == \"success\" or .status != \"completed\")]
+                  | length")
+          echo "Other runs today already done or running: $n"
+          if [ "${n:-0}" -gt 0 ]; then
+            echo "Work for $today is already covered - skipping this late schedule."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing has run today - this schedule will do the work."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   run-pipeline:
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
