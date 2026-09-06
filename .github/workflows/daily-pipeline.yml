@@ -98,6 +98,9 @@ jobs:
           pip install --upgrade pip
           pip install -r daily_suggestion_system/requirements.txt
 
+      - name: Run offline pipeline regression tests
+        run: python -m unittest discover -s daily_suggestion_system/tests
+
       - name: Run daily pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

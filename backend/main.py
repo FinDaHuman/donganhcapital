@@ -15,6 +15,7 @@ from collections import OrderedDict
 from fastapi import Depends, Query
 from typing import Any, Optional
 import time
+from market_calendar import is_trading_day, filter_intraday_sessions
 
 from db.queries import (
     get_stocks_from_db, get_stock_ohlc,
@@ -151,7 +152,10 @@ def run_vn30f1m_sync():
     from uuid import uuid4
     import pytz
     vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
-    today = datetime.now(vn_tz).strftime("%Y-%m-%d")
+    now = datetime.now(vn_tz)
+    if not is_trading_day(now):
+        return
+    today = now.strftime("%Y-%m-%d")
     # KBS is the primary source but is intermittently unreachable from Render;
     # VCI serves the same 1-min candle schema and is the reliable fallback.
     df = None
@@ -164,6 +168,9 @@ def run_vn30f1m_sync():
             print(f"VN30F1M fetch via {source} failed: {e}")
             df = None
     if df is None or len(df) == 0:
+        return
+    df = filter_intraday_sessions(df)
+    if df.empty:
         return
     df = df.rename(columns={"time": "time"})
     df["time"] = pd.to_datetime(df["time"])
@@ -198,7 +205,7 @@ def is_vn30f1m_open():
     vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
     now = datetime.now(vn_tz)
     
-    if now.weekday() > 4:
+    if not is_trading_day(now):
         return False
         
     current_time = now.time()
