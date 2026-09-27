@@ -160,7 +160,7 @@ every run. Editing it changes what the page publishes.
 | Auth | JWT access/refresh cookies, bcrypt, Google OAuth |
 | Email | Resend HTTP API |
 | AI / LLM | Gemini via `google-genai` or direct HTTP helpers |
-| ML / data | pandas, numpy, scikit-learn, LightGBM, XGBoost, joblib, vnstock |
+| ML / data | pandas, numpy, scikit-learn, LightGBM, XGBoost, joblib, requests (KBS / VCI public price data) |
 | Frontend | React 18, Vite, Tailwind CSS, Axios, lightweight-charts |
 | Automation | GitHub Actions |
 

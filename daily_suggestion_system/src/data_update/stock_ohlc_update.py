@@ -1,10 +1,13 @@
+import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
-from vnstock import Quote
+sys.path.append(str(Path(__file__).resolve().parents[3] / "backend"))
+from market_data import history
 
 from data_access.db_connection import get_engine
 
@@ -41,7 +44,8 @@ class StockDataUpdater:
     def _download_with_retry(self, stock_id, max_retry=5):
         for attempt in range(max_retry):
             try:
-                df = Quote(symbol=stock_id, source="KBS").history(
+                df = history(
+                    stock_id,
                     start=self.fetch_from_date,
                     end=self.to_date,
                     interval="1d",
@@ -55,7 +59,8 @@ class StockDataUpdater:
                 # Wide probe fallback for empty stock data / KBS errors
                 try:
                     probe_start = (pd.to_datetime(self.to_date) - pd.Timedelta(days=180)).strftime("%Y-%m-%d")
-                    wide_df = Quote(symbol=stock_id, source="KBS").history(
+                    wide_df = history(
+                        stock_id,
                         start=probe_start,
                         end=self.to_date,
                         interval="1d",

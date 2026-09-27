@@ -16,13 +16,15 @@ scikit-learn==1.7.2
 pydantic
 python-dotenv
 pytz
-sqlalchemy
+# Pinned below 2.1: SQLAlchemy 2.1 makes psycopg (v3) the default driver for
+# postgresql:// URLs, and only psycopg2 is installed. 2.1.1 broke the CI
+# pipeline on 2026-09-27 with "No module named 'psycopg'".
+sqlalchemy>=2.0,<2.1
 psycopg2-binary
 # Loads the 30 native-JSON boosters in backend/models/xgb_model. That format is
 # version-portable, but pin anyway so a deploy cannot change inference silently.
 xgboost==3.2.0
-vnstock==4.0.2
-vnstock_ezchart==0.0.3
+requests
 bcrypt==3.2.2
 passlib[bcrypt]
 python-jose[cryptography]

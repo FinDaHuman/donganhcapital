@@ -49,7 +49,7 @@ class CalendarTests(unittest.TestCase):
 
     def test_batch_writer_does_not_write_holiday_only_response(self):
         module = load_module('vn30f1m_update')
-        module.Quote.return_value.history.return_value = pd.DataFrame({'time': ['2026-09-01 09:00']})
+        module.history.return_value = pd.DataFrame({'time': ['2026-09-01 09:00']})
         self.assertEqual(module.update_vn30f1m_intraday(), 0)
         module.get_engine.return_value.begin.assert_not_called()
 
@@ -60,18 +60,18 @@ class CalendarTests(unittest.TestCase):
                                     and n.name in ('run_vn30f1m_sync', 'is_vn30f1m_open')], type_ignores=[])
         namespace = {'is_trading_day': is_trading_day, 'filter_intraday_sessions': filter_intraday_sessions}
         exec(compile(functions, str(BACKEND / 'main.py'), 'exec'), namespace)
-        quote = ModuleType('vnstock')
-        quote.Quote = MagicMock()
+        provider = ModuleType('market_data')
+        provider.history = MagicMock()
         for day in (date(2026, 8, 31), date(2026, 9, 1), date(2026, 9, 2)):
             class Clock(datetime):
                 @classmethod
                 def now(cls, tz=None):
                     return datetime(day.year, day.month, day.day, 10, tzinfo=tz)
-            with self.subTest(day=day), patch.dict(sys.modules, {'vnstock': quote}), patch('datetime.datetime', Clock):
+            with self.subTest(day=day), patch.dict(sys.modules, {'market_data': provider}), patch('datetime.datetime', Clock):
                 namespace['datetime'] = Clock
                 self.assertFalse(namespace['is_vn30f1m_open']())
                 namespace['run_vn30f1m_sync']()
-        quote.Quote.assert_not_called()
+        provider.history.assert_not_called()
 
     def test_backend_writer_filters_mixed_provider_response(self):
         tree = ast.parse((BACKEND / 'main.py').read_text(encoding='utf-8'))
@@ -82,16 +82,15 @@ class CalendarTests(unittest.TestCase):
         namespace = {'is_trading_day': is_trading_day, 'filter_intraday_sessions': filter_intraday_sessions,
                      'datetime': clock, 'pd': pd, 'np': np}
         exec(compile(functions, str(BACKEND / 'main.py'), 'exec'), namespace)
-        provider = ModuleType('vnstock')
-        provider.Quote = MagicMock()
-        provider.Quote.return_value.history.return_value = pd.DataFrame({
+        provider = ModuleType('market_data')
+        provider.history = MagicMock(return_value=pd.DataFrame({
             'time': ['2026-09-02 09:00', '2026-09-03 09:00'],
             'open': [1, 2], 'high': [1, 2], 'low': [1, 2], 'close': [1, 2], 'volume': [1, 2],
-        })
+        }))
         db = ModuleType('db.connection')
         db.get_engine = MagicMock()
         captured = []
-        with patch.dict(sys.modules, {'vnstock': provider, 'db.connection': db}), \
+        with patch.dict(sys.modules, {'market_data': provider, 'db.connection': db}), \
              patch.object(pd.DataFrame, 'to_sql', lambda frame, *a, **kw: captured.append(frame.copy())):
             namespace['run_vn30f1m_sync']()
         self.assertEqual(len(captured), 1)

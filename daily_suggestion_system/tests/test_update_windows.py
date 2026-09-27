@@ -24,7 +24,7 @@ def load_module(name):
         ('data_update.stock_ohlc_update', 'StockDataUpdater'),
         ('data_update.vnindex_ohlc_update', 'update_vnindex_ohlc'),
         ('data_access.db_connection', 'get_engine'),
-        ('vnstock', 'Quote'),
+        ('market_data', 'history'),
     ):
         stub = ModuleType(module)
         setattr(stub, attribute, MagicMock())
@@ -88,11 +88,11 @@ class UpdateWindowTests(unittest.TestCase):
             'close': [101.0], 'volume': [10],
         })
 
-        def fetch(start, end, interval):
+        def fetch(symbol, start, end, interval):
             self.assertEqual(interval, '1m')
             return bars[bars.time.between(start, end)].copy()
 
-        module.Quote.return_value.history.side_effect = fetch
+        module.history.side_effect = fetch
         with patch.object(module, 'datetime') as clock, patch.object(pd.DataFrame, 'to_sql'):
             clock.now.return_value = datetime(2026, 9, 2, 15, 20)
             self.assertEqual(module.update_vn30f1m_intraday(), 1)
@@ -100,7 +100,7 @@ class UpdateWindowTests(unittest.TestCase):
 
     def test_intraday_source_failure_still_fails(self):
         module = load_module('vn30f1m_update')
-        module.Quote.return_value.history.side_effect = RuntimeError('source unavailable')
+        module.history.side_effect = RuntimeError('source unavailable')
         with self.assertRaisesRegex(RuntimeError, 'source unavailable'):
             module.update_vn30f1m_intraday()
 

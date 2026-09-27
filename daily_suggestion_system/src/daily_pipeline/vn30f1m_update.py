@@ -3,7 +3,6 @@ import numpy as np
 from datetime import datetime, timedelta
 import pytz
 from sqlalchemy import text
-from vnstock import Quote
 import sys
 import os
 from uuid import uuid4
@@ -12,6 +11,7 @@ from pathlib import Path
 # Share the API's calendar so its poller and the batch writer reject the same dates.
 sys.path.append(str(Path(__file__).resolve().parents[3] / 'backend'))
 from market_calendar import filter_intraday_sessions
+from market_data import history
 
 from data_access.db_connection import get_engine
 
@@ -42,7 +42,8 @@ def update_vn30f1m_intraday():
     print(f"Fetching VN30F1M intraday for {start} -> {today}...")
 
     try:
-        df = Quote(symbol="VN30F1M", source="KBS").history(
+        df = history(
+            "VN30F1M",
             start=start,
             end=today,
             interval="1m"

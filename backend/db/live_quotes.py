@@ -1,4 +1,4 @@
-"""Real-time equity quote adapter (vnstock price board).
+"""Real-time equity quote adapter (KBS / VCI price boards via ``market_data``).
 
 Deliberately isolated like ``backend/db/mongo.py`` / ``backend/db/r2.py``: any
 failure (network, both providers down, unexpected schema) returns an EMPTY dict
@@ -6,19 +6,19 @@ so every caller transparently falls back to the daily-close values it already
 uses. This module NEVER raises.
 
 Normalization
-    vnstock's price board returns raw đồng (e.g. ``72900``) while ``stock_ohlc``
+    The price boards return raw đồng (e.g. ``72900``) while ``stock_ohlc``
     stores thousands (``72.9``). Prices here are divided by ``PRICE_SCALE`` so
     callers receive values directly comparable to ``entry_price`` /
     ``stock_ohlc.close`` — no per-caller scaling.
 
 Sources
-    VCI first (reliable from Render, MultiIndex schema), KBS fallback (flat
-    schema, but the provider is intermittently unreachable from Render — the
-    VN30F1M circuit breaker in ``main.py`` exists for exactly this). Both are
-    flattened to one internal schema.
+    VCI first (reliable from Render), KBS fallback (the provider is
+    intermittently unreachable from Render — the VN30F1M circuit breaker in
+    ``main.py`` exists for exactly this). ``market_data.price_board`` flattens
+    both to the same rows.
 
 Callers MUST run ``get_live_quotes`` via ``asyncio.to_thread`` — the underlying
-vnstock HTTP calls are blocking.
+HTTP calls are blocking.
 """
 
 import logging
@@ -99,49 +99,15 @@ def _norm(price, ref, volume) -> dict | None:
     }
 
 
-def _fetch_vci(symbols: list[str]) -> dict:
-    """VCI price board -> normalized map. MultiIndex columns."""
-    from vnstock import Trading
+def _fetch(source: str, symbols: list[str]) -> dict:
+    """One provider's price board -> normalized map."""
+    from market_data import price_board
 
-    pb = Trading(source="vci").price_board(symbols)
-    if pb is None or len(pb) == 0:
-        return {}
     out: dict[str, dict] = {}
-    for _, r in pb.iterrows():
-        try:
-            sym = r[("listing", "symbol")]
-            rec = _norm(
-                r[("match", "match_price")],
-                r[("match", "reference_price")],
-                r[("match", "accumulated_volume")],
-            )
-            if sym and rec:
-                out[str(sym).upper().strip()] = rec
-        except Exception:
-            continue
-    return out
-
-
-def _fetch_kbs(symbols: list[str]) -> dict:
-    """KBS price board -> normalized map. Flat columns."""
-    from vnstock import Trading
-
-    pb = Trading(source="kbs").price_board(symbols)
-    if pb is None or len(pb) == 0:
-        return {}
-    out: dict[str, dict] = {}
-    for _, r in pb.iterrows():
-        try:
-            sym = r.get("symbol")
-            rec = _norm(
-                r.get("close_price"),
-                r.get("reference_price"),
-                r.get("volume_accumulated"),
-            )
-            if sym and rec:
-                out[str(sym).upper().strip()] = rec
-        except Exception:
-            continue
+    for sym, price, ref, volume in price_board(symbols, source):
+        rec = _norm(price, ref, volume)
+        if sym and rec:
+            out[str(sym).upper().strip()] = rec
     return out
 
 
@@ -151,9 +117,9 @@ def get_live_quotes(symbols) -> dict[str, dict]:
     syms = _clean_symbols(symbols)
     if not syms:
         return {}
-    for name, fetch in (("vci", _fetch_vci), ("kbs", _fetch_kbs)):
+    for name in ("VCI", "KBS"):
         try:
-            result = fetch(syms)
+            result = _fetch(name, syms)
             if result:
                 return result
             logger.warning("Live quotes: %s returned no rows for %d symbols", name, len(syms))
