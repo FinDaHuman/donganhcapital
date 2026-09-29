@@ -41,6 +41,30 @@ class StockDataUpdater:
         # Preserve file order while removing duplicates to avoid wasting API quota.
         return list(dict.fromkeys(stocks))
 
+    def _previous_closes(self):
+        """Last stored close before the fetch window, per ticker.
+
+        The first bar in the window needs a previous close for its return. A
+        ticker that has not traded for longer than RETURN_LOOKBACK_DAYS has no
+        such bar in the window, so without this seed its first new session got
+        a NaN return and was dropped -- permanently, since later runs repeat
+        the same computation (IDP lost 2026-09-28 after 21 silent days).
+        """
+        engine = get_engine()
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                SELECT DISTINCT ON (stock_id) stock_id, adj_close
+                FROM stock_ohlc
+                WHERE stock_id = ANY(:ids) AND "Ngay" < :before
+                ORDER BY stock_id, "Ngay" DESC
+                """
+                ),
+                {"ids": self.stock_list, "before": self.fetch_from_date},
+            ).fetchall()
+        return {stock_id: float(close) for stock_id, close in rows if close is not None}
+
     def _download_with_retry(self, stock_id, max_retry=5):
         for attempt in range(max_retry):
             try:
@@ -96,6 +120,7 @@ class StockDataUpdater:
 
     def fetch_all(self):
         all_dfs = []
+        previous_closes = self._previous_closes()
 
         for stock_id in self.stock_list:
             print(f"Downloading {stock_id}")
@@ -122,8 +147,10 @@ class StockDataUpdater:
             df["adj_low"] = df["low"]
             df["adj_close"] = df["close"]
 
-            df["return"] = df["adj_close"].pct_change()
-            df["log_return"] = np.log(df["adj_close"] / df["adj_close"].shift(1))
+            previous = df["adj_close"].shift(1)
+            previous.iloc[0] = previous_closes.get(stock_id, np.nan)
+            df["return"] = df["adj_close"] / previous - 1
+            df["log_return"] = np.log(df["adj_close"] / previous)
             df["thaydoi"] = df["return"]
             df = df[df["Ngay"] >= pd.to_datetime(self.from_date)]
             df = df.dropna(subset=["return", "log_return", "thaydoi"])
