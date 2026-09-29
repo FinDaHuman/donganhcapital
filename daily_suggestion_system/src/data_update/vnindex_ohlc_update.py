@@ -1,7 +1,14 @@
+import sys
+from datetime import datetime
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
+import pytz
 from sqlalchemy import text
-from vnstock import Quote
+
+sys.path.append(str(Path(__file__).resolve().parents[3] / "backend"))
+from market_data import history
 
 from data_access.db_connection import get_engine
 
@@ -12,11 +19,22 @@ def update_vnindex_ohlc(start="2009-06-01", end=None):
 
     print("Downloading VNINDEX data...")
 
-    market_df = Quote(symbol="VNINDEX", source="KBS").history(
-        start=start,
-        end=end,
-        interval="1d"
-    )
+    if end is None:
+        end = datetime.now(pytz.timezone("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d")
+
+    # KBS first: its bars matched the stored open/high/low/close on every day of
+    # 2026 (checked 2026-09-28). VCI is only a fallback — same close, but its low
+    # differs on some days and its volume includes put-through trades while KBS's
+    # settled bar does not. No model reads index_volume; it feeds the VNINDEX chart.
+    market_df = None
+    for source in ("KBS", "VCI"):
+        try:
+            market_df = history("VNINDEX", start=start, end=end, interval="1d", source=source)
+            break
+        except Exception as e:
+            print(f"VNINDEX fetch via {source} failed: {e}")
+            if source == "VCI":
+                raise
 
     if market_df is None or len(market_df) == 0:
         print("No VNINDEX data")

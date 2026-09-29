@@ -160,7 +160,7 @@ every run. Editing it changes what the page publishes.
 | Auth | JWT access/refresh cookies, bcrypt, Google OAuth |
 | Email | Resend HTTP API |
 | AI / LLM | Gemini via `google-genai` or direct HTTP helpers |
-| ML / data | pandas, numpy, scikit-learn, LightGBM, XGBoost, joblib, vnstock |
+| ML / data | pandas, numpy, scikit-learn, LightGBM, XGBoost, joblib, requests (KBS / VCI public price data) |
 | Frontend | React 18, Vite, Tailwind CSS, Axios, lightweight-charts |
 | Automation | GitHub Actions |
 
@@ -524,3 +524,27 @@ The market data these models were trained on is not ours to relicense either.
 
 If you want to use any part of this for something, ask — contact details are on
 the `/contact` page at https://www.donganhcapital.com.
+
+
+### Market-data ingestion checks
+
+The stock, VNINDEX, and VN30F1M batch updates re-fetch a rolling 10-calendar-day
+window so missed runs can be recovered by later upserts. This is a recovery
+window, not a guarantee that every source returned the latest session.
+
+Both VN30F1M writers use `backend/market_calendar.py` to reject candles on
+weekends and announced exchange holidays. The backend poller also skips those
+dates before requesting data. Provider timestamps without a timezone are treated
+as Vietnam time; timezone-aware timestamps are converted to Vietnam time.
+
+The calendar currently covers **2026**. Add the next year's official exchange
+holiday schedule before year-end, including announced amendments. An uncovered
+year raises an explicit error rather than silently accepting holiday data. The
+calendar file links its sources. Government make-up Saturdays are not assumed to
+be trading sessions.
+
+Run the offline ingestion and lifecycle checks from the repository root:
+
+```bash
+python -m unittest discover -s daily_suggestion_system/tests
+```

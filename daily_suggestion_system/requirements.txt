@@ -3,9 +3,11 @@ numpy
 joblib
 scikit-learn==1.7.2
 lightgbm
-sqlalchemy
+# Pinned below 2.1: SQLAlchemy 2.1 makes psycopg (v3) the default driver for
+# postgresql:// URLs, and only psycopg2 is installed. 2.1.1 broke the CI
+# pipeline on 2026-09-27 with "No module named 'psycopg'".
+sqlalchemy>=2.0,<2.1
 psycopg2-binary
 python-dotenv
-vnstock==4.0.2
-vnstock_ezchart==0.0.3
+requests
 pytz

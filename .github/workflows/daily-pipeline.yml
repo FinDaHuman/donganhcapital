@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   # Cheap (~10s) gate so a late `schedule` run does not repeat work the
-  # external dispatch already finished - chiefly a second 225-ticker vnstock
+  # external dispatch already finished - chiefly a second 225-ticker price
   # scan against a rate-limited free API. Only `schedule` is ever skipped;
   # workflow_dispatch always runs, so a manual re-run is never blocked.
   guard:
@@ -97,6 +97,9 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r daily_suggestion_system/requirements.txt
+
+      - name: Run offline pipeline regression tests
+        run: python -m unittest discover -s daily_suggestion_system/tests
 
       - name: Run daily pipeline
         env:

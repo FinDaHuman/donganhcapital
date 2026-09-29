@@ -15,6 +15,7 @@ from collections import OrderedDict
 from fastapi import Depends, Query
 from typing import Any, Optional
 import time
+from market_calendar import is_trading_day, filter_intraday_sessions
 
 from db.queries import (
     get_stocks_from_db, get_stock_ohlc,
@@ -147,23 +148,29 @@ async def get_cached_async(key: str, ttl: int, compute):
 
 def run_vn30f1m_sync():
     """Fetch and upsert today's VN30F1M 1-minute candles. Raises on failure."""
-    from vnstock import Quote
+    from market_data import history
     from uuid import uuid4
     import pytz
     vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
-    today = datetime.now(vn_tz).strftime("%Y-%m-%d")
+    now = datetime.now(vn_tz)
+    if not is_trading_day(now):
+        return
+    today = now.strftime("%Y-%m-%d")
     # KBS is the primary source but is intermittently unreachable from Render;
     # VCI serves the same 1-min candle schema and is the reliable fallback.
     df = None
     for source in ("KBS", "VCI"):
         try:
-            df = Quote(symbol="VN30F1M", source=source).history(start=today, end=today, interval="1m")
+            df = history("VN30F1M", start=today, end=today, interval="1m", source=source)
             if df is not None and len(df) > 0:
                 break
         except Exception as e:
             print(f"VN30F1M fetch via {source} failed: {e}")
             df = None
     if df is None or len(df) == 0:
+        return
+    df = filter_intraday_sessions(df)
+    if df.empty:
         return
     df = df.rename(columns={"time": "time"})
     df["time"] = pd.to_datetime(df["time"])
@@ -198,7 +205,7 @@ def is_vn30f1m_open():
     vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
     now = datetime.now(vn_tz)
     
-    if now.weekday() > 4:
+    if not is_trading_day(now):
         return False
         
     current_time = now.time()
@@ -255,9 +262,10 @@ async def realtime_vn30f1m():
                     await asyncio.sleep(60)
                     continue
                 try:
-                    # 35s cap: lets asyncio give up after ~1 vnstock retry (30s each)
-                    # instead of waiting for all 3 retries (~90s). The underlying thread
-                    # runs to completion regardless, but failure is detected much sooner.
+                    # 35s cap: a hung KBS request (30s timeout in market_data) is
+                    # abandoned here instead of also waiting out the VCI fallback. The
+                    # underlying thread runs to completion regardless, but failure is
+                    # detected much sooner.
                     await asyncio.wait_for(
                         asyncio.to_thread(run_vn30f1m_sync),
                         timeout=35,
@@ -283,7 +291,7 @@ async def realtime_vn30f1m():
 # Real-time equity quotes (shared, cached, trading-hours gated)
 # ---------------------------------------------------------------------------
 # One batch price-board fetch per cycle refreshes a module-level map that all
-# request handlers read from _cache["live_quotes"] — the vnstock call never runs
+# request handlers read from _cache["live_quotes"] — the price-board call never runs
 # inside a request (Semaphore(5)) slot. Any failure leaves the map stale/empty
 # and every consumer transparently falls back to daily-close values.
 LIVE_QUOTES_CACHE_KEY = "live_quotes"
