@@ -65,7 +65,30 @@ class StockDataUpdater:
             ).fetchall()
         return {stock_id: float(close) for stock_id, close in rows if close is not None}
 
-    def _download_with_retry(self, stock_id, max_retry=5):
+    def _latest_stored_dates(self):
+        """Date of the newest stored bar, per ticker.
+
+        Lets a ticker that KBS has nothing for be skipped when our own data
+        agrees it stopped trading before the fetch window. The 180-day probe
+        alone cannot tell that once the last trade is older than the probe:
+        LGC last traded 2026-04-29 and failed every run from 2026-10-27.
+        """
+        engine = get_engine()
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                SELECT stock_id, MAX("Ngay")
+                FROM stock_ohlc
+                WHERE stock_id = ANY(:ids)
+                GROUP BY stock_id
+                """
+                ),
+                {"ids": self.stock_list},
+            ).fetchall()
+        return {stock_id: pd.to_datetime(day) for stock_id, day in rows if day is not None}
+
+    def _download_with_retry(self, stock_id, max_retry=5, last_stored=None):
         for attempt in range(max_retry):
             try:
                 df = history(
@@ -106,6 +129,17 @@ class StockDataUpdater:
                     # Ignore probe error, fall back to main error logic
                     pass
 
+                # Only an empty answer, never a network error, and only when the
+                # database also has nothing inside the fetch window.
+                if (
+                    isinstance(e, ValueError)
+                    and "returned no" in str(e)
+                    and last_stored is not None
+                    and last_stored < pd.to_datetime(self.fetch_from_date)
+                ):
+                    print(f"{stock_id}: no recent trades; latest stored candle {last_stored.strftime('%Y-%m-%d')}, skipping without failure.")
+                    return pd.DataFrame()
+
                 print(f"{stock_id} retry {attempt + 1}/{max_retry} error:", e)
 
                 error_text = str(e).lower()
@@ -121,11 +155,12 @@ class StockDataUpdater:
     def fetch_all(self):
         all_dfs = []
         previous_closes = self._previous_closes()
+        latest_stored = self._latest_stored_dates()
 
         for stock_id in self.stock_list:
             print(f"Downloading {stock_id}")
 
-            df = self._download_with_retry(stock_id)
+            df = self._download_with_retry(stock_id, last_stored=latest_stored.get(stock_id))
             time.sleep(REQUEST_SPACING_SECONDS)
 
             if df is None:

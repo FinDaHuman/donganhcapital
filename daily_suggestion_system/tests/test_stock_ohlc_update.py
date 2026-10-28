@@ -34,7 +34,7 @@ class ResumedTickerTests(unittest.TestCase):
             tickers.write('IDP')
         updater = module.StockDataUpdater(tickers.name, '2026-09-19', '2026-09-29')
         with patch.object(updater, '_download_with_retry', return_value=fetched), \
-             patch.object(updater, '_previous_closes', return_value=previous), \
+             patch.object(updater, '_previous_closes', return_value=previous),              patch.object(updater, '_latest_stored_dates', return_value={}), \
              patch.object(module.time, 'sleep'):
             return updater.fetch_all()
 
@@ -53,6 +53,33 @@ class ResumedTickerTests(unittest.TestCase):
         self.assertEqual(result.Ngay.tolist(), [pd.Timestamp('2026-09-21'), pd.Timestamp('2026-09-22')])
         self.assertAlmostEqual(result['return'].iloc[0], 0.1)
         self.assertAlmostEqual(result['return'].iloc[1], -0.1)
+
+
+class QuietTickerTests(unittest.TestCase):
+    """KBS has no bars at all for a ticker that stopped trading long ago."""
+
+    def download(self, error, last_stored):
+        module = load_updater()
+        with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False) as tickers:
+            tickers.write('LGC')
+        updater = module.StockDataUpdater(tickers.name, '2026-10-18', '2026-10-28')
+        with patch.object(module, 'history', side_effect=error),              patch.object(module.time, 'sleep'),              patch('builtins.print'):
+            stored = pd.Timestamp(last_stored) if last_stored else None
+            return updater._download_with_retry('LGC', last_stored=stored)
+
+    def test_ticker_silent_past_the_probe_is_skipped(self):
+        # LGC: last traded 2026-04-29, so the 180-day probe found nothing from 2026-10-27.
+        result = self.download(ValueError('KBS returned no 1d data for LGC'), '2026-04-29')
+        self.assertTrue(result is not None and result.empty)
+
+    def test_ticker_that_traded_inside_the_window_still_fails(self):
+        self.assertIsNone(self.download(ValueError('KBS returned no 1d data for LGC'), '2026-10-27'))
+
+    def test_network_error_still_fails(self):
+        self.assertIsNone(self.download(ConnectionError('KBS timed out'), '2026-04-29'))
+
+    def test_unknown_ticker_still_fails(self):
+        self.assertIsNone(self.download(ValueError('KBS returned no 1d data for LGC'), None))
 
 
 if __name__ == '__main__':
